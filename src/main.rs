@@ -9,7 +9,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::io::{self, Write};
 
 mod renderer; mod world; mod texture; mod player; mod logger; mod noise_gen; mod network; mod ngrok_utils;
-use renderer::Renderer; use world::{World, BlockPos, BlockType, ItemEntity}; use player::Player; use network::{NetworkManager, Packet};
+use renderer::Renderer; use world::{World, BlockPos, BlockType}; use player::Player; use network::{NetworkManager, Packet};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

@@ -76,3 +76,33 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     return vec4<f32>(lit_color, 1.0);
 }
+// [ADD TO THE VERY END OF FILE]
+
+@vertex
+fn vs_ui(model: VertexInput) -> VertexOutput {
+    var out: VertexOutput;
+    // UI is 2D and uses raw NDC coordinates (-1.0 to 1.0), so we pass position directly
+    out.clip_position = vec4<f32>(model.position, 1.0);
+    out.depth = 0.0;
+    out.ao = 1.0;
+    
+    // Texture Atlas Logic (Same as vs_main)
+    let atlas_size = 16.0; 
+    let u_idx = f32(model.tex_index % 16u);
+    let v_idx = f32(model.tex_index / 16u);
+    let u_step = 1.0 / atlas_size;
+    let v_step = 1.0 / atlas_size;
+    let u = (u_idx + model.tex_coords.x) * u_step;
+    let v = (v_idx + model.tex_coords.y) * v_step;
+    
+    out.tex_coords = vec2<f32>(u, v);
+    return out;
+}
+
+@fragment
+fn fs_ui(in: VertexOutput) -> @location(0) vec4<f32> {
+    // Simple texture lookup for UI (no fog/lighting)
+    let color = textureSample(t_diffuse, s_diffuse, in.tex_coords);
+    if (color.a < 0.1) { discard; }
+    return color;
+}
