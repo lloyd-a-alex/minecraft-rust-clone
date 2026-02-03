@@ -17,7 +17,7 @@ pub struct Inventory {
     pub crafting_grid: [Option<ItemStack>; 4],
     pub crafting_output: Option<ItemStack>,
 }
-
+#[allow(dead_code)]
 impl Inventory {
     pub fn new() -> Self { Inventory { slots: [None; INVENTORY_SIZE], selected_hotbar_slot: 0, cursor_item: None, crafting_grid: [None; 4], crafting_output: None } }
     pub fn get_selected_item(&self) -> Option<BlockType> { self.slots[self.selected_hotbar_slot].map(|stack| stack.item) }
@@ -48,6 +48,7 @@ impl Inventory {
 
 pub struct KeyState { pub forward: bool, pub backward: bool, pub left: bool, pub right: bool, pub up: bool, pub down: bool }
 
+#[allow(dead_code)]
 pub struct Player {
     pub position: Vec3, pub rotation: Vec3, pub velocity: Vec3,
     pub keys: KeyState, pub speed: f32, pub sensitivity: f32,
@@ -58,6 +59,7 @@ pub struct Player {
     pub is_dead: bool, pub right_handed: bool, pub inventory_open: bool,
 }
 
+#[allow(dead_code)]
 impl Player {
     pub fn new() -> Self {
         Player {

@@ -31,9 +31,12 @@ fn main() {
     } else if choice == "1" {
         if let Some(addr) = ngrok_utils::start_ngrok_tunnel("7878") { println!("✅ SERVER: {}", addr); } else { println!("❌ LAN ONLY (7878)"); }
         logger::init_logger(); run_game(NetworkManager::host("7878".to_string()), "HOST");
-    } else {
-        print!("Enter IP: "); io::stdout().flush().unwrap(); let mut ip = String::new(); std::io::stdin().read_line(&mut ip).unwrap();
-        logger::init_logger(); run_game(NetworkManager::join(ip.trim().to_string()), "CLIENT");
+} else {
+        print!("Enter IP (default: 127.0.0.1:7878): "); io::stdout().flush().unwrap();
+        let mut ip = String::new(); std::io::stdin().read_line(&mut ip).unwrap();
+        let ip = ip.trim();
+        let target = if ip.is_empty() { "127.0.0.1:7878" } else { ip };
+        logger::init_logger(); run_game(NetworkManager::join(target.to_string()), "CLIENT");
     };
 }
 

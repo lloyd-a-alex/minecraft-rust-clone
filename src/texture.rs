@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 pub struct TextureAtlas {
     pub data: Vec<u8>,
     pub size: u32,
