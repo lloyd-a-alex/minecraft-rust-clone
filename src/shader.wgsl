@@ -1,0 +1,78 @@
+struct CameraUniform {
+    view_proj: mat4x4<f32>,
+};
+@group(1) @binding(0)
+var<uniform> camera: CameraUniform;
+
+struct TimeUniform {
+    sky_color: vec4<f32>,
+    time: f32,
+    underwater: f32, // 1.0 if underwater
+    _pad2: f32,
+    _pad3: f32,
+};
+@group(2) @binding(0)
+var<uniform> time_data: TimeUniform;
+
+struct VertexInput {
+    @location(0) position: vec3<f32>,
+    @location(1) tex_coords: vec2<f32>,
+    @location(2) ao: f32,
+    @location(3) tex_index: u32,
+};
+
+struct VertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) tex_coords: vec2<f32>,
+    @location(1) ao: f32,
+    @location(2) depth: f32,
+};
+
+@vertex
+fn vs_main(model: VertexInput) -> VertexOutput {
+    var out: VertexOutput;
+    out.clip_position = camera.view_proj * vec4<f32>(model.position, 1.0);
+    out.depth = out.clip_position.w;
+    out.ao = model.ao;
+    
+    // Texture Atlas Logic (Simple Grid)
+    let atlas_size = 16.0; 
+    let u_idx = f32(model.tex_index % 16u);
+    let v_idx = f32(model.tex_index / 16u);
+    
+    let u_step = 1.0 / atlas_size;
+    let v_step = 1.0 / atlas_size;
+    
+    let u = (u_idx + model.tex_coords.x) * u_step;
+    let v = (v_idx + model.tex_coords.y) * v_step;
+    
+    out.tex_coords = vec2<f32>(u, v);
+    return out;
+}
+
+@group(0) @binding(0)
+var t_diffuse: texture_2d<f32>;
+@group(0) @binding(1)
+var s_diffuse: sampler;
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let base_color = textureSample(t_diffuse, s_diffuse, in.tex_coords);
+    if (base_color.a < 0.1) { discard; }
+    
+    // Simple Lighting
+    let brightness = 1.0; 
+    var lit_color = base_color.rgb * in.ao * brightness;
+    
+    // Simple Fog
+    let fog_density = 0.015; 
+    let fog_factor = 1.0 - exp(-in.depth * fog_density);
+    lit_color = mix(lit_color, time_data.sky_color.rgb, clamp(fog_factor, 0.0, 1.0));
+
+    // Underwater Tint
+    if (time_data.underwater > 0.5) {
+        lit_color = mix(lit_color, vec3<f32>(0.0, 0.2, 0.8), 0.4);
+    }
+
+    return vec4<f32>(lit_color, 1.0);
+}
