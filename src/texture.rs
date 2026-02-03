@@ -1,24 +1,21 @@
 pub struct TextureAtlas {
     pub data: Vec<u8>,
     pub size: u32,
+    pub grid_size: u32,
 }
 
 impl TextureAtlas {
     pub fn new() -> Self {
         let atlas_width = 256;
-        let block_size = 16;
-        let total_pixels = atlas_width * atlas_width;
-        
-        let mut data = vec![0u8; (total_pixels * 4) as usize];
-        
-        // Initialize transparent
-        for i in 0..total_pixels {
-            let idx = (i * 4) as usize;
-            data[idx] = 0; data[idx+1] = 0; data[idx+2] = 0; data[idx+3] = 0;
-        }
+        let atlas_height = 256;
+        let total_pixels = atlas_width * atlas_height;
+        let rgba_bytes = (total_pixels * 4) as usize;
+        let mut data = vec![0u8; rgba_bytes];
 
-        // --- BLOCKS ---
-        Self::generate_generic(&mut data, block_size, atlas_width, 0, [0, 0, 0]); // Air
+        let block_size = 16;
+        let grid_width_in_blocks = atlas_width / block_size;
+
+        // --- BLOCKS (0-9) ---
         Self::generate_grass(&mut data, block_size, atlas_width, 1);
         Self::generate_dirt(&mut data, block_size, atlas_width, 2);
         Self::generate_stone(&mut data, block_size, atlas_width, 3);
@@ -29,28 +26,39 @@ impl TextureAtlas {
         Self::generate_bedrock(&mut data, block_size, atlas_width, 8);
         Self::generate_water(&mut data, block_size, atlas_width, 9);
 
-        // --- ORES ---
-        Self::generate_ore(&mut data, block_size, atlas_width, 10, [20, 20, 20]);    // Coal
-        Self::generate_ore(&mut data, block_size, atlas_width, 11, [200, 150, 100]); // Iron
-        Self::generate_ore(&mut data, block_size, atlas_width, 12, [255, 215, 0]);   // Gold
-        Self::generate_ore(&mut data, block_size, atlas_width, 13, [0, 255, 255]);   // Diamond
+        // --- NEW BLOCKS ---
+        Self::generate_torch(&mut data, block_size, atlas_width, 24);
+        Self::generate_generic(&mut data, block_size, atlas_width, 14, [100, 100, 100]); // Cobble
+        Self::generate_generic(&mut data, block_size, atlas_width, 15, [200, 150, 100]); // Planks
+        
+        // Ores (Indices 17-20)
+        Self::generate_ore(&mut data, block_size, atlas_width, 17, [20, 20, 20]); // Coal
+        Self::generate_ore(&mut data, block_size, atlas_width, 18, [200, 150, 100]); // Iron
+        Self::generate_ore(&mut data, block_size, atlas_width, 19, [255, 215, 0]); // Gold
+        Self::generate_ore(&mut data, block_size, atlas_width, 20, [0, 255, 255]); // Diamond
 
-        // --- CRAFTED ---
-        Self::generate_generic(&mut data, block_size, atlas_width, 14, [100, 100, 100]); // Planks
-        Self::generate_generic(&mut data, block_size, atlas_width, 15, [139, 69, 19]);   // Stick
-        Self::generate_generic(&mut data, block_size, atlas_width, 16, [120, 120, 120]); // Cobble
+        // Items/Tools (Simplified Placeholders)
+        Self::generate_generic(&mut data, block_size, atlas_width, 40, [100, 50, 0]); // Stick
+        Self::generate_generic(&mut data, block_size, atlas_width, 42, [180, 180, 180]); // Iron Ingot
+        Self::generate_generic(&mut data, block_size, atlas_width, 44, [0, 255, 255]); // Diamond Item
+        
+        // Tools (Wood)
+        for i in 50..54 { Self::generate_tool(&mut data, block_size, atlas_width, i, [150, 100, 50]); }
+        // Stone
+        for i in 60..64 { Self::generate_tool(&mut data, block_size, atlas_width, i, [100, 100, 100]); }
+        // Iron
+        for i in 70..74 { Self::generate_tool(&mut data, block_size, atlas_width, i, [200, 200, 200]); }
 
         // --- UI ---
-        Self::generate_crosshair(&mut data, block_size, atlas_width, 254);
-        Self::generate_hotbar_slot(&mut data, block_size, atlas_width, 250); 
-        Self::generate_hotbar_selection(&mut data, block_size, atlas_width, 251);
-        Self::generate_heart(&mut data, block_size, atlas_width, 252);
-        Self::generate_menu_bg(&mut data, block_size, atlas_width, 253);
-        
+        Self::generate_hotbar_slot(&mut data, block_size, atlas_width, 10);
+        Self::generate_selection(&mut data, block_size, atlas_width, 11);
+        Self::generate_heart(&mut data, block_size, atlas_width, 12);
+        Self::generate_skin(&mut data, block_size, atlas_width, 13);
+
         // --- FONT ---
         Self::generate_font(&mut data, block_size, atlas_width, 200);
 
-        TextureAtlas { data, size: atlas_width }
+        TextureAtlas { data, size: block_size, grid_size: grid_width_in_blocks }
     }
 
     fn place_texture(data: &mut [u8], block_size: u32, atlas_width: u32, grid_idx: u32, pixels: &[u8]) {
@@ -80,28 +88,13 @@ impl TextureAtlas {
         }
     }
 
-    // --- BETA STYLE NOISY GENERATORS ---
     fn generate_grass(data: &mut [u8], size: u32, w: u32, idx: u32) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for i in 0..size * size {
-            // High contrast noise for that "Beta" feel
-            let noise = ((i * 1327) % 55) as u8; 
-            p[(i * 4) as usize] = 40 + noise; 
-            p[(i * 4 + 1) as usize] = 160 + noise; 
-            p[(i * 4 + 2) as usize] = 40 + noise; 
-            p[(i * 4 + 3) as usize] = 255;
-        }
-        Self::place_texture(data, size, w, idx, &p);
-    }
-    
-    fn generate_sand(data: &mut [u8], size: u32, w: u32, idx: u32) {
-        let mut p = vec![0u8; (size * size * 4) as usize];
-        for i in 0..size * size {
-            // Gritty sand
-            let noise = ((i * 9123) % 40) as u8; 
-            p[(i * 4) as usize] = 210 + noise; 
-            p[(i * 4 + 1) as usize] = 200 + noise; 
-            p[(i * 4 + 2) as usize] = 160 + noise / 2; 
+            let n = (i % 5) as u8;
+            p[(i * 4) as usize] = 50u8.saturating_sub(n);
+            p[(i * 4 + 1) as usize] = 205u8.saturating_sub(n);
+            p[(i * 4 + 2) as usize] = 50u8.saturating_sub(n);
             p[(i * 4 + 3) as usize] = 255;
         }
         Self::place_texture(data, size, w, idx, &p);
@@ -110,8 +103,11 @@ impl TextureAtlas {
     fn generate_dirt(data: &mut [u8], size: u32, w: u32, idx: u32) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for i in 0..size * size {
-            let noise = ((i * 543) % 40) as u8;
-            p[(i * 4) as usize] = 100 + noise; p[(i * 4 + 1) as usize] = 60 + noise; p[(i * 4 + 2) as usize] = 20 + noise / 2; p[(i * 4 + 3) as usize] = 255;
+            let n = (i % 7) as u8;
+            p[(i * 4) as usize] = 139u8.saturating_add(n);
+            p[(i * 4 + 1) as usize] = 69;
+            p[(i * 4 + 2) as usize] = 19;
+            p[(i * 4 + 3) as usize] = 255;
         }
         Self::place_texture(data, size, w, idx, &p);
     }
@@ -119,54 +115,74 @@ impl TextureAtlas {
     fn generate_stone(data: &mut [u8], size: u32, w: u32, idx: u32) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for i in 0..size * size {
-            let n = ((i * 123) % 30) as u8;
-            let c = 110 + n;
-            p[(i * 4) as usize] = c; p[(i * 4 + 1) as usize] = c; p[(i * 4 + 2) as usize] = c; p[(i * 4 + 3) as usize] = 255;
+            p[(i * 4) as usize] = 120; p[(i * 4 + 1) as usize] = 120; p[(i * 4 + 2) as usize] = 120; p[(i * 4 + 3) as usize] = 255;
         }
         Self::place_texture(data, size, w, idx, &p);
     }
 
-    fn generate_heart(data: &mut [u8], size: u32, w: u32, idx: u32) {
+    fn generate_wood(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for i in 0..size * size {
+            p[(i * 4) as usize] = 160; p[(i * 4 + 1) as usize] = 82; p[(i * 4 + 2) as usize] = 45; p[(i * 4 + 3) as usize] = 255;
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_leaves(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for i in 0..size * size {
+            p[(i * 4) as usize] = 34; p[(i * 4 + 1) as usize] = 139; p[(i * 4 + 2) as usize] = 34; p[(i * 4 + 3) as usize] = 255;
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_snow(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for i in 0..size * size {
+            p[(i * 4) as usize] = 240; p[(i * 4 + 1) as usize] = 240; p[(i * 4 + 2) as usize] = 240; p[(i * 4 + 3) as usize] = 255;
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_sand(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for i in 0..size * size {
+            p[(i * 4) as usize] = 238; p[(i * 4 + 1) as usize] = 214; p[(i * 4 + 2) as usize] = 175; p[(i * 4 + 3) as usize] = 255;
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_bedrock(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for i in 0..size * size {
+            p[(i * 4) as usize] = 64; p[(i * 4 + 1) as usize] = 64; p[(i * 4 + 2) as usize] = 64; p[(i * 4 + 3) as usize] = 255;
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_water(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for i in 0..size * size {
+            p[(i * 4) as usize] = 30; p[(i * 4 + 1) as usize] = 80; p[(i * 4 + 2) as usize] = 200; p[(i * 4 + 3) as usize] = 150;
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_torch(data: &mut [u8], size: u32, w: u32, idx: u32) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for y in 0..size {
             for x in 0..size {
                 let i = ((y * size + x) * 4) as usize;
-                let dx = (x as f32 - 7.5) / 7.5;
-                let dy = (y as f32 - 7.5) / -7.5;
-                let a = dx*dx + dy*dy - 1.0;
-                if a*a*a - dx*dx*dy*dy*dy <= 0.0 {
-                    p[i] = 255; p[i+1] = 20; p[i+2] = 20; p[i+3] = 255;
-                } else {
-                    p[i] = 0; p[i+1] = 0; p[i+2] = 0; p[i+3] = 0;
+                if x >= 6 && x <= 9 && y >= 8 && y <= 11 {
+                    p[i] = 255; p[i + 1] = 200; p[i + 2] = 0; p[i + 3] = 255; // Flame
+                } else if x >= 6 && x <= 9 && y < 8 {
+                    p[i] = 139; p[i + 1] = 69; p[i + 2] = 19; p[i + 3] = 255; // Stick
                 }
             }
         }
         Self::place_texture(data, size, w, idx, &p);
     }
     
-    fn generate_menu_bg(data: &mut [u8], size: u32, w: u32, idx: u32) {
-        let mut p = vec![0u8; (size * size * 4) as usize];
-        for i in 0..size * size {
-            let n = i * 4; // FIXED warning
-            p[n as usize] = 0; p[n as usize+1] = 0; p[n as usize+2] = 0; p[n as usize+3] = 180;
-        }
-        Self::place_texture(data, size, w, idx, &p);
-    }
-
-    // Keep others simple
-    fn generate_wood(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [160, 82, 45]); }
-    fn generate_leaves(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [34, 139, 34]); }
-    fn generate_snow(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [240, 240, 240]); }
-    fn generate_bedrock(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [20, 20, 20]); }
-
-    fn generate_water(data: &mut [u8], size: u32, w: u32, idx: u32) {
-        let mut p = vec![0u8; (size * size * 4) as usize];
-        for i in 0..size * size {
-            p[(i * 4) as usize] = 30; p[(i * 4 + 1) as usize] = 80; p[(i * 4 + 2) as usize] = 200; p[(i * 4 + 3) as usize] = 180;
-        }
-        Self::place_texture(data, size, w, idx, &p);
-    }
-
     fn generate_generic(data: &mut [u8], size: u32, w: u32, idx: u32, color: [u8; 3]) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for i in 0..size * size {
@@ -174,7 +190,7 @@ impl TextureAtlas {
         }
         Self::place_texture(data, size, w, idx, &p);
     }
-
+    
     fn generate_ore(data: &mut [u8], size: u32, w: u32, idx: u32, color: [u8; 3]) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for i in 0..size * size {
@@ -185,56 +201,83 @@ impl TextureAtlas {
         }
         Self::place_texture(data, size, w, idx, &p);
     }
+    
+    fn generate_tool(data: &mut [u8], size: u32, w: u32, idx: u32, color: [u8; 3]) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y * size + x) * 4) as usize;
+                if x == y { // Handle
+                    p[i] = 100; p[i+1] = 50; p[i+2] = 0; p[i+3] = 255;
+                } else if y > 10 && x < 6 { // Head
+                    p[i] = color[0]; p[i+1] = color[1]; p[i+2] = color[2]; p[i+3] = 255;
+                }
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
 
     fn generate_hotbar_slot(data: &mut [u8], size: u32, w: u32, idx: u32) {
-        let s_usize = size as usize;
-        let mut p = vec![0u8; s_usize * s_usize * 4];
-        for i in 0..(s_usize * s_usize) {
-            let x = i % s_usize;
-            let y = i / s_usize;
-            let idx_base = i * 4;
-            if x == 0 || x == s_usize - 1 || y == 0 || y == s_usize - 1 {
-                p[idx_base] = 80; p[idx_base+1] = 80; p[idx_base+2] = 80; p[idx_base+3] = 255;
-            } else {
-                p[idx_base] = 0; p[idx_base+1] = 0; p[idx_base+2] = 0; p[idx_base+3] = 120;
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for i in 0..size * size {
+            p[(i * 4) as usize] = 50; p[(i * 4 + 1) as usize] = 50; p[(i * 4 + 2) as usize] = 50; p[(i * 4 + 3) as usize] = 150;
+        }
+        for i in 0..size { // Border
+            let top = (i * 4) as usize;
+            let btm = (((size - 1) * size + i) * 4) as usize;
+            let l = ((i * size) * 4) as usize;
+            let r = ((i * size + size - 1) * 4) as usize;
+            for j in 0..3 { p[top + j] = 200; p[btm + j] = 200; p[l + j] = 200; p[r + j] = 200; }
+            p[top + 3] = 255; p[btm + 3] = 255; p[l + 3] = 255; p[r + 3] = 255;
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_selection(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for i in 0..size {
+            let top = (i * 4) as usize;
+            let btm = (((size - 1) * size + i) * 4) as usize;
+            let l = ((i * size) * 4) as usize;
+            let r = ((i * size + size - 1) * 4) as usize;
+            p[top] = 255; p[top + 1] = 255; p[top + 2] = 255; p[top + 3] = 255;
+            p[btm] = 255; p[btm + 1] = 255; p[btm + 2] = 255; p[btm + 3] = 255;
+            p[l] = 255; p[l + 1] = 255; p[l + 2] = 255; p[l + 3] = 255;
+            p[r] = 255; p[r + 1] = 255; p[r + 2] = 255; p[r + 3] = 255;
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_heart(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        let pattern = [
+            0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y * size + x) * 4) as usize;
+                let py = (y * 8) / size;
+                let px = (x * 8) / size;
+                let hit = pattern[(py * 8 + px) as usize] == 1;
+                if hit {
+                    p[i] = 220; p[i + 1] = 20; p[i + 2] = 60; p[i + 3] = 255;
+                }
             }
         }
         Self::place_texture(data, size, w, idx, &p);
     }
 
-    fn generate_hotbar_selection(data: &mut [u8], size: u32, w: u32, idx: u32) {
-        let s_usize = size as usize;
-        let mut p = vec![0u8; s_usize * s_usize * 4];
-        for i in 0..(s_usize * s_usize) {
-            let x = i % s_usize;
-            let y = i / s_usize;
-            let idx_base = i * 4;
-            if x < 2 || x >= s_usize - 2 || y < 2 || y >= s_usize - 2 {
-                p[idx_base] = 255; p[idx_base+1] = 255; p[idx_base+2] = 255; p[idx_base+3] = 255;
-            } else {
-                p[idx_base] = 0; p[idx_base+1] = 0; p[idx_base+2] = 0; p[idx_base+3] = 0;
-            }
-        }
-        Self::place_texture(data, size, w, idx, &p);
-    }
-    
-    fn generate_crosshair(data: &mut [u8], size: u32, w: u32, idx: u32) {
+    fn generate_skin(data: &mut [u8], size: u32, w: u32, idx: u32) {
         let mut p = vec![0u8; (size * size * 4) as usize];
-        let c = size as i32 / 2;
-        for i in 0..size*size {
-            let x = (i % size) as i32;
-            let y = (i / size) as i32;
-            if (x == c && y > c-4 && y < c+4) || (y == c && x > c-4 && x < c+4) {
-                 let b = (i * 4) as usize;
-                 p[b] = 255; p[b+1] = 255; p[b+2] = 255; p[b+3] = 255;
-            }
+        for i in 0..size * size {
+            p[(i * 4) as usize] = 180; p[(i * 4 + 1) as usize] = 130; p[(i * 4 + 2) as usize] = 100; p[(i * 4 + 3) as usize] = 255;
         }
         Self::place_texture(data, size, w, idx, &p);
     }
 
     fn generate_font(data: &mut [u8], size: u32, w: u32, start_idx: u32) {
-         let chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789->";
-         let patterns: [[u8; 5]; 38] = [
+        let chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789->";
+        let patterns: [[u8; 5]; 38] = [
             [0xE, 0x11, 0x1F, 0x11, 0x11], [0x1E, 0x11, 0x1E, 0x11, 0x1E], [0xE, 0x11, 0x10, 0x11, 0xE], [0x1E, 0x11, 0x11, 0x11, 0x1E],
             [0x1F, 0x10, 0x1E, 0x10, 0x1F], [0x1F, 0x10, 0x1E, 0x10, 0x10], [0xE, 0x11, 0x17, 0x11, 0xE], [0x11, 0x11, 0x1F, 0x11, 0x11],
             [0xE, 0x4, 0x4, 0x4, 0xE], [0x7, 0x2, 0x2, 0x12, 0xC], [0x11, 0x12, 0x1C, 0x12, 0x11], [0x10, 0x10, 0x10, 0x10, 0x1F],
@@ -243,7 +286,7 @@ impl TextureAtlas {
             [0x11, 0x11, 0x11, 0x11, 0xE], [0x11, 0x11, 0x11, 0xA, 0x4], [0x11, 0x11, 0x15, 0x15, 0xA], [0x11, 0xA, 0x4, 0xA, 0x11],
             [0x11, 0x11, 0xA, 0x4, 0x4], [0x1F, 0x2, 0x4, 0x8, 0x1F], [0xE, 0x11, 0x13, 0x15, 0xE], [0x4, 0xC, 0x4, 0x4, 0xE],
             [0xE, 0x11, 0x2, 0x4, 0x1F], [0xE, 0x11, 0x6, 0x11, 0xE], [0x11, 0x11, 0x1F, 0x4, 0x4], [0x1F, 0x10, 0x1E, 0x1, 0x1E],
-            [0xE, 0x10, 0x1E, 0x11, 0xE], [0x1F, 0x2, 0x4, 0x8, 0x8], [0xE, 0x11, 0xE, 0x11, 0xE], [0x1E, 0x11, 0x1E, 0x1, 0xE],
+            [0xE, 0x10, 0x1E, 0x11, 0xE], [0x1F, 0x2, 0x4, 0x8, 0x8], [0xE, 0x11, 0xE, 0x11, 0xE], [0xE, 0x11, 0x1E, 0x1, 0xE],
             [0x0, 0x0, 0xF, 0x0, 0x0], [0x0, 0x2, 0x4, 0x8, 0x0],
         ];
         for (i, _) in chars.iter().enumerate() {
