@@ -85,12 +85,31 @@ impl NetworkManager {
         }
     }
 
-    pub fn join(ip: String) -> Self {
+pub fn join(ip: String) -> Self {
         let (tx_in, rx_in) = unbounded();
         let (tx_out, rx_out) = unbounded();
 
         println!("🚀 CONNECTING TO: {}", ip);
-        let stream = TcpStream::connect(ip).expect("Failed to connect");
+        
+        // --- RETRY LOGIC START ---
+        let start = std::time::Instant::now();
+        let stream = loop {
+            match TcpStream::connect(&ip) {
+                Ok(s) => break s,
+                Err(_) => {
+                    if start.elapsed().as_secs() > 15 {
+                        panic!("❌ CONNECTION TIMED OUT: Could not find server at {}", ip);
+                    }
+                    // Print a dot to show we are waiting
+                    print!("."); 
+                    let _ = std::io::Write::flush(&mut std::io::stdout());
+                    thread::sleep(std::time::Duration::from_millis(500));
+                }
+            }
+        };
+        println!("\n✅ CONNECTED!");
+        // --- RETRY LOGIC END ---
+
         let mut stream_read = stream.try_clone().unwrap();
         let mut stream_write = stream.try_clone().unwrap();
 

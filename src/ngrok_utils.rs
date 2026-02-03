@@ -18,13 +18,15 @@ pub fn start_ngrok_tunnel(port: &str) -> Option<String> {
     // 1. CLEANUP (Kill old processes)
     cleanup_processes();
 
-    // 2. NGROK ATTEMPT
+    // 2. NGROK ATTEMPT (10s Timeout)
+    println!("🚀 Attempting Ngrok Tunnel (Method A)...");
     if let Some(url) = attempt_ngrok(port) {
         return Some(url);
     }
 
-    // 3. FALLBACK: SSH TUNNEL (The "Universal" backup)
-    println!("⚠️  Ngrok failed or unavailable. Attempting SSH Fallback...");
+    // 3. FALLBACK: SSH TUNNEL (Method B - Universal)
+    println!("⚠️  Ngrok failed/skipped. Attempting SSH Tunnel (Method B)...");
+    println!("ℹ️  (This works on FreeBSD, Docker, and Raspberry Pi!)");
     attempt_ssh_tunnel(port)
 }
 
@@ -41,8 +43,8 @@ fn attempt_ngrok(port: &str) -> Option<String> {
     let path = Path::new(NGROK_BIN);
     if !path.exists() {
         println!("⬇️  Downloading optimized Ngrok binary...");
-        if let Err(e) = download_ngrok() {
-            println!("❌ Ngrok download not available for this OS: {}", e);
+        if let Err(_) = download_ngrok() {
+            println!("❌ Ngrok download failed. Skipping to SSH...");
             return None; 
         }
         #[cfg(unix)]
@@ -64,15 +66,17 @@ fn attempt_ngrok(port: &str) -> Option<String> {
         .spawn()
         .ok()?;
 
-    println!("⏳ Starting Ngrok tunnel...");
+    println!("⏳ Waiting for Ngrok...");
     
-    // Poll for Success (10s timeout)
+    // Poll for Success (10s timeout to allow skipping)
     for _ in 0..20 {
         thread::sleep(Duration::from_millis(500));
         
         // Did it crash? (Likely auth missing)
         if let Ok(Some(_)) = child.try_wait() {
-            return handle_ngrok_auth(port);
+            // Only ask for auth if we are in an interactive mode, otherwise skip
+            println!("❌ Ngrok process died. Skipping...");
+            return None;
         }
 
         // Check API
@@ -87,21 +91,23 @@ fn attempt_ngrok(port: &str) -> Option<String> {
         }
     }
     
+    println!("⏩ Ngrok timed out. Killing process...");
     let _ = child.kill();
     None
 }
 
 fn attempt_ssh_tunnel(port: &str) -> Option<String> {
-    println!("🔄 Trying 'localhost.run' via SSH...");
+    println!("🔄 Connecting to 'localhost.run'...");
     
     // Command: ssh -R 80:localhost:PORT -o StrictHostKeyChecking=no nokey@localhost.run
+    // We use port 80 mappings because they are often more stable on the free tier
     let mut child = Command::new("ssh")
         .arg("-R")
         .arg(format!("80:localhost:{}", port))
         .arg("-o").arg("StrictHostKeyChecking=no") // Don't ask for fingerprint
         .arg("nokey@localhost.run")
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped()) // They often print info to stderr
+        .stderr(Stdio::piped()) 
         .spawn()
         .ok()?;
 
@@ -109,17 +115,15 @@ fn attempt_ssh_tunnel(port: &str) -> Option<String> {
     let reader = BufReader::new(stdout);
 
     // Scan output for 10 seconds to find the URL
-    // Expected output: "Connect to your localhost app on https://random-name.localhost.run"
     let start = std::time::Instant::now();
     for line in reader.lines() {
         if let Ok(l) = line {
             if l.contains(".localhost.run") {
-                // Extract URL logic
                 if let Some(start_idx) = l.find("https://") {
                     let url = l[start_idx..].trim().to_string();
-                    let clean = url.replace("https://", ""); // Game assumes TCP/Address format mostly, but http is fine for display
+                    let clean = url.replace("https://", ""); 
                     println!("✅ SSH TUNNEL CONNECTED: {}", clean);
-                    println!("ℹ️  (Note: This is an HTTP tunnel, might require Client tweaks for TCP)");
+                    println!("📝 NOTE: This is a Domain Address. It works just like an IP!");
                     return Some(clean);
                 }
             }
@@ -127,25 +131,8 @@ fn attempt_ssh_tunnel(port: &str) -> Option<String> {
         if start.elapsed().as_secs() > 10 { break; }
     }
     
-    println!("❌ SSH Fallback failed. Ensure 'ssh' is in your PATH.");
+    println!("❌ SSH Fallback failed. Playing LAN Only.");
     let _ = child.kill();
-    None
-}
-
-fn handle_ngrok_auth(port: &str) -> Option<String> {
-    println!("🔑 NGROK AUTH REQUIRED");
-    println!("1. Copy token from: https://dashboard.ngrok.com/get-started/your-authtoken");
-    println!("2. Paste here:");
-    print!("> ");
-    io::stdout().flush().unwrap();
-    
-    let mut token = String::new();
-    if io::stdin().read_line(&mut token).is_ok() {
-        let token = token.trim();
-        let _ = fs::write("ngrok_token.txt", token);
-        configure_ngrok(token);
-        return attempt_ngrok(port);
-    }
     None
 }
 
@@ -160,51 +147,33 @@ fn cleanup_processes() {
         let _ = Command::new("taskkill").args(&["/F", "/IM", "ssh.exe"]).output();
     } else {
         let _ = Command::new("pkill").arg("ngrok").output();
-        // Don't pkill ssh on linux indiscriminately, might kill user session!
     }
 }
 
-// --- EXHAUSTIVE OS/ARCH DOWNLOADER ---
 fn download_ngrok() -> Result<(), Box<dyn std::error::Error>> {
+    // EXHAUSTIVE OS LIST
     let target = match (env::consts::OS, env::consts::ARCH) {
-        // WINDOWS
         ("windows", "x86")    => "windows-386",
         ("windows", _)        => "windows-amd64",
-        
-        // MACOS
-        ("macos", "aarch64")  => "darwin-arm64", // Apple Silicon
-        ("macos", _)          => "darwin-amd64", // Intel
-        
-        // LINUX (Includes Docker, WSL)
-        ("linux", "aarch64")  => "linux-arm64",  // Raspberry Pi 3/4/5
-        ("linux", "arm")      => "linux-arm",    // Raspberry Pi Zero/1/2
-        ("linux", "x86")      => "linux-386",
+        ("macos", "aarch64")  => "darwin-arm64",
+        ("macos", _)          => "darwin-amd64",
+        ("linux", "aarch64")  => "linux-arm64",  // Rpi 4/5
+        ("linux", "arm")      => "linux-arm",    // Rpi Zero
         ("linux", _)          => "linux-amd64",
-        
-        // FREEBSD (TrueNAS, Servers)
         ("freebsd", "x86")    => "freebsd-386",
         ("freebsd", _)        => "freebsd-amd64",
-        
-        // UNSUPPORTED BY NGROK DIRECTLY (Try Linux emulation or fallback)
-        ("openbsd", _)        => return Err("OpenBSD not supported by Ngrok auto-downloader".into()),
-        ("dragonfly", _)      => return Err("DragonFlyBSD not supported by Ngrok auto-downloader".into()),
-        ("solaris", _)        => return Err("Solaris not supported by Ngrok auto-downloader".into()),
-        
-        _ => "linux-amd64", // Default fallback
+        _ => return Err("OS not auto-supported. Use SSH fallback.".into()), 
     };
 
     let url = format!("https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-{}.zip", target);
     println!("⬇️  Target: {}", target);
     
     let resp = reqwest::blocking::get(url)?;
-    if !resp.status().is_success() {
-        return Err(format!("Download failed: {}", resp.status()).into());
-    }
+    if !resp.status().is_success() { return Err("Download failed".into()); }
     
     let bytes = resp.bytes()?;
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes))?;
     
-    // Find the executable in the zip (it might be named ngrok or ngrok.exe)
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
         if file.name().contains("ngrok") {
@@ -213,5 +182,5 @@ fn download_ngrok() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
     }
-    Err("Ngrok binary not found in zip".into())
+    Err("Ngrok binary not found".into())
 }

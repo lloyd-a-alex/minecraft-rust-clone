@@ -13,32 +13,79 @@ use renderer::Renderer; use world::{World, BlockPos, BlockType}; use player::Pla
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() > 1 && args[1] == "--join-localhost" { logger::init_logger(); run_game(NetworkManager::join("127.0.0.1:7878".to_string()), "Minecraft Clone (Test Client)"); return; }
+    if args.len() > 1 && args[1] == "--join-localhost" { 
+        logger::init_logger(); 
+        run_game(NetworkManager::join("127.0.0.1:7878".to_string()), "Minecraft Clone (Test Client)"); 
+        return; 
+    }
+
     println!("╔══════════════════════════════════════════════╗");
     println!("║       MINECRAFT RUST MULTIPLAYER             ║");
     println!("╚══════════════════════════════════════════════╝");
-    println!("1. HOST GAME (Server)");
-    println!("2. JOIN GAME (Client)");
-    println!("3. TEST SERVER (Host + Auto-Join Client)");
-    print!("\n> "); io::stdout().flush().unwrap();
-    let mut input = String::new(); std::io::stdin().read_line(&mut input).unwrap();
+    println!("1. SINGLEPLAYER (LAN Mode)");
+    println!("2. HOST ONLINE (Auto: Ngrok -> SSH -> LAN)");
+    println!("3. JOIN GAME");
+    println!("4. STRESS TEST (Multi-Client)");
+    print!("\n> "); 
+    io::stdout().flush().unwrap();
+    
+    let mut input = String::new(); 
+    std::io::stdin().read_line(&mut input).unwrap();
     let choice = input.trim();
 
-    if choice == "3" {
+    if choice == "4" {
+        print!("How many clients to launch? > ");
+        io::stdout().flush().unwrap();
+        let mut n_str = String::new();
+        std::io::stdin().read_line(&mut n_str).unwrap();
+        let n: usize = n_str.trim().parse().unwrap_or(1);
+
+        if n > 5 {
+            print!("⚠️  WARNING: {} clients might lag. Continue? (y/n) > ", n);
+            io::stdout().flush().unwrap();
+            let mut confirm = String::new();
+            std::io::stdin().read_line(&mut confirm).unwrap();
+            if confirm.trim().to_lowercase() != "y" { return; }
+        }
+
         let exe = std::env::current_exe().unwrap();
-        std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_secs(2)); std::process::Command::new(exe).arg("--join-localhost").spawn().unwrap(); });
-        logger::init_logger(); run_game(NetworkManager::host("7878".to_string()), "HOST");
-    } else if choice == "1" {
-        if let Some(addr) = ngrok_utils::start_ngrok_tunnel("7878") { println!("✅ SERVER: {}", addr); } else { println!("❌ LAN ONLY (7878)"); }
-        logger::init_logger(); run_game(NetworkManager::host("7878".to_string()), "HOST");
-} else {
-        print!("Enter IP (default: 127.0.0.1:7878): "); io::stdout().flush().unwrap();
-        let mut ip = String::new(); std::io::stdin().read_line(&mut ip).unwrap();
+        println!("🚀 Launching {} clients (They will wait for host)...", n);
+        for _ in 0..n {
+            std::process::Command::new(&exe).arg("--join-localhost").spawn().unwrap();
+            // No sleep needed now, clients will retry automatically!
+        }
+        
+        logger::init_logger(); 
+        run_game(NetworkManager::host("7878".to_string()), "HOST (Stress Test)");
+
+    } else if choice == "2" {
+        // --- ONLINE HOSTING WITH AUTO-FALLBACK ---
+        if let Some(addr) = ngrok_utils::start_ngrok_tunnel("7878") { 
+            println!("✅ SERVER LIVE: {}", addr); 
+        } else { 
+            println!("❌ All Tunnels failed. Hosting locally on Port 7878."); 
+        }
+        logger::init_logger(); 
+        run_game(NetworkManager::host("7878".to_string()), "HOST (Online)");
+
+    } else if choice == "3" {
+        print!("Enter IP (default: 127.0.0.1:7878): "); 
+        io::stdout().flush().unwrap();
+        let mut ip = String::new(); 
+        std::io::stdin().read_line(&mut ip).unwrap();
         let ip = ip.trim();
         let target = if ip.is_empty() { "127.0.0.1:7878" } else { ip };
-        logger::init_logger(); run_game(NetworkManager::join(target.to_string()), "CLIENT");
+        
+        logger::init_logger(); 
+        run_game(NetworkManager::join(target.to_string()), "CLIENT");
+
+    } else {
+        println!("🌲 Starting Singleplayer...");
+        logger::init_logger();
+        run_game(NetworkManager::host("7878".to_string()), "Minecraft Clone (Singleplayer)");
     };
 }
+
 
 fn run_game(network: NetworkManager, title: &str) {
     let event_loop = EventLoop::new().unwrap();
