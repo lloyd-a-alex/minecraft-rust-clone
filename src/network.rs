@@ -7,7 +7,6 @@ use crate::world::{BlockPos, BlockType};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Packet {
-    // We add 'seed' here so the Client knows what world to generate
     Handshake { username: String, seed: u32 },
     PlayerMove { id: u32, x: f32, y: f32, z: f32, ry: f32 },
     BlockUpdate { pos: BlockPos, block: BlockType },
@@ -24,7 +23,7 @@ pub struct NetworkManager {
 }
 
 impl NetworkManager {
-pub fn host(port: String) -> Self {
+    pub fn host(port: String) -> Self {
         let (tx_in, rx_in) = unbounded();
         let (tx_out, rx_out) = unbounded();
         
@@ -34,16 +33,10 @@ pub fn host(port: String) -> Self {
         let listener = TcpListener::bind(&address).expect("Failed to bind to port");
         listener.set_nonblocking(true).unwrap();
 
-        // Server Accept Thread
         let tx_in_clone = tx_in.clone();
         
         thread::spawn(move || {
-            // We use a shared list of writers to broadcast packets to ALL clients
-            // For this simple version, we just let them connect and spam the main thread.
-            // A more complex server would need a list of clients protected by a Mutex.
-            
-            let mut client_id_counter = 2; // Host is 1, next is 2
-
+            let mut client_id_counter = 2; // Host is 1
             loop {
                 if let Ok((mut stream, addr)) = listener.accept() {
                     println!("✨ NEW PLAYER CONNECTED: {:?} (ID: {})", addr, client_id_counter);
@@ -52,12 +45,12 @@ pub fn host(port: String) -> Self {
                     let mut stream_clone = stream.try_clone().unwrap();
                     let tx_in_thread = tx_in_clone.clone();
                     
-                    // Client Reader
+                    // Reader
                     thread::spawn(move || {
                         let mut buffer = [0u8; 1024];
                         loop {
                             match stream.read(&mut buffer) {
-                                Ok(0) => break, // Disconnect
+                                Ok(0) => break,
                                 Ok(n) => {
                                     if let Ok(packet) = bincode::deserialize::<Packet>(&buffer[..n]) {
                                         tx_in_thread.send(packet).unwrap();
@@ -69,9 +62,7 @@ pub fn host(port: String) -> Self {
                         }
                     });
 
-                    // Client Writer (Broadcasts everything to everyone - simplified)
-                    // Note: In a real architecture, you'd want individual channels. 
-                    // For this fix, we are just ensuring they CONNECT.
+                    // Writer (Broadcaster)
                     let rx_out_thread = rx_out.clone();
                     thread::spawn(move || {
                         while let Ok(packet) = rx_out_thread.recv() {
@@ -81,7 +72,6 @@ pub fn host(port: String) -> Self {
                     });
                     
                     client_id_counter += 1;
-                    // REMOVED THE BREAK HERE. NOW ACCEPTS INFINITE PLAYERS.
                 }
                 thread::sleep(std::time::Duration::from_millis(100));
             }
@@ -96,22 +86,21 @@ pub fn host(port: String) -> Self {
         }
     }
 
-pub fn join(ip: String) -> Self {
+    pub fn join(ip: String) -> Self {
         let (tx_in, rx_in) = unbounded();
         let (tx_out, rx_out) = unbounded();
 
         println!("🚀 CONNECTING TO: {}", ip);
         
-        // --- RETRY LOGIC START ---
+        // --- RETRY LOGIC (60 Seconds Timeout) ---
         let start = std::time::Instant::now();
         let stream = loop {
             match TcpStream::connect(&ip) {
                 Ok(s) => break s,
                 Err(_) => {
-                    if start.elapsed().as_secs() > 15 {
+                    if start.elapsed().as_secs() > 60 { // Increased to 60s
                         panic!("❌ CONNECTION TIMED OUT: Could not find server at {}", ip);
                     }
-                    // Print a dot to show we are waiting
                     print!("."); 
                     let _ = std::io::Write::flush(&mut std::io::stdout());
                     thread::sleep(std::time::Duration::from_millis(500));
@@ -119,7 +108,6 @@ pub fn join(ip: String) -> Self {
             }
         };
         println!("\n✅ CONNECTED!");
-        // --- RETRY LOGIC END ---
 
         let mut stream_read = stream.try_clone().unwrap();
         let mut stream_write = stream.try_clone().unwrap();

@@ -1,5 +1,5 @@
 use std::fs::{self, File};
-use std::io::{self, Cursor, Write, BufRead, BufReader};
+use std::io::{self, Cursor, Write, BufRead, BufReader, Read}; // Added Read trait
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -53,7 +53,7 @@ fn attempt_ngrok(port: &str) -> Option<String> {
     let mut child = Command::new(exe)
         .arg("tcp")
         .arg(port)
-        .stdout(Stdio::null()) // Log file logic removed for simplicity/speed
+        .stdout(Stdio::null()) 
         .stderr(Stdio::piped()) // Capture errors!
         .spawn()
         .ok()?;
@@ -79,7 +79,7 @@ fn attempt_ngrok(port: &str) -> Option<String> {
             // Read the error
             if let Some(mut stderr) = child.stderr.take() {
                 let mut err_msg = String::new();
-                let _ = stderr.read_to_string(&mut err_msg);
+                let _ = stderr.read_to_string(&mut err_msg); // Fixed: read_to_string now works
                 println!("❌ Ngrok crashed! Error output:\n{}", err_msg);
                 
                 if err_msg.contains("authentication failed") || err_msg.contains("authtoken") {
@@ -117,42 +117,51 @@ fn attempt_ssh_tunnel(port: &str) -> Option<String> {
         .spawn()
         .ok()?;
 
-    let (tx, rx) = mpsc::channel();
+    // Output Reader Thread (Non-blocking)
+    let (tx_url, rx_url) = mpsc::channel();
+    let stdout = child.stdout.take().unwrap();
+    
+    thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            if let Ok(l) = line {
+                if l.contains(".localhost.run") {
+                     if let Some(start) = l.find("https://") {
+                         let url = l[start..].trim().to_string();
+                         let _ = tx_url.send(url.replace("https://", ""));
+                         return;
+                     }
+                }
+            }
+        }
+    });
+
+    // Skip Listener
+    let (tx_skip, rx_skip) = mpsc::channel();
     thread::spawn(move || {
         let mut buffer = String::new();
         let _ = io::stdin().read_line(&mut buffer);
-        let _ = tx.send(());
+        let _ = tx_skip.send(());
     });
 
-    let stdout = child.stdout.take().unwrap();
-    let reader = BufReader::new(stdout);
-
-    // We can't block reading lines AND check for skip easily without async.
-    // So we assume SSH connects fast or user skips.
-    // NOTE: This basic check only peeks at the first few lines.
-    
-    // For robust skip in synchronous Rust, we just rely on the user seeing the output
-    // or the "skip" thread killing the process.
-    
     println!("🔄 Waiting for SSH... (Press ENTER to skip)");
     
-    // We allow 10 seconds for SSH negotiation
-    for _ in 0..20 {
-        if rx.try_recv().is_ok() {
+    for _ in 0..40 { // 20 seconds
+        if rx_skip.try_recv().is_ok() {
             println!("⏩ User skipped SSH.");
             let _ = child.kill();
             return None;
         }
-        // Since reading stdout is blocking, we can't easily poll it in this loop 
-        // without complex thread logic. For now, we trust the user to skip if it hangs.
+        
+        if let Ok(url) = rx_url.try_recv() {
+            println!("✅ SSH TUNNEL CONNECTED: {}", url);
+            return Some(url);
+        }
+        
         thread::sleep(Duration::from_millis(500));
     }
     
-    // If we got here, we assume it failed or took too long to verify.
-    // NOTE: Real SSH tunneling output parsing is blocking. 
-    // To keep this "Exhaustive Fix" simple and working:
-    // If you need SSH, it usually prints immediately. If not, SKIP.
-    
+    println!("❌ SSH Timed out.");
     let _ = child.kill();
     None
 }
