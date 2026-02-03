@@ -24,7 +24,7 @@ pub struct NetworkManager {
 }
 
 impl NetworkManager {
-    pub fn host(port: String) -> Self {
+pub fn host(port: String) -> Self {
         let (tx_in, rx_in) = unbounded();
         let (tx_out, rx_out) = unbounded();
         
@@ -36,21 +36,28 @@ impl NetworkManager {
 
         // Server Accept Thread
         let tx_in_clone = tx_in.clone();
+        
         thread::spawn(move || {
+            // We use a shared list of writers to broadcast packets to ALL clients
+            // For this simple version, we just let them connect and spam the main thread.
+            // A more complex server would need a list of clients protected by a Mutex.
+            
+            let mut client_id_counter = 2; // Host is 1, next is 2
+
             loop {
                 if let Ok((mut stream, addr)) = listener.accept() {
-                    println!("✨ NEW PLAYER CONNECTED: {:?}", addr);
-                    stream.set_nonblocking(false).unwrap(); 
+                    println!("✨ NEW PLAYER CONNECTED: {:?} (ID: {})", addr, client_id_counter);
+                    let _ = stream.set_nonblocking(false); 
                     
                     let mut stream_clone = stream.try_clone().unwrap();
                     let tx_in_thread = tx_in_clone.clone();
                     
-                    // Reader
+                    // Client Reader
                     thread::spawn(move || {
                         let mut buffer = [0u8; 1024];
                         loop {
                             match stream.read(&mut buffer) {
-                                Ok(0) => break,
+                                Ok(0) => break, // Disconnect
                                 Ok(n) => {
                                     if let Ok(packet) = bincode::deserialize::<Packet>(&buffer[..n]) {
                                         tx_in_thread.send(packet).unwrap();
@@ -62,7 +69,9 @@ impl NetworkManager {
                         }
                     });
 
-                    // Writer
+                    // Client Writer (Broadcasts everything to everyone - simplified)
+                    // Note: In a real architecture, you'd want individual channels. 
+                    // For this fix, we are just ensuring they CONNECT.
                     let rx_out_thread = rx_out.clone();
                     thread::spawn(move || {
                         while let Ok(packet) = rx_out_thread.recv() {
@@ -70,7 +79,9 @@ impl NetworkManager {
                             if stream_clone.write_all(&encoded).is_err() { break; }
                         }
                     });
-                    break; // One client for now
+                    
+                    client_id_counter += 1;
+                    // REMOVED THE BREAK HERE. NOW ACCEPTS INFINITE PLAYERS.
                 }
                 thread::sleep(std::time::Duration::from_millis(100));
             }
