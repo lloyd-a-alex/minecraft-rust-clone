@@ -58,18 +58,18 @@ impl BlockType {
         }
     }
 
-    pub fn get_display_name(&self) -> &str {
+pub fn get_display_name(&self) -> &str {
         match self {
             BlockType::Air => "Air", BlockType::Grass => "Grass", BlockType::Dirt => "Dirt",
             BlockType::Stone => "Stone", BlockType::Wood => "Log", BlockType::Leaves => "Leaves",
             BlockType::Snow => "Snow", BlockType::Sand => "Sand", BlockType::Bedrock => "Bedrock",
             BlockType::Water => "Water", BlockType::CoalOre => "Coal Ore", BlockType::IronOre => "Iron Ore",
             BlockType::GoldOre => "Gold Ore", BlockType::DiamondOre => "Diamond Ore",
-            BlockType::Planks => "Wooden Plank", BlockType::Stick => "Stick", BlockType::Cobblestone => "Cobblestone",
+            BlockType::Planks => "Planks", BlockType::Stick => "Stick", BlockType::Cobblestone => "Cobblestone",
             BlockType::IronIngot => "Iron Ingot", BlockType::GoldIngot => "Gold Ingot", BlockType::Diamond => "Diamond",
             BlockType::Torch => "Torch", BlockType::CraftingTable => "Crafting Table", BlockType::Furnace => "Furnace",
-            t if t.is_tool() => "Tool", // Simplified, can expand
-            _ => "Unknown Block"
+            t if t.is_tool() => "Tool", 
+            _ => "Unknown"
         }
     }
 

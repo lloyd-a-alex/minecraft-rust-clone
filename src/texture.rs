@@ -17,7 +17,9 @@ impl TextureAtlas {
         let grid_width_in_blocks = atlas_width / block_size;
 
         // --- BLOCKS (0-9) ---
-        Self::generate_grass(&mut data, block_size, atlas_width, 1);
+        // FIX: Generate Index 0 (Grass Top) so it isn't transparent air!
+        Self::generate_grass(&mut data, block_size, atlas_width, 0); 
+        Self::generate_grass(&mut data, block_size, atlas_width, 1); // Side
         Self::generate_dirt(&mut data, block_size, atlas_width, 2);
         Self::generate_stone(&mut data, block_size, atlas_width, 3);
         Self::generate_wood(&mut data, block_size, atlas_width, 4);
@@ -25,16 +27,14 @@ impl TextureAtlas {
         Self::generate_snow(&mut data, block_size, atlas_width, 6);
         Self::generate_sand(&mut data, block_size, atlas_width, 7);
         Self::generate_bedrock(&mut data, block_size, atlas_width, 8);
+        Self::generate_water(&mut data, block_size, atlas_width, 9);
 
-// --- TOOLS & ITEMS (Existing code...) ---
-        
-        // 100. CRAFTING TABLE (Index 21)
+        // --- CRAFTING TABLE (Index 21) ---
         let idx = 21;
         for y in 0..block_size {
             for x in 0..block_size {
                 let i = ((idx / grid_width_in_blocks) * block_size + y) * atlas_width + ((idx % grid_width_in_blocks) * block_size + x);
                 let pixel_idx = (i * 4) as usize;
-                // Grid pattern for crafting table
                 let border = x == 0 || x == block_size-1 || y == 0 || y == block_size-1 || x == block_size/2 || y == block_size/2;
                 if border {
                     data[pixel_idx] = 60; data[pixel_idx+1] = 40; data[pixel_idx+2] = 10; data[pixel_idx+3] = 255;
@@ -43,30 +43,32 @@ impl TextureAtlas {
                 }
             }
         }
-        Self::generate_water(&mut data, block_size, atlas_width, 9);
 
-        // --- NEW BLOCKS ---
+        // --- NEW BLOCKS & FIXES ---
         Self::generate_torch(&mut data, block_size, atlas_width, 24);
-        Self::generate_generic(&mut data, block_size, atlas_width, 14, [100, 100, 100]); // Cobble
-        Self::generate_generic(&mut data, block_size, atlas_width, 15, [200, 150, 100]); // Planks
         
+        // FIX: Swap textures so Planks are Wood color and Cobble is Stone color
+        Self::generate_generic(&mut data, block_size, atlas_width, 14, [200, 150, 100]); // Planks (Brown)
+        Self::generate_generic(&mut data, block_size, atlas_width, 15, [139, 69, 19]);   // Stick (Dark Brown)
+        Self::generate_generic(&mut data, block_size, atlas_width, 16, [100, 100, 100]); // Cobble (Grey)
+
         // Ores (Indices 17-20)
-        Self::generate_ore(&mut data, block_size, atlas_width, 17, [20, 20, 20]); // Coal
+        Self::generate_ore(&mut data, block_size, atlas_width, 17, [20, 20, 20]);    // Coal
         Self::generate_ore(&mut data, block_size, atlas_width, 18, [200, 150, 100]); // Iron
-        Self::generate_ore(&mut data, block_size, atlas_width, 19, [255, 215, 0]); // Gold
-        Self::generate_ore(&mut data, block_size, atlas_width, 20, [0, 255, 255]); // Diamond
+        Self::generate_ore(&mut data, block_size, atlas_width, 19, [255, 215, 0]);   // Gold
+        Self::generate_ore(&mut data, block_size, atlas_width, 20, [0, 255, 255]);   // Diamond
 
         // Items/Tools (Simplified Placeholders)
-        Self::generate_generic(&mut data, block_size, atlas_width, 40, [100, 50, 0]); // Stick
+        Self::generate_generic(&mut data, block_size, atlas_width, 40, [100, 50, 0]);    // Stick Item
+        Self::generate_generic(&mut data, block_size, atlas_width, 41, [20, 20, 20]);    // Coal Item
         Self::generate_generic(&mut data, block_size, atlas_width, 42, [180, 180, 180]); // Iron Ingot
-        Self::generate_generic(&mut data, block_size, atlas_width, 44, [0, 255, 255]); // Diamond Item
+        Self::generate_generic(&mut data, block_size, atlas_width, 43, [255, 215, 0]);   // Gold Ingot
+        Self::generate_generic(&mut data, block_size, atlas_width, 44, [0, 255, 255]);   // Diamond Item
         
-        // Tools (Wood)
-        for i in 50..54 { Self::generate_tool(&mut data, block_size, atlas_width, i, [150, 100, 50]); }
-        // Stone
-        for i in 60..64 { Self::generate_tool(&mut data, block_size, atlas_width, i, [100, 100, 100]); }
-        // Iron
-        for i in 70..74 { Self::generate_tool(&mut data, block_size, atlas_width, i, [200, 200, 200]); }
+        // Tools (Wood=50s, Stone=60s, Iron=70s)
+        for i in 50..55 { Self::generate_tool(&mut data, block_size, atlas_width, i, [150, 100, 50]); }
+        for i in 60..65 { Self::generate_tool(&mut data, block_size, atlas_width, i, [100, 100, 100]); }
+        for i in 70..75 { Self::generate_tool(&mut data, block_size, atlas_width, i, [200, 200, 200]); }
 
         // --- UI ---
         Self::generate_hotbar_slot(&mut data, block_size, atlas_width, 10);
@@ -296,6 +298,7 @@ impl TextureAtlas {
 
     fn generate_font(data: &mut [u8], size: u32, w: u32, start_idx: u32) {
         let chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789->";
+        // FIX: Better '4' (index 30)
         let patterns: [[u8; 5]; 38] = [
             [0xE, 0x11, 0x1F, 0x11, 0x11], [0x1E, 0x11, 0x1E, 0x11, 0x1E], [0xE, 0x11, 0x10, 0x11, 0xE], [0x1E, 0x11, 0x11, 0x11, 0x1E],
             [0x1F, 0x10, 0x1E, 0x10, 0x1F], [0x1F, 0x10, 0x1E, 0x10, 0x10], [0xE, 0x11, 0x17, 0x11, 0xE], [0x11, 0x11, 0x1F, 0x11, 0x11],
@@ -306,6 +309,12 @@ impl TextureAtlas {
             [0x11, 0x11, 0xA, 0x4, 0x4], [0x1F, 0x2, 0x4, 0x8, 0x1F], [0xE, 0x11, 0x13, 0x15, 0xE], [0x4, 0xC, 0x4, 0x4, 0xE],
             [0xE, 0x11, 0x2, 0x4, 0x1F], [0xE, 0x11, 0x6, 0x11, 0xE], [0x11, 0x11, 0x1F, 0x4, 0x4], [0x1F, 0x10, 0x1E, 0x1, 0x1E],
             [0xE, 0x10, 0x1E, 0x11, 0xE], [0x1F, 0x2, 0x4, 0x8, 0x8], [0xE, 0x11, 0xE, 0x11, 0xE], [0xE, 0x11, 0x1E, 0x1, 0xE],
+            [0x9, 0x9, 0xF, 0x1, 0x1], // '4' Fixed
+            [0x1F, 0x10, 0x1E, 0x1, 0x1E], // 5
+            [0xE, 0x10, 0x1E, 0x11, 0xE], // 6
+            [0x1F, 0x2, 0x4, 0x8, 0x8], // 7
+            [0xE, 0x11, 0xE, 0x11, 0xE], // 8
+            [0xE, 0x11, 0x1E, 0x1, 0xE], // 9
             [0x0, 0x0, 0xF, 0x0, 0x0], [0x0, 0x2, 0x4, 0x8, 0x0],
         ];
         for (i, _) in chars.iter().enumerate() {

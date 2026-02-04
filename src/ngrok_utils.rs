@@ -128,7 +128,8 @@ fn attempt_ssh_tunnel(port: &str) -> Option<String> {
 
     log::info!("🔄 Starting SSH tunnel (faster connect)...");
     
-    for _ in 0..12 {
+// FIX: Wait up to 60 * 500ms = 30 seconds for SSH to shake hands
+    for _ in 0..60 {
         if rx_skip.try_recv().is_ok() {
             log::info!("⏩ User skipped SSH.");
             let _ = child.kill();

@@ -186,30 +186,32 @@ impl Player {
             if self.keys.up && self.on_ground { self.velocity.y = 8.0; self.on_ground = false; }
         } else {
             self.velocity.y -= 30.0 * dt; 
-            if self.on_ground && self.keys.up { self.velocity.y = 12.0; self.on_ground = false; } // Jump only on press (checked via state)
+            // FIX: LOWER JUMP HEIGHT (Was 12.0)
+            if self.on_ground && self.keys.up { self.velocity.y = 9.0; self.on_ground = false; } 
         }
 
         if move_delta.length_squared() > 0.0 {
              let next_x = self.position.x + move_delta.x;
-             // Collision Horizontal
+             // X Movement
              if !self.check_collision_horizontal(world, Vec3::new(next_x, self.position.y, self.position.z)) { 
                  self.position.x = next_x; 
-             } else {
-                 // STEP ASSIST (Climbing)
-                 // If we hit a wall, check if we can step up 1 block
-                 if self.on_ground && !self.check_collision_horizontal(world, Vec3::new(next_x, self.position.y + 1.1, self.position.z)) {
-                     self.position.y += 1.1;
-                     self.position.x = next_x;
+             } else if self.on_ground {
+                 // SAFE STEP ASSIST (Check full body at target)
+                 let target = Vec3::new(next_x, self.position.y + 1.1, self.position.z);
+                 if !self.check_full_collision(world, target) {
+                     self.position = target; // Step up
                  }
              }
+             
              let next_z = self.position.z + move_delta.z;
+             // Z Movement
              if !self.check_collision_horizontal(world, Vec3::new(self.position.x, self.position.y, next_z)) { 
                  self.position.z = next_z; 
-             } else {
-                 // Step Assist Z
-                 if self.on_ground && !self.check_collision_horizontal(world, Vec3::new(self.position.x, self.position.y + 1.1, next_z)) {
-                     self.position.y += 1.1;
-                     self.position.z = next_z;
+             } else if self.on_ground {
+                 // SAFE STEP ASSIST
+                 let target = Vec3::new(self.position.x, self.position.y + 1.1, next_z);
+                 if !self.check_full_collision(world, target) {
+                     self.position = target;
                  }
              }
              self.walk_time += dt * 10.0;
@@ -233,6 +235,59 @@ impl Player {
             self.on_ground = false;
         }
         if self.health <= 0.0 { self.health = 0.0; self.is_dead = true; }
+    }
+
+    fn check_ground(&self, world: &World, pos: Vec3) -> Option<f32> {
+        let feet_y = pos.y - self.height / 2.0;
+        let check_points = [(pos.x-self.radius, feet_y, pos.z-self.radius), (pos.x+self.radius, feet_y, pos.z+self.radius), (pos.x+self.radius, feet_y, pos.z-self.radius), (pos.x-self.radius, feet_y, pos.z+self.radius)];
+        for (x, y, z) in check_points {
+            let bp = BlockPos { x: x.floor() as i32, y: y.floor() as i32, z: z.floor() as i32 };
+            if world.get_block(bp).is_solid() { let top = bp.y as f32 + 1.0; if top - feet_y <= 0.6 { return Some(top + self.height / 2.0 + 0.001); } }
+        }
+        None
+    }
+    fn check_ceiling(&self, world: &World, pos: Vec3) -> Option<f32> {
+        let head_y = pos.y + self.height / 2.0;
+        let check_points = [(pos.x, head_y, pos.z)];
+        for (x, y, z) in check_points {
+            let bp = BlockPos { x: x.floor() as i32, y: y.floor() as i32, z: z.floor() as i32 };
+            if world.get_block(bp).is_solid() { return Some(bp.y as f32); }
+        }
+        None
+    }
+    // Used for movement logic (just horizontal wall check)
+    fn check_collision_horizontal(&self, world: &World, pos: Vec3) -> bool {
+         let feet_y = pos.y - self.height / 2.0 + 0.1; 
+         let mid_y = pos.y; 
+         let head_y = pos.y + self.height / 2.0 - 0.1;
+         let r = self.radius;
+         let corners = [(-r, -r), (r, r), (r, -r), (-r, r)];
+         let heights = [feet_y, mid_y, head_y];
+         for &h in &heights {
+             for &(dx, dz) in &corners {
+                 let bp = BlockPos { x: (pos.x + dx).floor() as i32, y: h.floor() as i32, z: (pos.z + dz).floor() as i32 };
+                 if world.get_block(bp).is_solid() { return true; }
+             }
+         }
+         false
+    }
+
+    // New: Checks full body box (for Step Assist safety)
+    fn check_full_collision(&self, world: &World, pos: Vec3) -> bool {
+         let feet_y = pos.y - self.height / 2.0 + 0.05; 
+         let head_y = pos.y + self.height / 2.0 - 0.05;
+         let r = self.radius;
+         // Check feet, center, head
+         let heights = [feet_y, pos.y, head_y];
+         let corners = [(-r, -r), (r, r), (r, -r), (-r, r)];
+         
+         for &h in &heights {
+             for &(dx, dz) in &corners {
+                 let bp = BlockPos { x: (pos.x + dx).floor() as i32, y: h.floor() as i32, z: (pos.z + dz).floor() as i32 };
+                 if world.get_block(bp).is_solid() { return true; }
+             }
+         }
+         false
     }
 
     fn check_ground(&self, world: &World, pos: Vec3) -> Option<f32> {

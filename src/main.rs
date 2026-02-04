@@ -102,6 +102,7 @@ fn run_game(network: NetworkManager, title: &str) {
     let mut break_grace_timer = 0.0; // 0.5s grace
 
     let mut net_timer = 0.0;
+    let mut death_timer = 0.0; // New timer
 
     event_loop.run(move |event, elwt| {
         match event {
@@ -261,7 +262,7 @@ cursor.count -= transfer;
                 },
                 _ => {}
             },
-Event::AboutToWait => {
+            Event::AboutToWait => {
                 let now = Instant::now(); let dt = (now - last_frame).as_secs_f32(); last_frame = now;
 
                 while let Some(pkt) = network.try_recv() {
@@ -270,17 +271,25 @@ Event::AboutToWait => {
                             log::info!("🌍 RECEIVED SEED: {}. REBUILDING WORLD...", seed);
                             world = World::new(seed);
                             renderer.rebuild_all_chunks(&world);
-                            // Teleport to safe spawn after rebuild
-                            let mut safe = false;
-                            for y in (0..100).rev() {
-                                let b = world.get_block(BlockPos{x:0, y, z:0});
-                                if b.is_solid() && !b.is_water() {
-                                    player.position = glam::Vec3::new(0.5, y as f32 + 2.0, 0.5);
-                                    safe = true;
-                                    break;
+                            // SAFE SPAWN (Spiral Search)
+                            let mut spawn_found = false;
+                            for r in 0..20 {
+                                if spawn_found { break; }
+                                for x in -r..=r {
+                                    for z in -r..=r {
+                                        for y in (0..100).rev() {
+                                            let b = world.get_block(BlockPos{x, y, z});
+                                            if b.is_solid() && !b.is_water() {
+                                                player.position = glam::Vec3::new(x as f32 + 0.5, y as f32 + 2.0, z as f32 + 0.5);
+                                                spawn_found = true;
+                                                break;
+                                            }
+                                        }
+                                        if spawn_found { break; }
+                                    }
                                 }
                             }
-                            if !safe { player.position = glam::Vec3::new(0.0, 80.0, 0.0); }
+                            if !spawn_found { player.position = glam::Vec3::new(0.0, 80.0, 0.0); }
                         },
                         Packet::PlayerMove { id, x, y, z, ry } => { if let Some(p) = world.remote_players.iter_mut().find(|p| p.id == id) { p.position = glam::Vec3::new(x,y,z); p.rotation = ry; } else { world.remote_players.push(world::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); } },
                         Packet::BlockUpdate { pos, block } => { let c = world.place_block(pos, block); for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); } },
@@ -289,53 +298,78 @@ Event::AboutToWait => {
                 }
                 
                 net_timer += dt; if net_timer > 0.05 { net_timer = 0.0; network.send_packet(Packet::PlayerMove { id: network.my_id, x: player.position.x, y: player.position.y, z: player.position.z, ry: player.rotation.y }); }
+                
                 if !is_paused {
-                    player.update(dt, &world); world.update_entities(dt, &mut player);
-                    
-                    // TARGETING & BREAKING (Grace Period Logic)
-                    let (sin, cos) = player.rotation.x.sin_cos(); let (ysin, ycos) = player.rotation.y.sin_cos();
-                    let dir = glam::Vec3::new(ycos * cos, sin, ysin * cos).normalize();
-                    let ray_res = world.raycast(player.position + glam::Vec3::new(0.0, player.height*0.9, 0.0), dir, 5.0);
-                    
-                    let current_target = ray_res.map(|(h, _)| h);
-                    
-                    if left_click && !player.inventory_open {
-                        if let Some(hit) = current_target {
-                            // If target changed, check grace
-                            if Some(hit) != breaking_pos {
-                                if breaking_pos.is_some() && break_grace_timer > 0.0 {
-                                    break_grace_timer -= dt;
+                    // DEATH & RESPAWN LOGIC
+                    if player.is_dead {
+                        death_timer += dt;
+                        if death_timer > 3.0 {
+                            // Find safe spawn
+                            let mut spawn_found = false;
+                            for r in 0..20 {
+                                if spawn_found { break; }
+                                for x in -r..=r {
+                                    for z in -r..=r {
+                                        for y in (0..100).rev() {
+                                            let b = world.get_block(BlockPos{x, y, z});
+                                            if b.is_solid() && !b.is_water() {
+                                                player.respawn();
+                                                player.position = glam::Vec3::new(x as f32 + 0.5, y as f32 + 2.0, z as f32 + 0.5);
+                                                spawn_found = true;
+                                                death_timer = 0.0;
+                                                break;
+                                            }
+                                        }
+                                        if spawn_found { break; }
+                                    }
+                                }
+                            }
+                            if !spawn_found { player.respawn(); }
+                        }
+                    } else {
+                        player.update(dt, &world);
+                        
+                        // TARGETING & BREAKING (Grace Period Logic)
+                        let (sin, cos) = player.rotation.x.sin_cos(); let (ysin, ycos) = player.rotation.y.sin_cos();
+                        let dir = glam::Vec3::new(ycos * cos, sin, ysin * cos).normalize();
+                        let ray_res = world.raycast(player.position + glam::Vec3::new(0.0, player.height*0.9, 0.0), dir, 5.0);
+                        
+                        let current_target = ray_res.map(|(h, _)| h);
+                        
+                        if left_click && !player.inventory_open {
+                            if let Some(hit) = current_target {
+                                if Some(hit) != breaking_pos {
+                                    if breaking_pos.is_some() && break_grace_timer > 0.0 {
+                                        break_grace_timer -= dt;
+                                    } else {
+                                        breaking_pos = Some(hit); break_progress = 0.0; break_grace_timer = 0.5; 
+                                    }
                                 } else {
-                                    breaking_pos = Some(hit); break_progress = 0.0; break_grace_timer = 0.5; // Reset grace
+                                    break_grace_timer = 0.5;
+                                }
+                                
+                                if Some(hit) == breaking_pos {
+                                    let blk = world.get_block(hit); let tool = player.inventory.get_selected_item().unwrap_or(BlockType::Air);
+                                    let speed = if tool.get_tool_class() == blk.get_best_tool_type() || blk.get_best_tool_type() == "none" { tool.get_tool_speed() } else { 1.0 };
+                                    let h = blk.get_hardness();
+                                    if h > 0.0 { break_progress += (speed / h) * dt; } else { break_progress = 1.1; }
+                                    if break_progress >= 1.0 {
+                                        let c = world.break_block(hit); 
+                                        network.send_packet(Packet::BlockUpdate { pos: hit, block: BlockType::Air });
+                                        for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
+                                        breaking_pos = None; break_progress = 0.0;
+                                    }
                                 }
                             } else {
-                                // Hitting same block, refresh grace
-                                break_grace_timer = 0.5;
+                                if breaking_pos.is_some() && break_grace_timer > 0.0 { break_grace_timer -= dt; } 
+                                else { breaking_pos = None; break_progress = 0.0; }
                             }
-                            
-                            // Only progress if we are actually looking at the breaking_pos (or within grace)
-                            if Some(hit) == breaking_pos {
-                                let blk = world.get_block(hit); let tool = player.inventory.get_selected_item().unwrap_or(BlockType::Air);
-                                let speed = if tool.get_tool_class() == blk.get_best_tool_type() || blk.get_best_tool_type() == "none" { tool.get_tool_speed() } else { 1.0 };
-                                let h = blk.get_hardness();
-                                if h > 0.0 { break_progress += (speed / h) * dt; } else { break_progress = 1.1; }
-                                if break_progress >= 1.0 {
-                                    let c = world.break_block(hit); 
-                                    network.send_packet(Packet::BlockUpdate { pos: hit, block: BlockType::Air });
-                                    for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
-                                    breaking_pos = None; break_progress = 0.0;
-                                }
-                            }
-                        } else {
-                            // Looking at air
+                        } else { 
                             if breaking_pos.is_some() && break_grace_timer > 0.0 { break_grace_timer -= dt; } 
                             else { breaking_pos = None; break_progress = 0.0; }
                         }
-                    } else { 
-                        // Not clicking
-                        if breaking_pos.is_some() && break_grace_timer > 0.0 { break_grace_timer -= dt; } 
-                        else { breaking_pos = None; break_progress = 0.0; }
                     }
+                    world.update_entities(dt, &mut player);
                 }
                 window_clone.request_redraw();
             },
