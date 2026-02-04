@@ -122,7 +122,6 @@ pub struct Player {
     pub health: f32, pub max_health: f32, pub invincible_timer: f32,
 pub is_dead: bool, pub right_handed: bool, pub inventory_open: bool, pub crafting_open: bool,
 }
-
 #[allow(dead_code)]
 impl Player {
     pub fn new() -> Self {
@@ -131,7 +130,7 @@ impl Player {
             keys: KeyState { forward: false, backward: false, left: false, right: false, up: false, down: false },
             speed: 5.0, sensitivity: 0.002, inventory: Inventory::new(),
             on_ground: false, walk_time: 0.0, height: 1.8, radius: 0.25,
-health: 20.0, max_health: 20.0, invincible_timer: 3.0, is_dead: false, right_handed: true, inventory_open: false, crafting_open: false,
+            health: 20.0, max_health: 20.0, invincible_timer: 10.0, is_dead: false, right_handed: true, inventory_open: false, crafting_open: false,
         }
     }
     pub fn respawn(&mut self) { self.position = Vec3::new(0.0, 80.0, 0.0); self.velocity = Vec3::ZERO; self.health = self.max_health; self.is_dead = false; self.invincible_timer = 3.0; }
@@ -163,16 +162,24 @@ health: 20.0, max_health: 20.0, invincible_timer: 3.0, is_dead: false, right_han
         if move_delta.length_squared() > 0.0 { move_delta = move_delta.normalize() * self.speed * dt; }
         
         // Physics
-        let head_pos = self.position + Vec3::new(0.0, self.height * 0.9, 0.0);
-        let in_water = world.get_block(BlockPos { x: head_pos.x.floor() as i32, y: head_pos.y.floor() as i32, z: head_pos.z.floor() as i32 }).is_water();
-        
+        let head_bp = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + 0.5).floor() as i32, z: self.position.z.floor() as i32 };
+        let current_block = world.get_block(head_bp);
+        let in_water = current_block.is_water();
+        let in_leaves = matches!(current_block, BlockType::Leaves);
+
         if in_water {
             move_delta *= 0.7; 
             if self.keys.up { self.velocity.y = 3.0; } else if self.keys.down { self.velocity.y = -3.0; } else { self.velocity.y += (-0.5 - self.velocity.y) * (5.0 * dt).min(1.0); }
             self.on_ground = false;
+        } else if in_leaves {
+            move_delta *= 0.85; // Slight slowdown
+            self.velocity.y *= 0.9; // Slow fall
+            if self.velocity.y < -5.0 { self.velocity.y = -5.0; } // Terminal velocity in leaves
+            if self.keys.up { self.velocity.y = 2.0; }
+            if self.keys.up && self.on_ground { self.velocity.y = 8.0; self.on_ground = false; } // Jump out
         } else {
-            if self.keys.up && self.on_ground { self.velocity.y = 8.0; self.on_ground = false; }
-            self.velocity.y -= 22.0 * dt; self.velocity.y = self.velocity.y.clamp(-40.0, 40.0);
+            self.velocity.y -= 30.0 * dt; // Gravity
+            if self.on_ground && self.keys.up { self.velocity.y = 12.0; self.on_ground = false; }
         }
 
         if move_delta.length_squared() > 0.0 {
@@ -183,12 +190,11 @@ health: 20.0, max_health: 20.0, invincible_timer: 3.0, is_dead: false, right_han
              self.walk_time += dt * 10.0;
         }
         
-let next_y = self.position.y + self.velocity.y * dt;
+        let next_y = self.position.y + self.velocity.y * dt;
         if self.velocity.y <= 0.0 {
             if let Some(ground_y) = self.check_ground(world, Vec3::new(self.position.x, next_y, self.position.z)) {
                 self.position.y = ground_y; 
-                // Fix: Check damage BEFORE zeroing velocity
-                if !in_water && self.velocity.y < -14.0 { 
+                if !in_water && self.velocity.y < -14.0 && self.invincible_timer <= 0.0 { 
                     let dmg = (self.velocity.y.abs() - 12.0) * 0.5;
                     self.health -= dmg;
                     log::info!("Oof! Fall damage: {:.1} (Vel: {:.1})", dmg, self.velocity.y);
@@ -197,7 +203,10 @@ let next_y = self.position.y + self.velocity.y * dt;
                 self.on_ground = true;
             } else { self.position.y = next_y; self.on_ground = false; }
         } else {
-            self.position.y = next_y; self.on_ground = false;
+            if let Some(ceil_y) = self.check_ceiling(world, Vec3::new(self.position.x, next_y, self.position.z)) {
+                self.position.y = ceil_y - self.height - 0.01; self.velocity.y = 0.0;
+            } else { self.position.y = next_y; }
+            self.on_ground = false;
         }
         if self.health <= 0.0 { self.health = 0.0; self.is_dead = true; }
     }
@@ -211,10 +220,28 @@ let next_y = self.position.y + self.velocity.y * dt;
         }
         None
     }
+    fn check_ceiling(&self, world: &World, pos: Vec3) -> Option<f32> {
+        let head_y = pos.y + self.height / 2.0;
+        let check_points = [(pos.x, head_y, pos.z)];
+        for (x, y, z) in check_points {
+            let bp = BlockPos { x: x.floor() as i32, y: y.floor() as i32, z: z.floor() as i32 };
+            if world.get_block(bp).is_solid() { return Some(bp.y as f32); }
+        }
+        None
+    }
     fn check_collision_horizontal(&self, world: &World, pos: Vec3) -> bool {
-         let feet_y = pos.y - self.height / 2.0 + 0.1; let head_y = pos.y + self.height / 2.0 - 0.1;
-         let check_points = [(pos.x-self.radius, feet_y, pos.z-self.radius), (pos.x+self.radius, feet_y, pos.z+self.radius), (pos.x+self.radius, head_y, pos.z-self.radius), (pos.x-self.radius, head_y, pos.z+self.radius)];
-         for (x, y, z) in check_points { if world.get_block(BlockPos { x: x.floor() as i32, y: y.floor() as i32, z: z.floor() as i32 }).is_solid() { return true; } }
+         let feet_y = pos.y - self.height / 2.0 + 0.1; 
+         let mid_y = pos.y; 
+         let head_y = pos.y + self.height / 2.0 - 0.1;
+         let r = self.radius;
+         let corners = [(-r, -r), (r, r), (r, -r), (-r, r)];
+         let heights = [feet_y, mid_y, head_y];
+         for &h in &heights {
+             for &(dx, dz) in &corners {
+                 let bp = BlockPos { x: (pos.x + dx).floor() as i32, y: h.floor() as i32, z: (pos.z + dz).floor() as i32 };
+                 if world.get_block(bp).is_solid() { return true; }
+             }
+         }
          false
     }
     pub fn build_view_projection_matrix(&self, aspect: f32) -> [[f32; 4]; 4] {

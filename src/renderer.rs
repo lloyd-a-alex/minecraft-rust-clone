@@ -169,7 +169,7 @@ impl<'a> Renderer<'a> {
         }
     }
 
-    pub fn render(&mut self, player: &Player, world: &World, is_paused: bool, cursor_pos: (f64, f64)) {
+pub fn render(&mut self, player: &Player, world: &World, is_paused: bool, cursor_pos: (f64, f64)) {
         let output = match self.surface.get_current_texture() { Ok(o) => o, Err(_) => return };
         let view = output.texture.create_view(&TextureViewDescriptor::default());
         let view_proj = player.build_view_projection_matrix(self.config.width as f32 / self.config.height as f32);
@@ -178,13 +178,11 @@ impl<'a> Renderer<'a> {
         self.queue.write_buffer(&self.time_buffer, 0, bytemuck::cast_slice(&[0.5, 0.8, 0.9, 1.0, time, 0.0, 0.0, 0.0]));
 
         let mut ent_v = Vec::new(); let mut ent_i = Vec::new(); let mut ent_off = 0;
-        // Multiplayer
         for rp in &world.remote_players {
             for f in 0..6 { self.add_rotated_quad(&mut ent_v, &mut ent_i, &mut ent_off, [rp.position.x, rp.position.y, rp.position.z], rp.rotation, -0.3, 0.0, -0.3, 0.6, f, 13); }
             for f in 0..6 { self.add_rotated_quad(&mut ent_v, &mut ent_i, &mut ent_off, [rp.position.x, rp.position.y+0.65, rp.position.z], rp.rotation, -0.3, 0.0, -0.3, 0.6, f, 13); }
             for f in 0..6 { self.add_rotated_quad(&mut ent_v, &mut ent_i, &mut ent_off, [rp.position.x, rp.position.y+1.3, rp.position.z], rp.rotation, -0.25, 0.0, -0.25, 0.5, f, 13); }
         }
-        // Items
         for e in &world.entities {
             let (t, _, _) = e.item_type.get_texture_indices();
             let rot = time * 1.5 + e.bob_offset; let by = ((time * 4.0 + e.bob_offset).sin() * 0.12) + 0.12;
@@ -197,11 +195,7 @@ impl<'a> Renderer<'a> {
 
         let mut encoder = self.device.create_command_encoder(&CommandEncoderDescriptor { label: Some("Encoder") });
         {
-            let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { label: Some("3D Pass"), color_attachments: &[Some(RenderPassColorAttachment { view: &view, resolve_target: None, ops: Operations { load: LoadOp::Clear(Color { r: 0.5, g: 0.8, b: 0.9, a: 1.0 }), store: StoreOp::Store } })], depth_stencil_attachment: Some(RenderPassDepthStencilAttachment { 
-                    view: &self.depth_texture, // <--- FIXED
-                    depth_ops: Some(Operations { load: LoadOp::Clear(1.0), store: StoreOp::Store }), 
-                    stencil_ops: None 
-                }), timestamp_writes: None, occlusion_query_set: None });
+            let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { label: Some("3D Pass"), color_attachments: &[Some(RenderPassColorAttachment { view: &view, resolve_target: None, ops: Operations { load: LoadOp::Clear(Color { r: 0.5, g: 0.8, b: 0.9, a: 1.0 }), store: StoreOp::Store } })], depth_stencil_attachment: Some(RenderPassDepthStencilAttachment { view: &self.depth_texture, depth_ops: Some(Operations { load: LoadOp::Clear(1.0), store: StoreOp::Store }), stencil_ops: None }), timestamp_writes: None, occlusion_query_set: None });
             pass.set_pipeline(&self.pipeline); pass.set_bind_group(0, &self.bind_group, &[]); pass.set_bind_group(1, &self.camera_bind_group, &[]); pass.set_bind_group(2, &self.time_bind_group, &[]);
             for m in self.chunk_meshes.values() { pass.set_vertex_buffer(0, m.vertex_buffer.slice(..)); pass.set_index_buffer(m.index_buffer.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..m.index_count, 0, 0..1); }
             if !ent_v.is_empty() { pass.set_vertex_buffer(0, self.entity_vertex_buffer.slice(..)); pass.set_index_buffer(self.entity_index_buffer.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..ent_i.len() as u32, 0, 0..1); }
@@ -210,10 +204,18 @@ impl<'a> Renderer<'a> {
         // UI
         let mut uv = Vec::new(); let mut ui = Vec::new(); let mut uoff = 0;
         let aspect = self.config.width as f32 / self.config.height as f32;
-        if !player.inventory_open && !is_paused {
-            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.015, -0.015*aspect, 0.03, 0.03*aspect, 10); // Crosshair
-            // Hotbar
-            let sw = 0.12; let sh = sw * aspect; let sx = -(sw * 9.0)/2.0; let by = -0.9;
+        
+        if !player.inventory_open && !is_paused { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.015, -0.015*aspect, 0.03, 0.03*aspect, 10); }
+
+        // --- DRAW HOTBAR (Visible in Inventory too!) ---
+        let sw = 0.12; let sh = sw * aspect; let sx = -(sw * 9.0)/2.0; let by = -0.9;
+        
+        if player.inventory_open {
+             self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 10); // Dim BG
+             self.draw_text("INVENTORY", -0.2, 0.8, 0.08, &mut uv, &mut ui, &mut uoff);
+        }
+
+        if !is_paused || player.inventory_open {
             for i in 0..9 {
                 let x = sx + (i as f32 * sw);
                 if i == player.inventory.selected_hotbar_slot { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x-0.005, by-0.005*aspect, sw+0.01, sh+0.01*aspect, 11); }
@@ -221,42 +223,66 @@ impl<'a> Renderer<'a> {
                 if let Some(stack) = &player.inventory.slots[i] {
                     let (t, _, _) = stack.item.get_texture_indices();
                     self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, by+0.02*aspect, sw-0.04, sh-0.04*aspect, t);
-                    if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x, by, 0.03, &mut uv, &mut ui, &mut uoff); }
+                    if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x+0.01, by+0.01, 0.03, &mut uv, &mut ui, &mut uoff); }
                 }
             }
-            // Hearts
-            for i in 0..10 { if player.health > (i as f32)*2.0 { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, sx + i as f32 * 0.05, by+sh+0.02*aspect, 0.045, 0.045*aspect, 12); } }
-            // Break progress
-            if self.break_progress > 0.0 { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.1, -0.1, 0.2 * self.break_progress, 0.02*aspect, 11); }
+            if !player.inventory_open {
+                for i in 0..10 { if player.health > (i as f32)*2.0 { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, sx + i as f32 * 0.05, by+sh+0.02*aspect, 0.045, 0.045*aspect, 12); } }
+                if self.break_progress > 0.0 { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.1, -0.1, 0.2 * self.break_progress, 0.02*aspect, 11); }
+            }
         }
-        
+
         if player.inventory_open {
-            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 10); // BG
-            self.draw_text("INVENTORY", -0.2, 0.5, 0.1, &mut uv, &mut ui, &mut uoff);
-            let sw = 0.12; let sh = sw * aspect; let sx = -(sw * 9.0)/2.0; let by = -0.9 + sh * 1.5;
+            let iby = by + sh * 1.5;
+            // Main Grid
             for r in 0..3 { for c in 0..9 {
-                let idx = 9 + r * 9 + c; let x = sx + c as f32 * sw; let y = by + r as f32 * sh;
+                let idx = 9 + r * 9 + c; let x = sx + c as f32 * sw; let y = iby + r as f32 * sh;
                 self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, y, sw, sh, 10);
-                if let Some(stack) = &player.inventory.slots[idx] { let (t, _, _) = stack.item.get_texture_indices(); self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, y+0.02*aspect, sw-0.04, sh-0.04*aspect, t); if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x, y, 0.03, &mut uv, &mut ui, &mut uoff); } }
+                if let Some(stack) = &player.inventory.slots[idx] { 
+                    let (t, _, _) = stack.item.get_texture_indices(); 
+                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, y+0.02*aspect, sw-0.04, sh-0.04*aspect, t); 
+                    if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x+0.01, y+0.01, 0.03, &mut uv, &mut ui, &mut uoff); } 
+                }
             }}
-// Crafting
-            self.draw_text("CRAFTING", 0.3, 0.7, 0.05, &mut uv, &mut ui, &mut uoff);
+            // Crafting
             let cx = 0.3; let cy = 0.5;
-            for r in 0..2 { for c in 0..2 {
+            self.draw_text(if player.crafting_open { "CRAFTING TABLE" } else { "CRAFTING" }, 0.3, 0.7, 0.05, &mut uv, &mut ui, &mut uoff);
+            let grid_size = if player.crafting_open { 3 } else { 2 };
+            for r in 0..grid_size { for c in 0..grid_size {
                 let x = cx + c as f32 * sw; let y = cy - r as f32 * sh;
                 self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, y, sw, sh, 10);
-                if let Some(stack) = &player.inventory.crafting_grid[r*2+c] { let (t, _, _) = stack.item.get_texture_indices(); self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, y+0.02*aspect, sw-0.04, sh-0.04*aspect, t); }
+                let idx = if player.crafting_open { r*3+c } else { match r*2+c { 0=>0, 1=>1, 2=>3, 3=>4, _=>0 } };
+                if let Some(stack) = &player.inventory.crafting_grid[idx] { 
+                    let (t, _, _) = stack.item.get_texture_indices(); 
+                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, y+0.02*aspect, sw-0.04, sh-0.04*aspect, t); 
+                    if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x+0.01, y+0.01, 0.03, &mut uv, &mut ui, &mut uoff); }
+                }
             }}
             // Output
             let ox = cx + 3.0*sw; let oy = cy - 0.5*sh;
-            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ox, oy, sw, sh, 10); self.draw_text("->", cx + 2.1*sw, oy+0.02, 0.04, &mut uv, &mut ui, &mut uoff);
-            if let Some(stack) = &player.inventory.crafting_output { let (t, _, _) = stack.item.get_texture_indices(); self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ox+0.02, oy+0.02*aspect, sw-0.04, sh-0.04*aspect, t); if stack.count > 1 { self.draw_text(&format!("{}", stack.count), ox, oy, 0.03, &mut uv, &mut ui, &mut uoff); } }
-            // Cursor
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ox, oy, sw, sh, 10); 
+            self.draw_text("->", cx + 2.1*sw, oy+0.05, 0.04, &mut uv, &mut ui, &mut uoff);
+            if let Some(stack) = &player.inventory.crafting_output { 
+                let (t, _, _) = stack.item.get_texture_indices(); 
+                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ox+0.02, oy+0.02*aspect, sw-0.04, sh-0.04*aspect, t); 
+                if stack.count > 1 { self.draw_text(&format!("{}", stack.count), ox+0.01, oy+0.01, 0.03, &mut uv, &mut ui, &mut uoff); } 
+            }
+            // Render Held Item & Tooltip
+            let (mx, my) = cursor_pos; let ndc_x = (mx as f32 / self.config.width as f32)*2.0-1.0; let ndc_y = -((my as f32 / self.config.height as f32)*2.0-1.0);
             if let Some(stack) = &player.inventory.cursor_item {
-                let (mx, my) = cursor_pos; let ndc_x = (mx as f32 / self.config.width as f32)*2.0-1.0; let ndc_y = -((my as f32 / self.config.height as f32)*2.0-1.0);
                 let (t, _, _) = stack.item.get_texture_indices();
                 self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ndc_x - sw/2.0, ndc_y - sh/2.0, sw, sh, t);
                 if stack.count > 1 { self.draw_text(&format!("{}", stack.count), ndc_x - sw/2.0, ndc_y - sh/2.0, 0.03, &mut uv, &mut ui, &mut uoff); }
+            } else {
+                // Tooltip
+                for i in 0..9 {
+                    let x = sx + (i as f32 * sw); 
+                    if ndc_x >= x && ndc_x < x+sw && ndc_y >= by && ndc_y < by+sh {
+                        if let Some(s) = &player.inventory.slots[i] {
+                            self.draw_text(&format!("{:?}", s.item), ndc_x + 0.02, ndc_y - 0.02, 0.025, &mut uv, &mut ui, &mut uoff);
+                        }
+                    }
+                }
             }
         }
 

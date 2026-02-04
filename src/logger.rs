@@ -7,8 +7,11 @@ use std::io::Write;
         .filter_module("wgpu_core", log::LevelFilter::Warn)
         .filter_module("wgpu_hal", log::LevelFilter::Warn)
         .filter_module("naga", log::LevelFilter::Warn)
-        .format(|buf, record| {
-            writeln!(buf, "[{} {:<5}] {}", buf.timestamp_millis(), record.level(), record.args())
+.format(|buf, record| {
+            // Clean, compact timestamp: [HH:MM:SS INFO] Message
+            let ts = buf.timestamp_seconds();
+            let time_str = format!("{:02}:{:02}:{:02}", (ts / 3600) % 24, (ts / 60) % 60, ts % 60);
+            writeln!(buf, "[{} {:<5}] {}", time_str, record.level(), record.args())
         })
         .init();
 

@@ -1,5 +1,5 @@
 use std::fs::{self, File};
-use std::io::{self, Cursor, Write, BufRead, BufReader, Read}; // Added Read trait
+use std::io::{self, Cursor, Write, BufRead, BufReader, Read};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -31,109 +31,76 @@ pub fn start_ngrok_tunnel(port: &str) -> Option<String> {
 }
 
 fn attempt_ngrok(port: &str) -> Option<String> {
-    // Check for token
     let token_file = Path::new("ngrok_token.txt");
-    if token_file.exists() {
-        if let Ok(token) = fs::read_to_string(token_file) {
-            configure_ngrok(token.trim());
-            log::info!("Loaded ngrok token from file");
-        }
-    } else {
-        // No token file, ask immediately instead of waiting for crash
-        log::info!("No ngrok token found. Starting auth flow...");
-        if let Some(url) = handle_ngrok_auth(port) {
-            return Some(url);
-        }
+    if !token_file.exists() {
+        log::warn!("🚫 Ngrok token missing. Asking user...");
+        if let Some(url) = handle_ngrok_auth(port) { return Some(url); }
+        return None; 
     }
-
+    
     let path = Path::new(NGROK_BIN);
     if !path.exists() {
         println!("⬇️  Ngrok binary missing. Downloading...");
-        if let Err(_) = download_ngrok() {
-            println!("❌ Download failed.");
-            return None; 
-        }
+        if let Err(_) = download_ngrok() { println!("❌ Download failed."); return None; }
     }
 
-    // Launch with piped stderr so we can see why it crashes
+    if let Ok(token) = fs::read_to_string(token_file) {
+        configure_ngrok(token.trim());
+    }
+
     let exe = if cfg!(target_os = "windows") { "ngrok.exe" } else { "./ngrok" };
-    let mut child = Command::new(exe)
-        .arg("tcp")
-        .arg(port)
-        .stdout(Stdio::null()) 
-        .stderr(Stdio::piped()) // Capture errors!
-        .spawn()
-        .ok()?;
+    let mut child = Command::new(exe).arg("tcp").arg(port).stdout(Stdio::null()).stderr(Stdio::piped()).spawn().ok()?;
 
-    // Input listener for SKIP
     let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        let mut buffer = String::new();
-        let _ = io::stdin().read_line(&mut buffer);
-        let _ = tx.send(());
-    });
+    thread::spawn(move || { let mut s = String::new(); let _ = io::stdin().read_line(&mut s); let _ = tx.send(()); });
 
-    let mut has_printed_waiting = false;
-    for i in 0..60 { // Increased to 30s
-        if i % 4 == 0 { print!("."); let _ = io::stdout().flush(); }
-        // Check Skip
-        if rx.try_recv().is_ok() {
-            log::info!("⏩ User skipped Ngrok.");
-            let _ = child.kill();
-            return None;
+    println!("⏳ Waiting for Ngrok...");
+    for _ in 0..40 { // 20 seconds
+        if rx.try_recv().is_ok() { let _ = child.kill(); return None; }
+        
+        if let Ok(resp) = reqwest::blocking::get("http://127.0.0.1:4040/api/tunnels") {
+            if let Ok(json) = resp.json::<serde_json::Value>() {
+                if let Some(tunnels) = json["tunnels"].as_array() {
+                    if let Some(t) = tunnels.first() {
+                        if let Some(url) = t["public_url"].as_str() {
+                            let clean = url.replace("tcp://", "");
+                            log::info!("✅ NGROK CONNECTED: {}", clean);
+                            return Some(clean);
+                        }
+                    }
+                }
+            }
         }
-        // Check Crash
+        
         if let Ok(Some(_)) = child.try_wait() {
-            // Read the error
             if let Some(mut stderr) = child.stderr.take() {
-                let mut err_msg = String::new();
-                let _ = stderr.read_to_string(&mut err_msg); // Fixed: read_to_string now works
-                println!("❌ Ngrok crashed! Error output:\n{}", err_msg);
-                
-                if err_msg.contains("authentication failed") || err_msg.contains("authtoken") {
+                let mut err = String::new(); let _ = stderr.read_to_string(&mut err);
+                if err.contains("authentication failed") || err.contains("authtoken") {
+                    println!("❌ Ngrok Auth Failed. Deleting invalid token.");
+                    let _ = fs::remove_file("ngrok_token.txt");
                     return handle_ngrok_auth(port);
                 }
             }
             return None;
         }
-
-// Check API for Success
-        if let Ok(resp) = reqwest::blocking::get("http://127.0.0.1:4040/api/tunnels") {
-            if let Ok(json) = resp.json::<serde_json::Value>() {
-                if let Some(tunnels) = json["tunnels"].as_array() {
-                    if !tunnels.is_empty() {
-                         if let Some(url) = tunnels[0]["public_url"].as_str() {
-                            let clean = url.replace("tcp://", "");
-                            println!("\n");
-                            log::info!("✅ NGROK CONNECTED: {}", clean);
-                            return Some(clean.to_string());
-                        }
-                    }
-                }
-            }
-        }         else if !has_printed_waiting {
-            log::info!("Waiting for ngrok to start (5-10 seconds)...");
-            has_printed_waiting = true;
-        }
         thread::sleep(Duration::from_millis(500));
     }
-    
     let _ = child.kill();
     None
 }
 
 fn attempt_ssh_tunnel(port: &str) -> Option<String> {
+    println!("🔄 Launching SSH Tunnel (localhost.run)...");
     let mut child = Command::new("ssh")
         .arg("-R")
         .arg(format!("80:localhost:{}", port))
         .arg("-o").arg("StrictHostKeyChecking=no")
         .arg("nokey@localhost.run")
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::inherit()) 
         .spawn()
         .ok()?;
 
-    // Output Reader Thread (Non-blocking)
     let (tx_url, rx_url) = mpsc::channel();
     let stdout = child.stdout.take().unwrap();
     
@@ -152,7 +119,6 @@ fn attempt_ssh_tunnel(port: &str) -> Option<String> {
         }
     });
 
-    // Skip Listener
     let (tx_skip, rx_skip) = mpsc::channel();
     thread::spawn(move || {
         let mut buffer = String::new();
@@ -162,18 +128,16 @@ fn attempt_ssh_tunnel(port: &str) -> Option<String> {
 
     log::info!("🔄 Starting SSH tunnel (faster connect)...");
     
-    for _ in 0..12 { // 6 seconds max (reduced from 20)
+    for _ in 0..12 {
         if rx_skip.try_recv().is_ok() {
             log::info!("⏩ User skipped SSH.");
             let _ = child.kill();
             return None;
         }
-        
         if let Ok(url) = rx_url.try_recv() {
             println!("✅ SSH TUNNEL CONNECTED: {}", url);
             return Some(url);
         }
-        
         thread::sleep(Duration::from_millis(500));
     }
     
