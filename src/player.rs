@@ -237,7 +237,7 @@ impl Player {
         if self.health <= 0.0 { self.health = 0.0; self.is_dead = true; }
     }
 
-    fn check_ground(&self, world: &World, pos: Vec3) -> Option<f32> {
+fn check_ground(&self, world: &World, pos: Vec3) -> Option<f32> {
         let feet_y = pos.y - self.height / 2.0;
         let check_points = [(pos.x-self.radius, feet_y, pos.z-self.radius), (pos.x+self.radius, feet_y, pos.z+self.radius), (pos.x+self.radius, feet_y, pos.z-self.radius), (pos.x-self.radius, feet_y, pos.z+self.radius)];
         for (x, y, z) in check_points {
@@ -246,6 +246,7 @@ impl Player {
         }
         None
     }
+
     fn check_ceiling(&self, world: &World, pos: Vec3) -> Option<f32> {
         let head_y = pos.y + self.height / 2.0;
         let check_points = [(pos.x, head_y, pos.z)];
@@ -255,7 +256,7 @@ impl Player {
         }
         None
     }
-    // Used for movement logic (just horizontal wall check)
+
     fn check_collision_horizontal(&self, world: &World, pos: Vec3) -> bool {
          let feet_y = pos.y - self.height / 2.0 + 0.1; 
          let mid_y = pos.y; 
@@ -272,8 +273,7 @@ impl Player {
          false
     }
 
-    // New: Checks full body box (for Step Assist safety)
-fn check_full_collision(&self, world: &World, pos: Vec3) -> bool {
+    fn check_full_collision(&self, world: &World, pos: Vec3) -> bool {
          let feet_y = pos.y - self.height / 2.0 + 0.05; 
          let head_y = pos.y + self.height / 2.0 - 0.05;
          let r = self.radius;
