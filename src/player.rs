@@ -14,7 +14,7 @@ pub struct Inventory {
     pub slots: [Option<ItemStack>; INVENTORY_SIZE],
     pub selected_hotbar_slot: usize,
     pub cursor_item: Option<ItemStack>, 
-    pub crafting_grid: Vec<Option<ItemStack>>, // Changed to Vec for 3x3 support
+    pub crafting_grid: Vec<Option<ItemStack>>, 
     pub crafting_output: Option<ItemStack>,
 }
 #[allow(dead_code)]
@@ -22,7 +22,8 @@ impl Inventory {
     pub fn new() -> Self { Inventory { slots: [None; INVENTORY_SIZE], selected_hotbar_slot: 0, cursor_item: None, crafting_grid: vec![None; 9], crafting_output: None } }
     pub fn get_selected_item(&self) -> Option<BlockType> { self.slots[self.selected_hotbar_slot].map(|stack| stack.item) }
     pub fn remove_one_from_hand(&mut self) { if let Some(stack) = &mut self.slots[self.selected_hotbar_slot] { if stack.count > 1 { stack.count -= 1; } else { self.slots[self.selected_hotbar_slot] = None; } } }
-pub fn drop_item(&mut self, drop_all: bool) -> Option<ItemStack> {
+    
+    pub fn drop_item(&mut self, drop_all: bool) -> Option<ItemStack> {
         if let Some(stack) = &mut self.slots[self.selected_hotbar_slot] {
             if drop_all {
                 let ret = *stack;
@@ -37,65 +38,45 @@ pub fn drop_item(&mut self, drop_all: bool) -> Option<ItemStack> {
         }
         None
     }
+    
     pub fn select_slot(&mut self, slot: usize) { self.selected_hotbar_slot = slot.clamp(0, HOTBAR_SIZE - 1); }
     pub fn add_item(&mut self, item: BlockType) -> bool {
         for slot in &mut self.slots { if let Some(stack) = slot { if stack.item == item && stack.count < 64 { stack.count += 1; return true; } } }
         for slot in &mut self.slots { if slot.is_none() { *slot = Some(ItemStack::new(item, 1)); return true; } } false 
     }
-pub fn check_recipes(&mut self) {
-        // Map grid to simple ID array for matching
-        let g: Vec<u8> = self.crafting_grid.iter().map(|s| s.map(|i| i.item as u8).unwrap_or(0)).collect();
-        // 3x3 Grid Indices:
-        // 0 1 2
-        // 3 4 5
-        // 6 7 8
-        
-        let out = match (g[0], g[1], g[2], g[3], g[4], g[5], g[6], g[7], g[8]) {
-            // -- BASICS --
-            (4,0,0, 0,0,0, 0,0,0) => Some((BlockType::Planks, 4)), // Wood -> 4 Planks
-            (0,14,0, 0,14,0, 0,0,0) => Some((BlockType::Stick, 4)), // 2 Planks -> 4 Sticks
-            (0,10,0, 0,15,0, 0,0,0) => Some((BlockType::Torch, 4)), // CoalOre + Stick -> 4 Torch (User request)
-            (14,14,0, 14,14,0, 0,0,0) => Some((BlockType::CraftingTable, 1)), // 2x2 Planks -> Crafting Table
 
-            // -- WOOD TOOLS --
+    pub fn check_recipes(&mut self) {
+        let g: Vec<u8> = self.crafting_grid.iter().map(|s| s.map(|i| i.item as u8).unwrap_or(0)).collect();
+        let out = match (g[0], g[1], g[2], g[3], g[4], g[5], g[6], g[7], g[8]) {
+            (4,0,0, 0,0,0, 0,0,0) => Some((BlockType::Planks, 4)),
+            (0,14,0, 0,14,0, 0,0,0) => Some((BlockType::Stick, 4)),
+            (0,10,0, 0,15,0, 0,0,0) => Some((BlockType::Torch, 4)),
+            (14,14,0, 14,14,0, 0,0,0) => Some((BlockType::CraftingTable, 1)),
             (14,14,14, 0,15,0, 0,15,0) => Some((BlockType::WoodPickaxe, 1)),
             (14,14,0, 14,15,0, 0,15,0) => Some((BlockType::WoodAxe, 1)),
             (0,14,0, 0,15,0, 0,15,0) => Some((BlockType::WoodShovel, 1)),
             (0,14,0, 0,14,0, 0,15,0) => Some((BlockType::WoodSword, 1)),
-
-            // -- STONE TOOLS --
             (16,16,16, 0,15,0, 0,15,0) => Some((BlockType::StonePickaxe, 1)),
             (16,16,0, 16,15,0, 0,15,0) => Some((BlockType::StoneAxe, 1)),
             (0,16,0, 0,15,0, 0,15,0) => Some((BlockType::StoneShovel, 1)),
             (0,16,0, 0,16,0, 0,15,0) => Some((BlockType::StoneSword, 1)),
-
-            // -- IRON TOOLS --
             (17,17,17, 0,15,0, 0,15,0) => Some((BlockType::IronPickaxe, 1)),
             (17,17,0, 17,15,0, 0,15,0) => Some((BlockType::IronAxe, 1)),
             (0,17,0, 0,15,0, 0,15,0) => Some((BlockType::IronShovel, 1)),
             (0,17,0, 0,17,0, 0,15,0) => Some((BlockType::IronSword, 1)),
-
-            // -- GOLD TOOLS --
             (18,18,18, 0,15,0, 0,15,0) => Some((BlockType::GoldPickaxe, 1)),
             (18,18,0, 18,15,0, 0,15,0) => Some((BlockType::GoldAxe, 1)),
             (0,18,0, 0,15,0, 0,15,0) => Some((BlockType::GoldShovel, 1)),
             (0,18,0, 0,18,0, 0,15,0) => Some((BlockType::GoldSword, 1)),
-
-            // -- DIAMOND TOOLS --
             (19,19,19, 0,15,0, 0,15,0) => Some((BlockType::DiamondPickaxe, 1)),
             (19,19,0, 19,15,0, 0,15,0) => Some((BlockType::DiamondAxe, 1)),
             (0,19,0, 0,15,0, 0,15,0) => Some((BlockType::DiamondShovel, 1)),
             (0,19,0, 0,19,0, 0,15,0) => Some((BlockType::DiamondSword, 1)),
-
-            // -- INVENTORY 2x2 FALLBACK (Mapped to 3x3 slots 0,1,3,4) --
-            // If user uses E-inventory, we check the top-left corner only
             (4,0,0, 0,0,0, _,_,_) => Some((BlockType::Planks, 4)), 
             (14,14,0, 14,14,0, _,_,_) => Some((BlockType::CraftingTable, 1)), 
             (0,14,0, 0,14,0, _,_,_) => Some((BlockType::Stick, 4)),
-
             _ => None
         };
-        
         self.crafting_output = out.map(|(i, c)| ItemStack::new(i, c));
     }
     
@@ -120,8 +101,9 @@ pub struct Player {
     pub on_ground: bool, pub walk_time: f32,
     pub height: f32, pub radius: f32,
     pub health: f32, pub max_health: f32, pub invincible_timer: f32,
-pub is_dead: bool, pub right_handed: bool, pub inventory_open: bool, pub crafting_open: bool,
+    pub is_dead: bool, pub right_handed: bool, pub inventory_open: bool, pub crafting_open: bool,
 }
+
 #[allow(dead_code)]
 impl Player {
     pub fn new() -> Self {
@@ -134,6 +116,7 @@ impl Player {
         }
     }
     pub fn respawn(&mut self) { self.position = Vec3::new(0.0, 80.0, 0.0); self.velocity = Vec3::ZERO; self.health = self.max_health; self.is_dead = false; self.invincible_timer = 3.0; }
+    
     pub fn handle_input(&mut self, key: KeyCode, pressed: bool) {
         match key {
             KeyCode::KeyW => self.keys.forward = pressed, KeyCode::KeyS => self.keys.backward = pressed,
@@ -146,11 +129,13 @@ impl Player {
             KeyCode::Digit9 => self.inventory.select_slot(8), _ => {}
         }
     }
+    
     pub fn process_mouse(&mut self, dx: f64, dy: f64) {
         if self.is_dead || self.inventory_open { return; }
         self.rotation.y += dx as f32 * self.sensitivity; self.rotation.x -= dy as f32 * self.sensitivity;
         self.rotation.x = self.rotation.x.clamp(-1.5, 1.5);
     }
+    
     pub fn update(&mut self, dt: f32, world: &World) {
         if self.is_dead || self.inventory_open { return; }
         let dt = dt.min(0.1); if self.invincible_timer > 0.0 { self.invincible_timer -= dt; }
@@ -172,13 +157,13 @@ impl Player {
             if self.keys.up { self.velocity.y = 3.0; } else if self.keys.down { self.velocity.y = -3.0; } else { self.velocity.y += (-0.5 - self.velocity.y) * (5.0 * dt).min(1.0); }
             self.on_ground = false;
         } else if in_leaves {
-            move_delta *= 0.85; // Slight slowdown
-            self.velocity.y *= 0.9; // Slow fall
-            if self.velocity.y < -5.0 { self.velocity.y = -5.0; } // Terminal velocity in leaves
+            move_delta *= 0.85; 
+            self.velocity.y *= 0.9; 
+            if self.velocity.y < -5.0 { self.velocity.y = -5.0; }
             if self.keys.up { self.velocity.y = 2.0; }
-            if self.keys.up && self.on_ground { self.velocity.y = 8.0; self.on_ground = false; } // Jump out
+            if self.keys.up && self.on_ground { self.velocity.y = 8.0; self.on_ground = false; }
         } else {
-            self.velocity.y -= 30.0 * dt; // Gravity
+            self.velocity.y -= 30.0 * dt; 
             if self.on_ground && self.keys.up { self.velocity.y = 12.0; self.on_ground = false; }
         }
 
@@ -220,6 +205,7 @@ impl Player {
         }
         None
     }
+    
     fn check_ceiling(&self, world: &World, pos: Vec3) -> Option<f32> {
         let head_y = pos.y + self.height / 2.0;
         let check_points = [(pos.x, head_y, pos.z)];
@@ -229,6 +215,7 @@ impl Player {
         }
         None
     }
+    
     fn check_collision_horizontal(&self, world: &World, pos: Vec3) -> bool {
          let feet_y = pos.y - self.height / 2.0 + 0.1; 
          let mid_y = pos.y; 
@@ -244,6 +231,7 @@ impl Player {
          }
          false
     }
+    
     pub fn build_view_projection_matrix(&self, aspect: f32) -> [[f32; 4]; 4] {
         let (pitch_sin, pitch_cos) = self.rotation.x.sin_cos(); let (yaw_sin, yaw_cos) = self.rotation.y.sin_cos();
         let mut eye_pos = self.position + Vec3::new(0.0, self.height * 0.9, 0.0);

@@ -60,15 +60,15 @@ fn main() {
         logger::init_logger(); 
         run_game(NetworkManager::host("7878".to_string()), "HOST (Stress Test)");
 
-    } else if choice == "2" {
+} else if choice == "2" {
         // --- ONLINE HOSTING WITH AUTO-FALLBACK ---
         log::info!("Starting online hosting with fallback...");
         if let Some(addr) = ngrok_utils::start_ngrok_tunnel("7878") { 
             log::info!("✅ SERVER LIVE: {}", addr); 
         } else { 
             log::warn!("❌ All Tunnels failed. Hosting locally on Port 7878."); 
-        run_game(NetworkManager::host("7878".to_string()), "HOST (Online)");
-        }
+        } // <--- Added closing brace here
+        run_game(NetworkManager::host("7878".to_string()), "HOST (Online)"); // <--- Moved outside
     } else if choice == "3" {
         print!("Enter IP (default: 127.0.0.1:7878): "); 
         io::stdout().flush().unwrap();
