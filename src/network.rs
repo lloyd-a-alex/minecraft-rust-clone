@@ -20,10 +20,11 @@ pub struct NetworkManager {
     sender: Sender<Packet>,
     receiver: Receiver<Packet>,
     pub my_id: u32,
+    pub seed: Option<u32>,
 }
 
 impl NetworkManager {
-    pub fn host(port: String) -> Self {
+    pub fn host(port: String, seed: u32) -> Self {
         let (tx_in, rx_in) = unbounded();
         let (tx_out, rx_out) = unbounded();
         
@@ -39,6 +40,17 @@ impl NetworkManager {
             let mut client_id_counter = 2; // Host is 1
             loop {
                 if let Ok((mut stream, addr)) = listener.accept() {
+                    println!("✨ NEW PLAYER CONNECTED: {:?} (ID: {})", addr, client_id_counter);
+                    let _ = stream.set_nonblocking(false); 
+                    
+                    // --- INSTANT HANDSHAKE (SYNC WORLD) ---
+                    let handshake = Packet::Handshake { username: "Host".to_string(), seed };
+                    let bytes = bincode::serialize(&handshake).unwrap();
+                    let _ = stream.write_all(&bytes);
+                    // --------------------------------------
+
+                    let mut stream_clone = stream.try_clone().unwrap();
+                    let tx_in_thread = tx_in_clone.clone();
                     println!("✨ NEW PLAYER CONNECTED: {:?} (ID: {})", addr, client_id_counter);
                     let _ = stream.set_nonblocking(false); 
                     
@@ -77,7 +89,7 @@ impl NetworkManager {
             }
         });
 
-        NetworkManager {
+NetworkManager {
             is_server: true,
             stream: None,
             sender: tx_out,
@@ -137,12 +149,13 @@ impl NetworkManager {
             }
         });
 
-        NetworkManager {
+NetworkManager {
             is_server: false,
             stream: Some(stream),
             sender: tx_out,
             receiver: rx_in,
             my_id: 2,
+            seed: None,
         }
     }
 

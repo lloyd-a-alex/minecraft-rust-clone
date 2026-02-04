@@ -13,6 +13,9 @@ use renderer::Renderer; use world::{World, BlockPos, BlockType}; use player::Pla
 
 fn main() {
     logger::init_logger();
+    // Generate a master seed for hosting
+    let master_seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u32;
+
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 && args[1] == "--join-localhost" { 
         run_game(NetworkManager::join("127.0.0.1:7878".to_string()), "Minecraft Clone (Test Client)"); return; 
@@ -32,24 +35,24 @@ fn main() {
     if std::io::stdin().read_line(&mut input).is_err() { input = "1".to_string(); }
     let choice = input.trim();
 
-    if choice == "4" {
+if choice == "4" {
         print!("How many clients? > "); io::stdout().flush().unwrap();
         let mut n_str = String::new(); std::io::stdin().read_line(&mut n_str).unwrap();
         let n: usize = n_str.trim().parse().unwrap_or(1);
         let exe = std::env::current_exe().unwrap();
         for _ in 0..n { std::process::Command::new(&exe).arg("--join-localhost").spawn().unwrap(); }
-        run_game(NetworkManager::host("7878".to_string()), "HOST (Stress Test)");
+        run_game(NetworkManager::host("7878".to_string(), master_seed), "HOST (Stress Test)");
     } else if choice == "2" {
         log::info!("Starting online hosting...");
         if let Some(addr) = ngrok_utils::start_ngrok_tunnel("7878") { log::info!("✅ SERVER LIVE: {}", addr); } 
         else { log::warn!("❌ Tunnels failed. LAN only."); }
-        run_game(NetworkManager::host("7878".to_string()), "HOST (Online)");
+        run_game(NetworkManager::host("7878".to_string(), master_seed), "HOST (Online)");
     } else if choice == "3" {
         print!("Enter IP: "); io::stdout().flush().unwrap();
         let mut ip = String::new(); std::io::stdin().read_line(&mut ip).unwrap();
         run_game(NetworkManager::join(ip.trim().to_string()), "CLIENT");
     } else {
-        run_game(NetworkManager::host("7878".to_string()), "Minecraft Clone (Singleplayer)");
+        run_game(NetworkManager::host("7878".to_string(), master_seed), "Minecraft Clone (Singleplayer)");
     };
 }
 
@@ -59,7 +62,9 @@ fn run_game(network: NetworkManager, title: &str) {
     let _ = window.set_cursor_grab(CursorGrabMode::Confined).or_else(|_| window.set_cursor_grab(CursorGrabMode::Locked)); window.set_cursor_visible(false);
     
     let mut renderer = pollster::block_on(Renderer::new(&window));
-    let mut world = World::new(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u32);
+    // Use network seed if hosting, otherwise temp (0) until Handshake
+    let initial_seed = network.seed.unwrap_or(0);
+    let mut world = World::new(initial_seed);
     renderer.rebuild_all_chunks(&world);
     
     // SAFE SPAWN LOGIC (No Water)
@@ -162,7 +167,7 @@ fn run_game(network: NetworkManager, title: &str) {
                                             let space = 64 - s.count;
                                             let transfer = space.min(cursor.count);
                                             s.count += transfer;
-                                            cursor.count -= transfer;
+cursor.count -= transfer;
                                             if cursor.count == 0 { player.inventory.cursor_item = None; }
                                         } else {
 // Swap
@@ -263,7 +268,7 @@ fn run_game(network: NetworkManager, title: &str) {
                 let now = Instant::now(); let dt = (now - last_frame).as_secs_f32(); last_frame = now;
                 frame_count += 1; perf_timer += dt;
 
-                while let Some(pkt) = network.try_recv() {
+while let Some(pkt) = network.try_recv() {
                     match pkt {
                         Packet::PlayerMove { id, x, y, z, ry } => { if let Some(p) = world.remote_players.iter_mut().find(|p| p.id == id) { p.position = glam::Vec3::new(x,y,z); p.rotation = ry; } else { world.remote_players.push(world::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); } },
                         Packet::BlockUpdate { pos, block } => { let c = world.place_block(pos, block); for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); } },
