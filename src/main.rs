@@ -27,7 +27,7 @@ fn main() {
     println!("1. SINGLEPLAYER (LAN Mode)");
     println!("2. HOST ONLINE (Auto: Ngrok -> SSH -> LAN)");
     println!("3. JOIN GAME");
-    println!("4. STRESS TEST (Multi-Client)");
+println!("4. STRESS TEST (Multi-Client)");
     println!(""); 
     println!("> Enter option (1-4) and press ENTER:"); 
     
@@ -95,18 +95,13 @@ fn run_game(network: NetworkManager, title: &str) {
     let mut modifiers = winit::keyboard::ModifiersState::default(); 
     let mut win_size = (1280.0, 720.0);
     
-    // BREAKING LOGIC with GRACE PERIOD
+// BREAKING LOGIC with GRACE PERIOD
     let mut breaking_pos: Option<BlockPos> = None;
     let mut break_progress = 0.0;
     let mut left_click = false;
     let mut break_grace_timer = 0.0; // 0.5s grace
-    let mut last_target: Option<BlockPos> = None;
 
     let mut net_timer = 0.0;
-    let mut perf_timer = 0.0;
-    let mut frame_count = 0;
-
-    fn log_chunk_updates(updates: &[(i32, i32)], action: &str) { if !updates.is_empty() { log::debug!("{} updated chunks: {:?}", action, updates); } }
 
     event_loop.run(move |event, elwt| {
         match event {
@@ -266,11 +261,10 @@ cursor.count -= transfer;
                 },
                 _ => {}
             },
-            Event::AboutToWait => {
+Event::AboutToWait => {
                 let now = Instant::now(); let dt = (now - last_frame).as_secs_f32(); last_frame = now;
-                frame_count += 1; perf_timer += dt;
 
-while let Some(pkt) = network.try_recv() {
+                while let Some(pkt) = network.try_recv() {
                     match pkt {
                         Packet::Handshake { seed, .. } => {
                             log::info!("🌍 RECEIVED SEED: {}. REBUILDING WORLD...", seed);

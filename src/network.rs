@@ -40,7 +40,7 @@ impl NetworkManager {
             let mut client_id_counter = 2; // Host is 1
             loop {
                 if let Ok((mut stream, addr)) = listener.accept() {
-                    println!("✨ NEW PLAYER CONNECTED: {:?} (ID: {})", addr, client_id_counter);
+println!("✨ NEW PLAYER CONNECTED: {:?} (ID: {})", addr, client_id_counter);
                     let _ = stream.set_nonblocking(false); 
                     
                     // --- INSTANT HANDSHAKE (SYNC WORLD) ---
@@ -49,11 +49,6 @@ impl NetworkManager {
                     let _ = stream.write_all(&bytes);
                     // --------------------------------------
 
-                    let mut stream_clone = stream.try_clone().unwrap();
-                    let tx_in_thread = tx_in_clone.clone();
-                    println!("✨ NEW PLAYER CONNECTED: {:?} (ID: {})", addr, client_id_counter);
-                    let _ = stream.set_nonblocking(false); 
-                    
                     let mut stream_clone = stream.try_clone().unwrap();
                     let tx_in_thread = tx_in_clone.clone();
                     
