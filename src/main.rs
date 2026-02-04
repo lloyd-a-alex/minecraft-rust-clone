@@ -68,7 +68,7 @@ fn main() {
         } else { 
             log::warn!("❌ All Tunnels failed. Hosting locally on Port 7878."); 
         run_game(NetworkManager::host("7878".to_string()), "HOST (Online)");
-
+        }
     } else if choice == "3" {
         print!("Enter IP (default: 127.0.0.1:7878): "); 
         io::stdout().flush().unwrap();
