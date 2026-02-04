@@ -67,23 +67,48 @@ fn run_game(network: NetworkManager, title: &str) {
     let mut world = World::new(initial_seed);
     renderer.rebuild_all_chunks(&world);
     
-    // SAFE SPAWN LOGIC (No Water)
+ // --- SUPER SAFE SPAWN LOGIC (Guaranteed Dry Land) ---
     let mut player = Player::new();
     let mut spawn_found = false;
-    // Spiral search for non-water spawn
-    for r in 0..20 {
-        if spawn_found { break; }
+    log::info!("🔍 Searching for dry land...");
+
+    // 1. Search a massive radius (0 to 300 blocks)
+    'spawn_search: for r in 0..300 {
+        // Optimization: Spiral out
         for x in -r..=r {
             for z in -r..=r {
-                for y in (0..100).rev() {
-                    let b = world.get_block(BlockPos{x, y, z});
-                    if b.is_solid() && !b.is_water() {
-                        player.position = glam::Vec3::new(x as f32 + 0.5, y as f32 + 2.0, z as f32 + 0.5);
-                        spawn_found = true;
-                        break;
+                // Only check the outer edge of the current radius to avoid re-scanning
+                if x.abs() != r && z.abs() != r { continue; }
+
+                // Scan from sky down to find the highest solid block
+                for y in (0..150).rev() {
+                    let bp = BlockPos { x, y, z };
+                    let b = world.get_block(bp);
+                    if b.is_solid() {
+                        if !b.is_water() {
+                            // FOUND LAND!
+                            player.position = glam::Vec3::new(x as f32 + 0.5, y as f32 + 2.0, z as f32 + 0.5);
+                            spawn_found = true;
+                            log::info!("✅ Spawn found at: {}, {}, {}", x, y, z);
+                            break 'spawn_search;
+                        } else {
+                            // Hit water, stop checking this column (don't spawn underwater)
+                            break;
+                        }
                     }
                 }
-                if spawn_found { break; }
+            }
+        }
+    }
+    
+    // 2. Fallback: If map is 100% water, FORCE a platform
+    if !spawn_found {
+        log::warn!("⚠️ No dry land found! Constructing emergency platform.");
+        player.position = glam::Vec3::new(0.0, 80.0, 0.0);
+        // Build a 3x3 bedrock raft
+        for x in -1..=1 {
+            for z in -1..=1 {
+                world.place_block(BlockPos { x, y: 78, z }, BlockType::Bedrock);
             }
         }
     }
@@ -271,26 +296,30 @@ cursor.count -= transfer;
                             log::info!("🌍 RECEIVED SEED: {}. REBUILDING WORLD...", seed);
                             world = World::new(seed);
                             renderer.rebuild_all_chunks(&world);
-                            // SAFE SPAWN (Spiral Search)
+// --- SUPER SAFE SPAWN (Multiplayer) ---
                             let mut spawn_found = false;
-                            for r in 0..20 {
-                                if spawn_found { break; }
+                            'net_spawn: for r in 0..300 {
                                 for x in -r..=r {
                                     for z in -r..=r {
-                                        for y in (0..100).rev() {
+                                        if x.abs() != r && z.abs() != r { continue; }
+                                        for y in (0..150).rev() {
                                             let b = world.get_block(BlockPos{x, y, z});
-                                            if b.is_solid() && !b.is_water() {
-                                                player.position = glam::Vec3::new(x as f32 + 0.5, y as f32 + 2.0, z as f32 + 0.5);
-                                                spawn_found = true;
-                                                break;
+                                            if b.is_solid() {
+                                                if !b.is_water() {
+                                                    player.position = glam::Vec3::new(x as f32 + 0.5, y as f32 + 2.0, z as f32 + 0.5);
+                                                    spawn_found = true;
+                                                    break 'net_spawn;
+                                                } else { break; }
                                             }
                                         }
-                                        if spawn_found { break; }
                                     }
                                 }
                             }
-                            if !spawn_found { player.position = glam::Vec3::new(0.0, 80.0, 0.0); }
-                        },
+                            if !spawn_found { 
+                                player.position = glam::Vec3::new(0.0, 80.0, 0.0); 
+                                // Ensure client doesn't fall even if server didn't send chunks yet
+                                player.velocity = glam::Vec3::ZERO;
+                            }
                         Packet::PlayerMove { id, x, y, z, ry } => { if let Some(p) = world.remote_players.iter_mut().find(|p| p.id == id) { p.position = glam::Vec3::new(x,y,z); p.rotation = ry; } else { world.remote_players.push(world::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); } },
                         Packet::BlockUpdate { pos, block } => { let c = world.place_block(pos, block); for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); } },
                         _ => {}
@@ -304,27 +333,32 @@ cursor.count -= transfer;
                     if player.is_dead {
                         death_timer += dt;
                         if death_timer > 3.0 {
-                            // Find safe spawn
+// --- SUPER SAFE RESPAWN ---
                             let mut spawn_found = false;
-                            for r in 0..20 {
-                                if spawn_found { break; }
+                            'respawn_search: for r in 0..300 {
                                 for x in -r..=r {
                                     for z in -r..=r {
-                                        for y in (0..100).rev() {
+                                        if x.abs() != r && z.abs() != r { continue; }
+                                        for y in (0..150).rev() {
                                             let b = world.get_block(BlockPos{x, y, z});
-                                            if b.is_solid() && !b.is_water() {
-                                                player.respawn();
-                                                player.position = glam::Vec3::new(x as f32 + 0.5, y as f32 + 2.0, z as f32 + 0.5);
-                                                spawn_found = true;
-                                                death_timer = 0.0;
-                                                break;
+                                            if b.is_solid() {
+                                                if !b.is_water() {
+                                                    player.respawn();
+                                                    player.position = glam::Vec3::new(x as f32 + 0.5, y as f32 + 2.0, z as f32 + 0.5);
+                                                    spawn_found = true;
+                                                    death_timer = 0.0;
+                                                    break 'respawn_search;
+                                                } else { break; }
                                             }
                                         }
-                                        if spawn_found { break; }
                                     }
                                 }
                             }
-                            if !spawn_found { player.respawn(); }
+                            if !spawn_found { 
+                                player.respawn(); 
+                                player.position = glam::Vec3::new(0.0, 80.0, 0.0);
+                                death_timer = 0.0;
+                            }
                         }
                     } else {
                         player.update(dt, &world);
