@@ -122,7 +122,7 @@ let mut cursor_pos = (0.0, 0.0);
                 WindowEvent::CloseRequested => elwt.exit(),
                 WindowEvent::Resized(size) => { renderer.resize(size.width, size.height); win_size = (size.width as f64, size.height as f64); }
 WindowEvent::CursorMoved { position, .. } => cursor_pos = (position.x, position.y),
-                WindowEvent::ModifiersChanged(m) => modifiers = m.state, // Update tracker
+                WindowEvent::ModifiersChanged(m) => modifiers = m.state(), // Update tracker
                 WindowEvent::MouseInput { button, state, .. } => {
                     let pressed = state == ElementState::Pressed;
                     if button == MouseButton::Left {
