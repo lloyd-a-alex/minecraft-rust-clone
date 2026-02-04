@@ -31,16 +31,19 @@ pub enum BlockType {
     WoodAxe = 26, StoneAxe = 27, IronAxe = 28, GoldAxe = 29, DiamondAxe = 30,
     WoodShovel = 31, StoneShovel = 32, IronShovel = 33, GoldShovel = 34, DiamondShovel = 35,
     WoodSword = 36, StoneSword = 37, IronSword = 38, GoldSword = 39, DiamondSword = 40,
-    CraftingTable = 100, Furnace = 101,
+CraftingTable = 100, Furnace = 101, Coal = 41,
 }
 
 impl BlockType {
+    pub fn get_water_level(&self) -> u8 { if *self == BlockType::Water { 8 } else { 0 } }
+    pub fn is_transparent(&self) -> bool { matches!(self, BlockType::Air | BlockType::Water | BlockType::Leaves | BlockType::Torch) }
+
     pub fn is_solid(&self) -> bool {
-        !matches!(self, BlockType::Air | BlockType::Water | BlockType::Torch | BlockType::Stick | BlockType::IronIngot | BlockType::GoldIngot | BlockType::Diamond) && !self.is_tool()
+        !matches!(self, BlockType::Air | BlockType::Water | BlockType::Torch | BlockType::Stick | BlockType::IronIngot | BlockType::GoldIngot | BlockType::Diamond | BlockType::Coal) && !self.is_tool()
     }
     pub fn is_water(&self) -> bool { matches!(self, BlockType::Water) }
     pub fn is_tool(&self) -> bool { (*self as u8) >= 21 && (*self as u8) <= 40 }
-    pub fn is_item(&self) -> bool { matches!(self, BlockType::Stick | BlockType::IronIngot | BlockType::GoldIngot | BlockType::Diamond) }
+    pub fn is_item(&self) -> bool { matches!(self, BlockType::Stick | BlockType::IronIngot | BlockType::GoldIngot | BlockType::Diamond | BlockType::Coal) }
     
     pub fn get_texture_indices(&self) -> (u32, u32, u32) {
         match self {
@@ -289,7 +292,7 @@ self.set_block_world(pos, BlockType::Air);
                         if self.get_block(side) == BlockType::Air {
                             let lvl = current.get_water_level();
                             if lvl > 1 {
-                                let new_blk = match lvl - 1 { 7 => BlockType::Water7, 6 => BlockType::Water6, _ => BlockType::Water1 };
+                                let new_blk = if lvl > 1 { BlockType::Water } else { BlockType::Air };
                                 self.set_block_world(side, new_blk); updates.push((side.x.div_euclid(CHUNK_SIZE_X as i32), side.z.div_euclid(CHUNK_SIZE_Z as i32))); queue.push_back(side);
                             }
                         }

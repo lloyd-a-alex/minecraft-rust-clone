@@ -165,8 +165,8 @@ fn run_game(network: NetworkManager, title: &str) {
                                             cursor.count -= transfer;
                                             if cursor.count == 0 { player.inventory.cursor_item = None; }
                                         } else {
-                                            // Swap
-                                            let temp = *s; *s = Some(*cursor); player.inventory.cursor_item = Some(temp);
+// Swap
+                                            let temp = *s; *s = Some(*cursor); player.inventory.cursor_item = temp;
                                         }
                                     } else {
                                         // Place
