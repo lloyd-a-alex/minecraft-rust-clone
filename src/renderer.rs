@@ -239,7 +239,7 @@ impl<'a> Renderer<'a> {
                 self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, y, sw, sh, 10);
                 if let Some(stack) = &player.inventory.slots[idx] { let (t, _, _) = stack.item.get_texture_indices(); self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, y+0.02*aspect, sw-0.04, sh-0.04*aspect, t); if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x, y, 0.03, &mut uv, &mut ui, &mut uoff); } }
             }}
-            // Crafting
+// Crafting
             self.draw_text("CRAFTING", 0.3, 0.7, 0.05, &mut uv, &mut ui, &mut uoff);
             let cx = 0.3; let cy = 0.5;
             for r in 0..2 { for c in 0..2 {

@@ -1,4 +1,5 @@
 @echo off
+$date = Get-Date -Format "dd/MM/yyyy HH:mm:ss"
 git add .
-git commit -m "AI Update: 03/02/2026  3:35:25.28"
-git push -u origin main
+git commit -m "AI Update: $date"
+git push origin main

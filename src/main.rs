@@ -99,7 +99,8 @@ fn run_game(network: NetworkManager, title: &str) {
     let window_clone = window.clone();
     let mut last_frame = Instant::now();
     let mut is_paused = false;
-    let mut cursor_pos = (0.0, 0.0);
+let mut cursor_pos = (0.0, 0.0);
+    let mut modifiers = winit::keyboard::ModifiersState::default(); // Track Shift/Ctrl here
     let mut win_size = (1280.0, 720.0);
     let mut breaking_pos: Option<BlockPos> = None;
     let mut break_progress = 0.0;
@@ -120,7 +121,8 @@ fn run_game(network: NetworkManager, title: &str) {
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => elwt.exit(),
                 WindowEvent::Resized(size) => { renderer.resize(size.width, size.height); win_size = (size.width as f64, size.height as f64); }
-                WindowEvent::CursorMoved { position, .. } => cursor_pos = (position.x, position.y),
+WindowEvent::CursorMoved { position, .. } => cursor_pos = (position.x, position.y),
+                WindowEvent::ModifiersChanged(m) => modifiers = m.state, // Update tracker
                 WindowEvent::MouseInput { button, state, .. } => {
                     let pressed = state == ElementState::Pressed;
                     if button == MouseButton::Left {
@@ -214,8 +216,8 @@ fn run_game(network: NetworkManager, title: &str) {
                             player.crafting_open = false; // Reset 3x3
                             if player.inventory_open { let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined); window_clone.set_cursor_visible(true); }
                             else { let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); window_clone.set_cursor_visible(false); }
-                        } else if key == winit::keyboard::KeyCode::KeyQ && pressed && !is_paused && !player.inventory_open {
-                             let drop_all = event.modifiers.shift_key();
+} else if key == winit::keyboard::KeyCode::KeyQ && pressed && !is_paused && !player.inventory_open {
+                             let drop_all = modifiers.shift_key(); // Use our tracker
                              if let Some(stack) = player.inventory.drop_item(drop_all) {
                                  let dir = glam::Vec3::new(player.rotation.y.cos() * player.rotation.x.cos(), player.rotation.x.sin(), player.rotation.y.sin() * player.rotation.x.cos()).normalize();
                                  let ent = world::ItemEntity { position: player.position + glam::Vec3::new(0.0, 1.5, 0.0), velocity: dir * 10.0, item_type: stack.item, count: stack.count, pickup_delay: 1.5, lifetime: 300.0, rotation: 0.0, bob_offset: 0.0 };
