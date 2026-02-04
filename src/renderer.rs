@@ -159,13 +159,19 @@ impl<'a> Renderer<'a> {
         i.push(*off); i.push(*off+1); i.push(*off+2); i.push(*off); i.push(*off+2); i.push(*off+3); *off += 4;
     }
 
-    fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32) {
+fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32) {
         let aspect = self.config.width as f32 / self.config.height as f32;
         let mut x = start_x;
-        for c in text.chars() {
+        // FIXED: Convert to uppercase so "Grass" becomes "GRASS" and renders correctly
+        for c in text.to_uppercase().chars() {
             if c == ' ' { x += scale; continue; }
-            let idx = if c >= 'A' && c <= 'Z' { 200 + (c as u32 - 'A' as u32) } else if c >= '0' && c <= '9' { 200 + 26 + (c as u32 - '0' as u32) } else if c == '-' { 236 } else if c == '>' { 237 } else { 200 };
-            self.add_ui_quad(v, i, off, x, y, scale, scale*aspect, idx); x += scale;
+            let idx = if c >= 'A' && c <= 'Z' { 200 + (c as u32 - 'A' as u32) } 
+                      else if c >= '0' && c <= '9' { 200 + 26 + (c as u32 - '0' as u32) } 
+                      else if c == '-' { 236 } 
+                      else if c == '>' { 237 } 
+                      else { 200 }; // Default to 'A' if unknown
+            self.add_ui_quad(v, i, off, x, y, scale, scale*aspect, idx); 
+            x += scale;
         }
     }
 

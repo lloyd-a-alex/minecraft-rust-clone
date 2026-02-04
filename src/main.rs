@@ -318,9 +318,10 @@ cursor.count -= transfer;
                             if !spawn_found { 
                                 player.position = glam::Vec3::new(0.0, 80.0, 0.0); 
                                 // Ensure client doesn't fall even if server didn't send chunks yet
-                                player.velocity = glam::Vec3::ZERO;
+ player.velocity = glam::Vec3::ZERO;
                             }
-                        Packet::PlayerMove { id, x, y, z, ry } => { if let Some(p) = world.remote_players.iter_mut().find(|p| p.id == id) { p.position = glam::Vec3::new(x,y,z); p.rotation = ry; } else { world.remote_players.push(world::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); } },
+                        } // <-- This closes Packet::Handshake
+                        Packet::PlayerMove { id, x, y, z, ry } => {{ if let Some(p) = world.remote_players.iter_mut().find(|p| p.id == id) { p.position = glam::Vec3::new(x,y,z); p.rotation = ry; } else { world.remote_players.push(world::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); } },
                         Packet::BlockUpdate { pos, block } => { let c = world.place_block(pos, block); for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); } },
                         _ => {}
                     }
