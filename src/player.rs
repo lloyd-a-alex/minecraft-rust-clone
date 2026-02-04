@@ -273,7 +273,7 @@ impl Player {
     }
 
     // New: Checks full body box (for Step Assist safety)
-    fn check_full_collision(&self, world: &World, pos: Vec3) -> bool {
+fn check_full_collision(&self, world: &World, pos: Vec3) -> bool {
          let feet_y = pos.y - self.height / 2.0 + 0.05; 
          let head_y = pos.y + self.height / 2.0 - 0.05;
          let r = self.radius;
@@ -281,40 +281,6 @@ impl Player {
          let heights = [feet_y, pos.y, head_y];
          let corners = [(-r, -r), (r, r), (r, -r), (-r, r)];
          
-         for &h in &heights {
-             for &(dx, dz) in &corners {
-                 let bp = BlockPos { x: (pos.x + dx).floor() as i32, y: h.floor() as i32, z: (pos.z + dz).floor() as i32 };
-                 if world.get_block(bp).is_solid() { return true; }
-             }
-         }
-         false
-    }
-
-    fn check_ground(&self, world: &World, pos: Vec3) -> Option<f32> {
-        let feet_y = pos.y - self.height / 2.0;
-        let check_points = [(pos.x-self.radius, feet_y, pos.z-self.radius), (pos.x+self.radius, feet_y, pos.z+self.radius), (pos.x+self.radius, feet_y, pos.z-self.radius), (pos.x-self.radius, feet_y, pos.z+self.radius)];
-        for (x, y, z) in check_points {
-            let bp = BlockPos { x: x.floor() as i32, y: y.floor() as i32, z: z.floor() as i32 };
-            if world.get_block(bp).is_solid() { let top = bp.y as f32 + 1.0; if top - feet_y <= 0.6 { return Some(top + self.height / 2.0 + 0.001); } }
-        }
-        None
-    }
-    fn check_ceiling(&self, world: &World, pos: Vec3) -> Option<f32> {
-        let head_y = pos.y + self.height / 2.0;
-        let check_points = [(pos.x, head_y, pos.z)];
-        for (x, y, z) in check_points {
-            let bp = BlockPos { x: x.floor() as i32, y: y.floor() as i32, z: z.floor() as i32 };
-            if world.get_block(bp).is_solid() { return Some(bp.y as f32); }
-        }
-        None
-    }
-    fn check_collision_horizontal(&self, world: &World, pos: Vec3) -> bool {
-         let feet_y = pos.y - self.height / 2.0 + 0.1; 
-         let mid_y = pos.y; 
-         let head_y = pos.y + self.height / 2.0 - 0.1;
-         let r = self.radius;
-         let corners = [(-r, -r), (r, r), (r, -r), (-r, r)];
-         let heights = [feet_y, mid_y, head_y];
          for &h in &heights {
              for &(dx, dz) in &corners {
                  let bp = BlockPos { x: (pos.x + dx).floor() as i32, y: h.floor() as i32, z: (pos.z + dz).floor() as i32 };
