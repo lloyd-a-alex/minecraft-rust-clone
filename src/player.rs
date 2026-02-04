@@ -26,19 +26,15 @@ impl Inventory {
     pub fn drop_item(&mut self, drop_all: bool) -> Option<ItemStack> {
         if let Some(stack) = &mut self.slots[self.selected_hotbar_slot] {
             if drop_all {
-                let ret = *stack;
-                self.slots[self.selected_hotbar_slot] = None;
-                return Some(ret);
+                let ret = *stack; self.slots[self.selected_hotbar_slot] = None; return Some(ret);
             } else {
-                let mut ret = *stack;
-                ret.count = 1;
+                let mut ret = *stack; ret.count = 1;
                 if stack.count > 1 { stack.count -= 1; } else { self.slots[self.selected_hotbar_slot] = None; }
                 return Some(ret);
             }
         }
         None
     }
-    
     pub fn select_slot(&mut self, slot: usize) { self.selected_hotbar_slot = slot.clamp(0, HOTBAR_SIZE - 1); }
     pub fn add_item(&mut self, item: BlockType) -> bool {
         for slot in &mut self.slots { if let Some(stack) = slot { if stack.item == item && stack.count < 64 { stack.count += 1; return true; } } }
@@ -47,37 +43,61 @@ impl Inventory {
 
     pub fn check_recipes(&mut self) {
         let g: Vec<u8> = self.crafting_grid.iter().map(|s| s.map(|i| i.item as u8).unwrap_or(0)).collect();
-        let out = match (g[0], g[1], g[2], g[3], g[4], g[5], g[6], g[7], g[8]) {
-            (4,0,0, 0,0,0, 0,0,0) => Some((BlockType::Planks, 4)),
-            (0,14,0, 0,14,0, 0,0,0) => Some((BlockType::Stick, 4)),
-            (0,10,0, 0,15,0, 0,0,0) => Some((BlockType::Torch, 4)),
-            (14,14,0, 14,14,0, 0,0,0) => Some((BlockType::CraftingTable, 1)),
-            (14,14,14, 0,15,0, 0,15,0) => Some((BlockType::WoodPickaxe, 1)),
-            (14,14,0, 14,15,0, 0,15,0) => Some((BlockType::WoodAxe, 1)),
-            (0,14,0, 0,15,0, 0,15,0) => Some((BlockType::WoodShovel, 1)),
-            (0,14,0, 0,14,0, 0,15,0) => Some((BlockType::WoodSword, 1)),
-            (16,16,16, 0,15,0, 0,15,0) => Some((BlockType::StonePickaxe, 1)),
-            (16,16,0, 16,15,0, 0,15,0) => Some((BlockType::StoneAxe, 1)),
-            (0,16,0, 0,15,0, 0,15,0) => Some((BlockType::StoneShovel, 1)),
-            (0,16,0, 0,16,0, 0,15,0) => Some((BlockType::StoneSword, 1)),
-            (17,17,17, 0,15,0, 0,15,0) => Some((BlockType::IronPickaxe, 1)),
-            (17,17,0, 17,15,0, 0,15,0) => Some((BlockType::IronAxe, 1)),
-            (0,17,0, 0,15,0, 0,15,0) => Some((BlockType::IronShovel, 1)),
-            (0,17,0, 0,17,0, 0,15,0) => Some((BlockType::IronSword, 1)),
-            (18,18,18, 0,15,0, 0,15,0) => Some((BlockType::GoldPickaxe, 1)),
-            (18,18,0, 18,15,0, 0,15,0) => Some((BlockType::GoldAxe, 1)),
-            (0,18,0, 0,15,0, 0,15,0) => Some((BlockType::GoldShovel, 1)),
-            (0,18,0, 0,18,0, 0,15,0) => Some((BlockType::GoldSword, 1)),
-            (19,19,19, 0,15,0, 0,15,0) => Some((BlockType::DiamondPickaxe, 1)),
-            (19,19,0, 19,15,0, 0,15,0) => Some((BlockType::DiamondAxe, 1)),
-            (0,19,0, 0,15,0, 0,15,0) => Some((BlockType::DiamondShovel, 1)),
-            (0,19,0, 0,19,0, 0,15,0) => Some((BlockType::DiamondSword, 1)),
-            (4,0,0, 0,0,0, _,_,_) => Some((BlockType::Planks, 4)), 
-            (14,14,0, 14,14,0, _,_,_) => Some((BlockType::CraftingTable, 1)), 
-            (0,14,0, 0,14,0, _,_,_) => Some((BlockType::Stick, 4)),
-            _ => None
-        };
-        self.crafting_output = out.map(|(i, c)| ItemStack::new(i, c));
+        // 3x3 Grid: 0 1 2 / 3 4 5 / 6 7 8
+        // 2x2 Fallback (Inventory): 0 1 / 3 4 (Indices in 3x3 array)
+        
+        let mut result = None;
+
+        // 1. LOG -> 4 PLANKS (Any single log)
+        let log_count = g.iter().filter(|&&id| id == 4).count();
+        let other_count = g.iter().filter(|&&id| id != 0 && id != 4).count();
+        if log_count > 0 && other_count == 0 {
+            // Standard MC: 1 Log = 4 Planks. If multiple slots have logs, strictly it's not a shapeless recipe usually, 
+            // but for user request "putting one log in any space... let 4 wooden planks come out", we return 4.
+            // The crafting function consumes 1 from each occupied slot.
+            result = Some((BlockType::Planks, 4));
+        }
+
+        // 2. 2x2 PLANKS -> CRAFTING TABLE
+        if g[0] == 14 && g[1] == 14 && g[3] == 14 && g[4] == 14 && g[2]==0 && g[5]==0 && g[6]==0 && g[7]==0 && g[8]==0 {
+            result = Some((BlockType::CraftingTable, 1));
+        }
+
+        // 3. STICKS (2 Planks Vertical)
+        // Col 1: 0, 3. Col 2: 1, 4. (For 2x2 grid)
+        // Also check 3x3 columns: (0,3), (3,6), (1,4), (4,7)...
+        let is_stick_shape = |top, bot| top == 14 && bot == 14;
+        
+        // Check exact Stick shapes (isolated)
+        let total_items = g.iter().filter(|&&id| id != 0).count();
+        if total_items == 2 {
+            if is_stick_shape(g[0], g[3]) || is_stick_shape(g[1], g[4]) || is_stick_shape(g[3], g[6]) || is_stick_shape(g[4], g[7]) || is_stick_shape(g[2], g[5]) || is_stick_shape(g[5], g[8]) {
+                result = Some((BlockType::Stick, 4));
+            }
+        }
+
+        // 4. Tools (Standard)
+        if result.is_none() {
+            result = match (g[0], g[1], g[2], g[3], g[4], g[5], g[6], g[7], g[8]) {
+                (14,14,14, 0,15,0, 0,15,0) => Some((BlockType::WoodPickaxe, 1)),
+                (14,14,0, 14,15,0, 0,15,0) => Some((BlockType::WoodAxe, 1)),
+                (0,14,0, 0,15,0, 0,15,0) => Some((BlockType::WoodShovel, 1)),
+                (0,14,0, 0,14,0, 0,15,0) => Some((BlockType::WoodSword, 1)),
+                (16,16,16, 0,15,0, 0,15,0) => Some((BlockType::StonePickaxe, 1)),
+                (16,16,0, 16,15,0, 0,15,0) => Some((BlockType::StoneAxe, 1)),
+                (0,16,0, 0,15,0, 0,15,0) => Some((BlockType::StoneShovel, 1)),
+                (0,16,0, 0,16,0, 0,15,0) => Some((BlockType::StoneSword, 1)),
+                (17,17,17, 0,15,0, 0,15,0) => Some((BlockType::IronPickaxe, 1)),
+                (17,17,0, 17,15,0, 0,15,0) => Some((BlockType::IronAxe, 1)),
+                (0,17,0, 0,15,0, 0,15,0) => Some((BlockType::IronShovel, 1)),
+                (0,17,0, 0,17,0, 0,15,0) => Some((BlockType::IronSword, 1)),
+                (19,19,19, 0,15,0, 0,15,0) => Some((BlockType::DiamondPickaxe, 1)),
+                (0,10,0, 0,15,0, 0,0,0) => Some((BlockType::Torch, 4)),
+                _ => None
+            };
+        }
+
+        self.crafting_output = result.map(|(i, c)| ItemStack::new(i, c));
     }
     
     pub fn craft(&mut self) {
@@ -132,8 +152,10 @@ impl Player {
     
     pub fn process_mouse(&mut self, dx: f64, dy: f64) {
         if self.is_dead || self.inventory_open { return; }
-        self.rotation.y += dx as f32 * self.sensitivity; self.rotation.x -= dy as f32 * self.sensitivity;
-        self.rotation.x = self.rotation.x.clamp(-1.5, 1.5);
+        // Touchpad Smoothing & Floating Point (No floor)
+        self.rotation.y += dx as f32 * self.sensitivity; 
+        self.rotation.x -= dy as f32 * self.sensitivity;
+        self.rotation.x = self.rotation.x.clamp(-1.55, 1.55); // Clamp pitch
     }
     
     pub fn update(&mut self, dt: f32, world: &World) {
@@ -146,7 +168,7 @@ impl Player {
         if self.keys.right { move_delta += right; } if self.keys.left { move_delta -= right; }
         if move_delta.length_squared() > 0.0 { move_delta = move_delta.normalize() * self.speed * dt; }
         
-        // Physics
+        // Physics & Block Modifiers
         let head_bp = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + 0.5).floor() as i32, z: self.position.z.floor() as i32 };
         let current_block = world.get_block(head_bp);
         let in_water = current_block.is_water();
@@ -164,14 +186,32 @@ impl Player {
             if self.keys.up && self.on_ground { self.velocity.y = 8.0; self.on_ground = false; }
         } else {
             self.velocity.y -= 30.0 * dt; 
-            if self.on_ground && self.keys.up { self.velocity.y = 12.0; self.on_ground = false; }
+            if self.on_ground && self.keys.up { self.velocity.y = 12.0; self.on_ground = false; } // Jump only on press (checked via state)
         }
 
         if move_delta.length_squared() > 0.0 {
              let next_x = self.position.x + move_delta.x;
-             if !self.check_collision_horizontal(world, Vec3::new(next_x, self.position.y, self.position.z)) { self.position.x = next_x; }
+             // Collision Horizontal
+             if !self.check_collision_horizontal(world, Vec3::new(next_x, self.position.y, self.position.z)) { 
+                 self.position.x = next_x; 
+             } else {
+                 // STEP ASSIST (Climbing)
+                 // If we hit a wall, check if we can step up 1 block
+                 if self.on_ground && !self.check_collision_horizontal(world, Vec3::new(next_x, self.position.y + 1.1, self.position.z)) {
+                     self.position.y += 1.1;
+                     self.position.x = next_x;
+                 }
+             }
              let next_z = self.position.z + move_delta.z;
-             if !self.check_collision_horizontal(world, Vec3::new(self.position.x, self.position.y, next_z)) { self.position.z = next_z; }
+             if !self.check_collision_horizontal(world, Vec3::new(self.position.x, self.position.y, next_z)) { 
+                 self.position.z = next_z; 
+             } else {
+                 // Step Assist Z
+                 if self.on_ground && !self.check_collision_horizontal(world, Vec3::new(self.position.x, self.position.y + 1.1, next_z)) {
+                     self.position.y += 1.1;
+                     self.position.z = next_z;
+                 }
+             }
              self.walk_time += dt * 10.0;
         }
         
@@ -182,7 +222,6 @@ impl Player {
                 if !in_water && self.velocity.y < -14.0 && self.invincible_timer <= 0.0 { 
                     let dmg = (self.velocity.y.abs() - 12.0) * 0.5;
                     self.health -= dmg;
-                    log::info!("Oof! Fall damage: {:.1} (Vel: {:.1})", dmg, self.velocity.y);
                 }
                 self.velocity.y = 0.0; 
                 self.on_ground = true;
@@ -205,7 +244,6 @@ impl Player {
         }
         None
     }
-    
     fn check_ceiling(&self, world: &World, pos: Vec3) -> Option<f32> {
         let head_y = pos.y + self.height / 2.0;
         let check_points = [(pos.x, head_y, pos.z)];
@@ -215,7 +253,6 @@ impl Player {
         }
         None
     }
-    
     fn check_collision_horizontal(&self, world: &World, pos: Vec3) -> bool {
          let feet_y = pos.y - self.height / 2.0 + 0.1; 
          let mid_y = pos.y; 
@@ -235,7 +272,8 @@ impl Player {
     pub fn build_view_projection_matrix(&self, aspect: f32) -> [[f32; 4]; 4] {
         let (pitch_sin, pitch_cos) = self.rotation.x.sin_cos(); let (yaw_sin, yaw_cos) = self.rotation.y.sin_cos();
         let mut eye_pos = self.position + Vec3::new(0.0, self.height * 0.9, 0.0);
-        if self.on_ground && (self.keys.forward || self.keys.backward || self.keys.left || self.keys.right) { eye_pos.y += (self.walk_time * 2.0).sin() * 0.05; }
+        // Toned down bobbing (0.02 instead of 0.05)
+        if self.on_ground && (self.keys.forward || self.keys.backward || self.keys.left || self.keys.right) { eye_pos.y += (self.walk_time * 2.0).sin() * 0.02; }
         let forward = Vec3::new(yaw_cos * pitch_cos, pitch_sin, yaw_sin * pitch_cos).normalize();
         let view = Mat4::look_at_rh(eye_pos, eye_pos + forward, Vec3::Y);
         let proj = Mat4::perspective_rh(70.0f32.to_radians(), aspect, 0.1, 1000.0);

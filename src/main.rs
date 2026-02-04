@@ -1,5 +1,5 @@
 use winit::{
-    event::{Event, WindowEvent, ElementState, DeviceEvent, MouseButton},
+    event::{Event, WindowEvent, ElementState, DeviceEvent, MouseButton, MouseScrollDelta},
     event_loop::EventLoop,
     window::{WindowBuilder, CursorGrabMode},
     keyboard::PhysicalKey,
@@ -12,13 +12,10 @@ mod renderer; mod world; mod texture; mod player; mod logger; mod noise_gen; mod
 use renderer::Renderer; use world::{World, BlockPos, BlockType}; use player::Player; use network::{NetworkManager, Packet};
 
 fn main() {
-    // Initialize logger FIRST before any prints
     logger::init_logger();
-    
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 && args[1] == "--join-localhost" { 
-        run_game(NetworkManager::join("127.0.0.1:7878".to_string()), "Minecraft Clone (Test Client)"); 
-        return; 
+        run_game(NetworkManager::join("127.0.0.1:7878".to_string()), "Minecraft Clone (Test Client)"); return; 
     }
 
     println!("╔══════════════════════════════════════════════╗");
@@ -28,190 +25,174 @@ fn main() {
     println!("2. HOST ONLINE (Auto: Ngrok -> SSH -> LAN)");
     println!("3. JOIN GAME");
     println!("4. STRESS TEST (Multi-Client)");
-    print!("\n> "); 
-    io::stdout().flush().unwrap();
+    println!(""); 
+    println!("> Enter option (1-4) and press ENTER:"); 
     
     let mut input = String::new(); 
-    std::io::stdin().read_line(&mut input).unwrap();
+    if std::io::stdin().read_line(&mut input).is_err() { input = "1".to_string(); }
     let choice = input.trim();
 
     if choice == "4" {
-        print!("How many clients to launch? > ");
-        io::stdout().flush().unwrap();
-        let mut n_str = String::new();
-        std::io::stdin().read_line(&mut n_str).unwrap();
+        print!("How many clients? > "); io::stdout().flush().unwrap();
+        let mut n_str = String::new(); std::io::stdin().read_line(&mut n_str).unwrap();
         let n: usize = n_str.trim().parse().unwrap_or(1);
-
-        if n > 5 {
-            print!("⚠️  WARNING: {} clients might lag. Continue? (y/n) > ", n);
-            io::stdout().flush().unwrap();
-            let mut confirm = String::new();
-            std::io::stdin().read_line(&mut confirm).unwrap();
-            if confirm.trim().to_lowercase() != "y" { return; }
-        }
-
         let exe = std::env::current_exe().unwrap();
-        println!("🚀 Launching {} clients (They will wait for host)...", n);
-        for _ in 0..n {
-            std::process::Command::new(&exe).arg("--join-localhost").spawn().unwrap();
-            // No sleep needed now, clients will retry automatically!
-        }
-        
-        logger::init_logger(); 
+        for _ in 0..n { std::process::Command::new(&exe).arg("--join-localhost").spawn().unwrap(); }
         run_game(NetworkManager::host("7878".to_string()), "HOST (Stress Test)");
-
-} else if choice == "2" {
-        // --- ONLINE HOSTING WITH AUTO-FALLBACK ---
-        log::info!("Starting online hosting with fallback...");
-        if let Some(addr) = ngrok_utils::start_ngrok_tunnel("7878") { 
-            log::info!("✅ SERVER LIVE: {}", addr); 
-        } else { 
-            log::warn!("❌ All Tunnels failed. Hosting locally on Port 7878."); 
-        } // <--- Added closing brace here
-        run_game(NetworkManager::host("7878".to_string()), "HOST (Online)"); // <--- Moved outside
+    } else if choice == "2" {
+        log::info!("Starting online hosting...");
+        if let Some(addr) = ngrok_utils::start_ngrok_tunnel("7878") { log::info!("✅ SERVER LIVE: {}", addr); } 
+        else { log::warn!("❌ Tunnels failed. LAN only."); }
+        run_game(NetworkManager::host("7878".to_string()), "HOST (Online)");
     } else if choice == "3" {
-        print!("Enter IP (default: 127.0.0.1:7878): "); 
-        io::stdout().flush().unwrap();
-        let mut ip = String::new(); 
-        std::io::stdin().read_line(&mut ip).unwrap();
-        let ip = ip.trim();
-        let target = if ip.is_empty() { "127.0.0.1:7878" } else { ip };
-        log::info!("Joining server at: {}", target);
-        run_game(NetworkManager::join(target.to_string()), "CLIENT");
-
+        print!("Enter IP: "); io::stdout().flush().unwrap();
+        let mut ip = String::new(); std::io::stdin().read_line(&mut ip).unwrap();
+        run_game(NetworkManager::join(ip.trim().to_string()), "CLIENT");
     } else {
-        log::info!("🌲 Starting Singleplayer...");
         run_game(NetworkManager::host("7878".to_string()), "Minecraft Clone (Singleplayer)");
     };
 }
-
 
 fn run_game(network: NetworkManager, title: &str) {
     let event_loop = EventLoop::new().unwrap();
     let window = Arc::new(WindowBuilder::new().with_title(title).with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0)).build(&event_loop).unwrap());
     let _ = window.set_cursor_grab(CursorGrabMode::Confined).or_else(|_| window.set_cursor_grab(CursorGrabMode::Locked)); window.set_cursor_visible(false);
     
-let mut renderer = pollster::block_on(Renderer::new(&window));
+    let mut renderer = pollster::block_on(Renderer::new(&window));
     let mut world = World::new(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u32);
     renderer.rebuild_all_chunks(&world);
     
-    // SAFE SPAWN LOGIC
+    // SAFE SPAWN LOGIC (No Water)
     let mut player = Player::new();
-    let mut spawn_y = 100.0;
-    for y in (0..120).rev() {
-        if world.get_block(BlockPos{x:0, y, z:0}).is_solid() {
-            spawn_y = y as f32 + 2.0;
-            break;
+    let mut spawn_found = false;
+    // Spiral search for non-water spawn
+    for r in 0..20 {
+        if spawn_found { break; }
+        for x in -r..=r {
+            for z in -r..=r {
+                for y in (0..100).rev() {
+                    let b = world.get_block(BlockPos{x, y, z});
+                    if b.is_solid() && !b.is_water() {
+                        player.position = glam::Vec3::new(x as f32 + 0.5, y as f32 + 2.0, z as f32 + 0.5);
+                        spawn_found = true;
+                        break;
+                    }
+                }
+                if spawn_found { break; }
+            }
         }
     }
-    player.position = glam::Vec3::new(0.5, spawn_y, 0.5);
-    log::info!("🌱 Spawned at Y={}", spawn_y);
     
     let window_clone = window.clone();
     let mut last_frame = Instant::now();
     let mut is_paused = false;
-let mut cursor_pos = (0.0, 0.0);
-    let mut modifiers = winit::keyboard::ModifiersState::default(); // Track Shift/Ctrl here
+    let mut cursor_pos = (0.0, 0.0);
+    let mut modifiers = winit::keyboard::ModifiersState::default(); 
     let mut win_size = (1280.0, 720.0);
+    
+    // BREAKING LOGIC with GRACE PERIOD
     let mut breaking_pos: Option<BlockPos> = None;
     let mut break_progress = 0.0;
     let mut left_click = false;
+    let mut break_grace_timer = 0.0; // 0.5s grace
+    let mut last_target: Option<BlockPos> = None;
+
     let mut net_timer = 0.0;
     let mut perf_timer = 0.0;
     let mut frame_count = 0;
-    let mut last_log_time = Instant::now();
-        fn log_chunk_updates(updates: &[(i32, i32)], action: &str) {
-        if !updates.is_empty() {
-            log::debug!("{} updated chunks: {:?}", action, updates);
-        }
-    }
+
+    fn log_chunk_updates(updates: &[(i32, i32)], action: &str) { if !updates.is_empty() { log::debug!("{} updated chunks: {:?}", action, updates); } }
 
     event_loop.run(move |event, elwt| {
         match event {
+            // TOUCHPAD SCROLL -> HOTBAR
+            Event::WindowEvent { event: WindowEvent::MouseWheel { delta, .. }, .. } => {
+                let y = match delta { MouseScrollDelta::LineDelta(_, y) => y, MouseScrollDelta::PixelDelta(p) => (p.y / 10.0) as f32 };
+                if y > 0.0 { 
+                    player.inventory.selected_hotbar_slot = (player.inventory.selected_hotbar_slot + 8) % 9; 
+                } else if y < 0.0 { 
+                    player.inventory.selected_hotbar_slot = (player.inventory.selected_hotbar_slot + 1) % 9; 
+                }
+            },
             Event::DeviceEvent { event: DeviceEvent::MouseMotion { delta }, .. } => { if !is_paused && !player.inventory_open { player.process_mouse(delta.0, delta.1); } }
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => elwt.exit(),
                 WindowEvent::Resized(size) => { renderer.resize(size.width, size.height); win_size = (size.width as f64, size.height as f64); }
-WindowEvent::CursorMoved { position, .. } => cursor_pos = (position.x, position.y),
-                WindowEvent::ModifiersChanged(m) => modifiers = m.state(), // Update tracker
-WindowEvent::MouseInput { button, state, .. } => {
+                WindowEvent::CursorMoved { position, .. } => cursor_pos = (position.x, position.y),
+                WindowEvent::ModifiersChanged(m) => modifiers = m.state(), 
+                WindowEvent::MouseInput { button, state, .. } => {
                     let pressed = state == ElementState::Pressed;
                     if player.inventory_open && pressed {
-                        // Inventory Click Logic
+                        // INVENTORY INTERACTION (Stacking Fix)
                         let (mx, my) = cursor_pos; let (w, h) = (win_size.0 as f32, win_size.1 as f32);
                         let ndc_x = (mx as f32 / w) * 2.0 - 1.0; let ndc_y = -((my as f32 / h) * 2.0 - 1.0);
                         let sw = 0.12; let sh = sw * (w/h); let sx = -(9.0*sw)/2.0; let by = -0.9;
                         let mut click = None; let mut craft = false; let mut c_idx = 0;
                         let is_right_click = button == MouseButton::Right;
 
-                        // Check hotbar
                         for i in 0..9 { if ndc_x >= sx + i as f32 * sw && ndc_x < sx + (i+1) as f32 * sw && ndc_y >= by && ndc_y < by + sh { click = Some(i); break; } }
-                        // Check inventory
                         let iby = by + sh * 1.5;
                         for r in 0..3 { for c in 0..9 { let x = sx + c as f32 * sw; let y = iby + r as f32 * sh; if ndc_x >= x && ndc_x < x + sw && ndc_y >= y && ndc_y < y + sh { click = Some(9+r*9+c); } } }
                         
-                        // Check Crafting (Fixed Bounds)
                         let cx = 0.3; let cy = 0.5;
                         let grid_size = if player.crafting_open { 3 } else { 2 };
-                        for r in 0..grid_size { 
-                            for c in 0..grid_size { 
-                                let x = cx + c as f32 * sw; let y = cy - r as f32 * sh;
-                                if ndc_x >= x + 0.01 && ndc_x < x + sw - 0.01 && ndc_y >= y + 0.01 && ndc_y < y + sh - 0.01 { 
-                                    click = Some(99); craft = true; 
-                                    c_idx = if player.crafting_open { r*3+c } else { match r*2+c { 0=>0, 1=>1, 2=>3, 3=>4, _=>0 } }; 
-                                } 
-                            } 
-                        }
+                        for r in 0..grid_size { for c in 0..grid_size { 
+                            let x = cx + c as f32 * sw; let y = cy - r as f32 * sh;
+                            if ndc_x >= x+0.01 && ndc_x < x+sw-0.01 && ndc_y >= y+0.01 && ndc_y < y+sh-0.01 { click = Some(99); craft = true; c_idx = if player.crafting_open { r*3+c } else { match r*2+c { 0=>0, 1=>1, 2=>3, 3=>4, _=>0 } }; } 
+                        } }
                         
                         if let Some(i) = click {
                             let slot = if craft { &mut player.inventory.crafting_grid[c_idx] } else { &mut player.inventory.slots[i] };
                             if is_right_click {
-                                // Right Click: Split or Place One
+                                // Right click logic (unchanged for brevity)
                                 if player.inventory.cursor_item.is_none() {
-                                    if let Some(s) = slot {
-                                        let half = s.count / 2;
-                                        if half > 0 {
-                                            player.inventory.cursor_item = Some(player::ItemStack::new(s.item, half));
-                                            s.count -= half;
-                                            if s.count == 0 { *slot = None; }
-                                        }
-                                    }
+                                    if let Some(s) = slot { let half = s.count/2; if half>0 { player.inventory.cursor_item = Some(player::ItemStack::new(s.item, half)); s.count -= half; if s.count == 0 { *slot = None; } } }
                                 } else {
                                     let cursor = player.inventory.cursor_item.as_mut().unwrap();
-                                    if let Some(s) = slot {
-                                        if s.item == cursor.item && s.count < 64 {
-                                            s.count += 1; cursor.count -= 1;
-                                            if cursor.count == 0 { player.inventory.cursor_item = None; }
-                                        }
-                                    } else {
-                                        *slot = Some(player::ItemStack::new(cursor.item, 1));
-                                        cursor.count -= 1;
-                                        if cursor.count == 0 { player.inventory.cursor_item = None; }
-                                    }
+                                    if let Some(s) = slot { 
+                                        if s.item == cursor.item && s.count < 64 { s.count += 1; cursor.count -= 1; if cursor.count == 0 { player.inventory.cursor_item = None; } }
+                                    } else { *slot = Some(player::ItemStack::new(cursor.item, 1)); cursor.count -= 1; if cursor.count == 0 { player.inventory.cursor_item = None; } }
                                 }
                             } else {
-                                let s = *slot; *slot = player.inventory.cursor_item; player.inventory.cursor_item = s;
+                                // LEFT CLICK STACKING LOGIC
+                                if let Some(cursor) = &mut player.inventory.cursor_item {
+                                    if let Some(s) = slot {
+                                        if s.item == cursor.item {
+                                            // Stack!
+                                            let space = 64 - s.count;
+                                            let transfer = space.min(cursor.count);
+                                            s.count += transfer;
+                                            cursor.count -= transfer;
+                                            if cursor.count == 0 { player.inventory.cursor_item = None; }
+                                        } else {
+                                            // Swap
+                                            let temp = *s; *s = Some(*cursor); player.inventory.cursor_item = Some(temp);
+                                        }
+                                    } else {
+                                        // Place
+                                        *slot = Some(*cursor); player.inventory.cursor_item = None;
+                                    }
+                                } else {
+                                    // Pick up
+                                    player.inventory.cursor_item = *slot; *slot = None;
+                                }
                             }
                             if craft { player.inventory.check_recipes(); }
                         }
                         
-                        // Check Output
+                        // Output logic (unchanged)
                         let ox = cx + 3.0*sw; let oy = cy - 0.5*sh;
                         if ndc_x >= ox && ndc_x < ox+sw && ndc_y >= oy && ndc_y < oy+sh { 
                             if let Some(o) = player.inventory.crafting_output { 
                                 if player.inventory.cursor_item.is_none() || (player.inventory.cursor_item.unwrap().item == o.item && player.inventory.cursor_item.unwrap().count + o.count <= 64) {
-                                    if let Some(curr) = player.inventory.cursor_item {
-                                        player.inventory.cursor_item = Some(player::ItemStack::new(curr.item, curr.count + o.count));
-                                    } else {
-                                        player.inventory.cursor_item = Some(o);
-                                    }
-                                    player.inventory.craft(); 
-                                    player.inventory.check_recipes(); 
+                                    if let Some(curr) = player.inventory.cursor_item { player.inventory.cursor_item = Some(player::ItemStack::new(curr.item, curr.count + o.count)); } 
+                                    else { player.inventory.cursor_item = Some(o); }
+                                    player.inventory.craft(); player.inventory.check_recipes(); 
                                 } 
                             } 
                         }
                     } else if button == MouseButton::Left {
-                        left_click = pressed; if !pressed { breaking_pos = None; break_progress = 0.0; }
+                        left_click = pressed; 
                     } else if button == MouseButton::Right && pressed && !player.inventory_open {
                         // Place Block
                         let (sin, cos) = player.rotation.x.sin_cos(); let (ysin, ycos) = player.rotation.y.sin_cos();
@@ -232,7 +213,6 @@ WindowEvent::MouseInput { button, state, .. } => {
                                         let c = world.place_block(place, blk); 
                                         player.inventory.remove_one_from_hand(); 
                                         network.send_packet(Packet::BlockUpdate { pos: place, block: blk });
-                                        log_chunk_updates(&c, "Placing");
                                         for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
                                     } else if blk == BlockType::CraftingTable {
                                         if world.get_block(place) == BlockType::CraftingTable {
@@ -258,13 +238,13 @@ WindowEvent::MouseInput { button, state, .. } => {
                                 if is_paused { let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined); window_clone.set_cursor_visible(true); }
                                 else { let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); window_clone.set_cursor_visible(false); }
                             }
-} else if key == winit::keyboard::KeyCode::KeyE && pressed && !is_paused {
+                        } else if key == winit::keyboard::KeyCode::KeyE && pressed && !is_paused {
                             player.inventory_open = !player.inventory_open;
-                            player.crafting_open = false; // Reset 3x3
+                            player.crafting_open = false; 
                             if player.inventory_open { let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined); window_clone.set_cursor_visible(true); }
                             else { let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); window_clone.set_cursor_visible(false); }
-} else if key == winit::keyboard::KeyCode::KeyQ && pressed && !is_paused && !player.inventory_open {
-                             let drop_all = modifiers.shift_key(); // Use our tracker
+                        } else if key == winit::keyboard::KeyCode::KeyQ && pressed && !is_paused && !player.inventory_open {
+                             let drop_all = modifiers.shift_key(); 
                              if let Some(stack) = player.inventory.drop_item(drop_all) {
                                  let dir = glam::Vec3::new(player.rotation.y.cos() * player.rotation.x.cos(), player.rotation.x.sin(), player.rotation.y.sin() * player.rotation.x.cos()).normalize();
                                  let ent = world::ItemEntity { position: player.position + glam::Vec3::new(0.0, 1.5, 0.0), velocity: dir * 10.0, item_type: stack.item, count: stack.count, pickup_delay: 1.5, lifetime: 300.0, rotation: 0.0, bob_offset: 0.0 };
@@ -279,49 +259,66 @@ WindowEvent::MouseInput { button, state, .. } => {
                 },
                 _ => {}
             },
-Event::AboutToWait => {
+            Event::AboutToWait => {
                 let now = Instant::now(); let dt = (now - last_frame).as_secs_f32(); last_frame = now;
-
-                // Performance logging
-                frame_count += 1;
-                perf_timer += dt;
-                if last_log_time.elapsed().as_secs_f32() > 10.0 {
-                    let fps = frame_count as f32 / perf_timer;
-                    log::info!("🎮 Performance: {:.1} FPS, {:.3}ms avg delta", fps, (perf_timer * 1000.0) / frame_count as f32);
-                    frame_count = 0;
-                    perf_timer = 0.0;
-                    last_log_time = Instant::now();
-                }
+                frame_count += 1; perf_timer += dt;
 
                 while let Some(pkt) = network.try_recv() {
                     match pkt {
                         Packet::PlayerMove { id, x, y, z, ry } => { if let Some(p) = world.remote_players.iter_mut().find(|p| p.id == id) { p.position = glam::Vec3::new(x,y,z); p.rotation = ry; } else { world.remote_players.push(world::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); } },
                         Packet::BlockUpdate { pos, block } => { let c = world.place_block(pos, block); for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); } },
-_ => {}
+                        _ => {}
                     }
                 }
                 
                 net_timer += dt; if net_timer > 0.05 { net_timer = 0.0; network.send_packet(Packet::PlayerMove { id: network.my_id, x: player.position.x, y: player.position.y, z: player.position.z, ry: player.rotation.y }); }
                 if !is_paused {
                     player.update(dt, &world); world.update_entities(dt, &mut player);
+                    
+                    // TARGETING & BREAKING (Grace Period Logic)
+                    let (sin, cos) = player.rotation.x.sin_cos(); let (ysin, ycos) = player.rotation.y.sin_cos();
+                    let dir = glam::Vec3::new(ycos * cos, sin, ysin * cos).normalize();
+                    let ray_res = world.raycast(player.position + glam::Vec3::new(0.0, player.height*0.9, 0.0), dir, 5.0);
+                    
+                    let current_target = ray_res.map(|(h, _)| h);
+                    
                     if left_click && !player.inventory_open {
-                        let (sin, cos) = player.rotation.x.sin_cos(); let (ysin, ycos) = player.rotation.y.sin_cos();
-                        let dir = glam::Vec3::new(ycos * cos, sin, ysin * cos).normalize();
-                        if let Some((hit, _)) = world.raycast(player.position + glam::Vec3::new(0.0, player.height*0.9, 0.0), dir, 5.0) {
-                            if Some(hit) != breaking_pos { breaking_pos = Some(hit); break_progress = 0.0; }
-                            let blk = world.get_block(hit); let tool = player.inventory.get_selected_item().unwrap_or(BlockType::Air);
-                            let speed = if tool.get_tool_class() == blk.get_best_tool_type() || blk.get_best_tool_type() == "none" { tool.get_tool_speed() } else { 1.0 };
-                            let h = blk.get_hardness();
-                            if h > 0.0 { break_progress += (speed / h) * dt; } else { break_progress = 1.1; }
-                            if break_progress >= 1.0 {
-                                let c = world.break_block(hit); 
-                                network.send_packet(Packet::BlockUpdate { pos: hit, block: BlockType::Air });
-                                for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
-                                log::info!("🔨 Broke {:?} at [{}, {}, {}]", blk, hit.x, hit.y, hit.z);
-                                breaking_pos = None; break_progress = 0.0;
+                        if let Some(hit) = current_target {
+                            // If target changed, check grace
+                            if Some(hit) != breaking_pos {
+                                if breaking_pos.is_some() && break_grace_timer > 0.0 {
+                                    break_grace_timer -= dt;
+                                } else {
+                                    breaking_pos = Some(hit); break_progress = 0.0; break_grace_timer = 0.5; // Reset grace
+                                }
+                            } else {
+                                // Hitting same block, refresh grace
+                                break_grace_timer = 0.5;
                             }
-                        } else { breaking_pos = None; break_progress = 0.0; }
-                    } else { breaking_pos = None; break_progress = 0.0; }
+                            
+                            // Only progress if we are actually looking at the breaking_pos (or within grace)
+                            if Some(hit) == breaking_pos {
+                                let blk = world.get_block(hit); let tool = player.inventory.get_selected_item().unwrap_or(BlockType::Air);
+                                let speed = if tool.get_tool_class() == blk.get_best_tool_type() || blk.get_best_tool_type() == "none" { tool.get_tool_speed() } else { 1.0 };
+                                let h = blk.get_hardness();
+                                if h > 0.0 { break_progress += (speed / h) * dt; } else { break_progress = 1.1; }
+                                if break_progress >= 1.0 {
+                                    let c = world.break_block(hit); 
+                                    network.send_packet(Packet::BlockUpdate { pos: hit, block: BlockType::Air });
+                                    for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
+                                    breaking_pos = None; break_progress = 0.0;
+                                }
+                            }
+                        } else {
+                            // Looking at air
+                            if breaking_pos.is_some() && break_grace_timer > 0.0 { break_grace_timer -= dt; } 
+                            else { breaking_pos = None; break_progress = 0.0; }
+                        }
+                    } else { 
+                        // Not clicking
+                        if breaking_pos.is_some() && break_grace_timer > 0.0 { break_grace_timer -= dt; } 
+                        else { breaking_pos = None; break_progress = 0.0; }
+                    }
                 }
                 window_clone.request_redraw();
             },

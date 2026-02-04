@@ -22,57 +22,83 @@ pub const WATER_LEVEL: i32 = 20;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BlockPos { pub x: i32, pub y: i32, pub z: i32 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BlockType {
-    Air = 0, Grass = 1, Dirt = 2, Stone = 3, Wood = 4, Leaves = 5, Snow = 6, Sand = 7, Bedrock = 8,
-    Water = 9, Water7 = 10, Water6 = 11, Water5 = 12, Water4 = 13, Water3 = 14, Water2 = 15, Water1 = 16,
-    Torch = 20, Cobblestone = 21, Planks = 22,
-    CoalOre = 30, IronOre = 31, GoldOre = 32, DiamondOre = 33,
-    Stick = 40, Coal = 41, IronIngot = 42, GoldIngot = 43, Diamond = 44,
-    WoodPickaxe = 50, WoodAxe = 51, WoodShovel = 52, WoodSword = 53,
-    StonePickaxe = 60, StoneAxe = 61, StoneShovel = 62, StoneSword = 63,
-    IronPickaxe = 70, IronAxe = 71, IronShovel = 72, IronSword = 73,
-    GoldPickaxe = 80, GoldAxe = 81, GoldShovel = 82, GoldSword = 83,
-DiamondPickaxe = 90, DiamondAxe = 91, DiamondShovel = 92, DiamondSword = 93,
+    Air = 0, Grass = 1, Dirt = 2, Stone = 3, Wood = 4, Leaves = 5, Snow = 6, Sand = 7, Bedrock = 8, Water = 9,
+    CoalOre = 10, IronOre = 11, GoldOre = 12, DiamondOre = 13,
+    Planks = 14, Stick = 15, Cobblestone = 16, IronIngot = 17, GoldIngot = 18, Diamond = 19, Torch = 20,
+    WoodPickaxe = 21, StonePickaxe = 22, IronPickaxe = 23, GoldPickaxe = 24, DiamondPickaxe = 25,
+    WoodAxe = 26, StoneAxe = 27, IronAxe = 28, GoldAxe = 29, DiamondAxe = 30,
+    WoodShovel = 31, StoneShovel = 32, IronShovel = 33, GoldShovel = 34, DiamondShovel = 35,
+    WoodSword = 36, StoneSword = 37, IronSword = 38, GoldSword = 39, DiamondSword = 40,
     CraftingTable = 100, Furnace = 101,
 }
 
 impl BlockType {
-    pub fn is_solid(&self) -> bool { 
-        match self {
-            BlockType::Air | BlockType::Water | BlockType::Water7 | BlockType::Water6 | 
-            BlockType::Water5 | BlockType::Water4 | BlockType::Water3 | BlockType::Water2 | 
-            BlockType::Water1 | BlockType::Torch => false,
-            _ => !self.is_tool() && !self.is_item()
-        }
+    pub fn is_solid(&self) -> bool {
+        !matches!(self, BlockType::Air | BlockType::Water | BlockType::Torch | BlockType::Stick | BlockType::IronIngot | BlockType::GoldIngot | BlockType::Diamond) && !self.is_tool()
     }
-    pub fn is_transparent(&self) -> bool { matches!(self, BlockType::Air | BlockType::Leaves | BlockType::Torch) || self.is_water() }
-    pub fn is_water(&self) -> bool { matches!(self, BlockType::Water | BlockType::Water7 | BlockType::Water6 | BlockType::Water5 | BlockType::Water4 | BlockType::Water3 | BlockType::Water2 | BlockType::Water1) }
-    pub fn is_tool(&self) -> bool { let s = *self as u8; s >= BlockType::WoodPickaxe as u8 && s <= BlockType::DiamondSword as u8 }
-    pub fn is_item(&self) -> bool { matches!(self, BlockType::Stick | BlockType::Coal | BlockType::IronIngot | BlockType::GoldIngot | BlockType::Diamond) }
-    pub fn get_hardness(&self) -> f32 { match self { BlockType::Bedrock => 999.0, BlockType::Stone | BlockType::Cobblestone | BlockType::CoalOre | BlockType::IronOre | BlockType::GoldOre | BlockType::DiamondOre => 3.0, BlockType::Wood | BlockType::Planks => 2.0, BlockType::Dirt | BlockType::Grass | BlockType::Sand => 0.6, BlockType::Leaves | BlockType::Torch => 0.2, _ => 0.0 } }
-    pub fn get_best_tool_type(&self) -> &'static str { match self { BlockType::Stone | BlockType::Cobblestone | BlockType::CoalOre | BlockType::IronOre => "pickaxe", BlockType::Wood | BlockType::Planks => "axe", BlockType::Dirt | BlockType::Grass | BlockType::Sand => "shovel", _ => "none" } }
-    pub fn get_water_level(&self) -> u8 { match self { BlockType::Water => 8, BlockType::Water7 => 7, BlockType::Water6 => 6, BlockType::Water5 => 5, BlockType::Water4 => 4, BlockType::Water3 => 3, BlockType::Water2 => 2, BlockType::Water1 => 1, _ => 0 } }
+    pub fn is_water(&self) -> bool { matches!(self, BlockType::Water) }
+    pub fn is_tool(&self) -> bool { (*self as u8) >= 21 && (*self as u8) <= 40 }
+    pub fn is_item(&self) -> bool { matches!(self, BlockType::Stick | BlockType::IronIngot | BlockType::GoldIngot | BlockType::Diamond) }
     
     pub fn get_texture_indices(&self) -> (u32, u32, u32) {
-        if self.is_water() { return (9, 9, 9); }
         match self {
-            BlockType::Grass => (1, 2, 1), BlockType::Dirt => (2, 2, 2), BlockType::Stone => (3, 3, 3),
-            BlockType::Wood => (4, 4, 4), BlockType::Leaves => (5, 5, 5), BlockType::Snow => (6, 6, 2),
-            BlockType::Sand => (7, 7, 7), BlockType::Bedrock => (8, 8, 8), BlockType::Torch => (24, 24, 24),
-            BlockType::Cobblestone => (14, 14, 14), BlockType::Planks => (15, 15, 15),
-            BlockType::CoalOre => (17, 17, 17), BlockType::IronOre => (18, 18, 18), BlockType::GoldOre => (19, 19, 19), BlockType::DiamondOre => (20, 20, 20),
-            BlockType::Stick => (40, 40, 40), BlockType::Coal => (41, 41, 41), BlockType::IronIngot => (42, 42, 42), BlockType::GoldIngot => (43, 43, 43), BlockType::Diamond => (44, 44, 44),
-            BlockType::WoodPickaxe => (50, 50, 50), BlockType::WoodAxe => (51, 51, 51), BlockType::WoodShovel => (52, 52, 52), BlockType::WoodSword => (53, 53, 53),
-            BlockType::StonePickaxe => (60, 60, 60), BlockType::StoneAxe => (61, 61, 61), BlockType::StoneShovel => (62, 62, 62), BlockType::StoneSword => (63, 63, 63),
-BlockType::IronPickaxe => (70, 70, 70), BlockType::IronAxe => (71, 71, 71), BlockType::IronShovel => (72, 72, 72), BlockType::IronSword => (73, 73, 73),
-            BlockType::CraftingTable => (14, 14, 14), // Use planks texture for now, or add custom index if you have one
+            BlockType::Grass => (0, 2, 1), BlockType::Dirt => (2, 2, 2), BlockType::Stone => (3, 3, 3),
+            BlockType::Wood => (4, 4, 4), BlockType::Leaves => (5, 5, 5), BlockType::Snow => (6, 6, 6),
+            BlockType::Sand => (7, 7, 7), BlockType::Bedrock => (8, 8, 8), BlockType::Water => (9, 9, 9),
+            BlockType::CoalOre => (10, 10, 10), BlockType::IronOre => (11, 11, 11), BlockType::GoldOre => (12, 12, 12), BlockType::DiamondOre => (13, 13, 13),
+            BlockType::Planks => (14, 14, 14), BlockType::Stick => (15, 15, 15), BlockType::Cobblestone => (16, 16, 16),
+            BlockType::Torch => (20, 20, 20), BlockType::CraftingTable => (21, 21, 14), // Top=21, Side=21, Bottom=14
+            t if t.is_tool() => { let i = *t as u32; (i, i, i) }
             _ => (0, 0, 0),
         }
     }
-    pub fn get_tool_speed(&self) -> f32 { match self { BlockType::WoodPickaxe | BlockType::WoodAxe | BlockType::WoodShovel => 2.0, BlockType::StonePickaxe | BlockType::StoneAxe => 4.0, BlockType::IronPickaxe | BlockType::IronAxe => 6.0, BlockType::DiamondPickaxe => 8.0, _ => 1.0 } }
-    pub fn get_tool_class(&self) -> &'static str { match self { t if format!("{:?}", t).contains("Pickaxe") => "pickaxe", t if format!("{:?}", t).contains("Axe") => "axe", t if format!("{:?}", t).contains("Shovel") => "shovel", _ => "hand" } }
+
+    pub fn get_display_name(&self) -> &str {
+        match self {
+            BlockType::Air => "Air", BlockType::Grass => "Grass", BlockType::Dirt => "Dirt",
+            BlockType::Stone => "Stone", BlockType::Wood => "Log", BlockType::Leaves => "Leaves",
+            BlockType::Snow => "Snow", BlockType::Sand => "Sand", BlockType::Bedrock => "Bedrock",
+            BlockType::Water => "Water", BlockType::CoalOre => "Coal Ore", BlockType::IronOre => "Iron Ore",
+            BlockType::GoldOre => "Gold Ore", BlockType::DiamondOre => "Diamond Ore",
+            BlockType::Planks => "Wooden Plank", BlockType::Stick => "Stick", BlockType::Cobblestone => "Cobblestone",
+            BlockType::IronIngot => "Iron Ingot", BlockType::GoldIngot => "Gold Ingot", BlockType::Diamond => "Diamond",
+            BlockType::Torch => "Torch", BlockType::CraftingTable => "Crafting Table", BlockType::Furnace => "Furnace",
+            t if t.is_tool() => "Tool", // Simplified, can expand
+            _ => "Unknown Block"
+        }
+    }
+
+    pub fn get_hardness(&self) -> f32 {
+        match self {
+            BlockType::Bedrock | BlockType::Water | BlockType::Air => -1.0,
+            BlockType::Leaves => 0.2, BlockType::Sand | BlockType::Dirt | BlockType::Grass => 0.5,
+            BlockType::Wood | BlockType::Planks | BlockType::CraftingTable => 2.0,
+            BlockType::Stone | BlockType::Cobblestone | BlockType::CoalOre => 3.0,
+            BlockType::IronOre | BlockType::GoldOre | BlockType::DiamondOre => 4.5,
+            _ => 1.0,
+        }
+    }
+    
+    pub fn get_best_tool_type(&self) -> &'static str {
+        match self {
+            BlockType::Stone | BlockType::Cobblestone | BlockType::CoalOre | BlockType::IronOre | BlockType::GoldOre | BlockType::DiamondOre | BlockType::Furnace => "pickaxe",
+            BlockType::Dirt | BlockType::Grass | BlockType::Sand | BlockType::Snow => "shovel",
+            BlockType::Wood | BlockType::Planks | BlockType::CraftingTable | BlockType::Leaves => "axe",
+            _ => "none",
+        }
+    }
+    
+    pub fn get_tool_class(&self) -> &'static str {
+        let u = *self as u8;
+        if u >= 21 && u <= 25 { "pickaxe" } else if u >= 26 && u <= 30 { "axe" } else if u >= 31 && u <= 35 { "shovel" } else if u >= 36 && u <= 40 { "sword" } else { "none" }
+    }
+    
+    pub fn get_tool_speed(&self) -> f32 {
+        let u = *self as u8;
+        if u % 5 == 1 { 2.0 } else if u % 5 == 2 { 4.0 } else if u % 5 == 3 { 6.0 } else if u % 5 == 4 { 8.0 } else if u % 5 == 0 { 10.0 } else { 1.0 }
+    }
 }
 
 pub struct Chunk { pub blocks: Box<[[[BlockType; CHUNK_SIZE_Z]; CHUNK_SIZE_Y]; CHUNK_SIZE_X]> }

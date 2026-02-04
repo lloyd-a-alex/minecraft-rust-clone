@@ -185,7 +185,7 @@ pub fn render(&mut self, player: &Player, world: &World, is_paused: bool, cursor
         }
         for e in &world.entities {
             let (t, _, _) = e.item_type.get_texture_indices();
-            let rot = time * 1.5 + e.bob_offset; let by = ((time * 4.0 + e.bob_offset).sin() * 0.12) + 0.12;
+            let rot = time * 1.5 + e.bob_offset; let by = ((time * 4.0 + e.bob_offset).sin() * 0.05) + 0.12; // Toned down shake
             for f in 0..6 { self.add_rotated_quad(&mut ent_v, &mut ent_i, &mut ent_off, [e.position.x, e.position.y+by, e.position.z], rot, -0.125, -0.125, -0.125, 0.25, f, t); }
         }
         if !ent_v.is_empty() {
@@ -279,7 +279,7 @@ pub fn render(&mut self, player: &Player, world: &World, is_paused: bool, cursor
                     let x = sx + (i as f32 * sw); 
                     if ndc_x >= x && ndc_x < x+sw && ndc_y >= by && ndc_y < by+sh {
                         if let Some(s) = &player.inventory.slots[i] {
-                            self.draw_text(&format!("{:?}", s.item), ndc_x + 0.02, ndc_y - 0.02, 0.025, &mut uv, &mut ui, &mut uoff);
+                            self.draw_text(s.item.get_display_name(), ndc_x + 0.02, ndc_y - 0.02, 0.025, &mut uv, &mut ui, &mut uoff);
                         }
                     }
                 }

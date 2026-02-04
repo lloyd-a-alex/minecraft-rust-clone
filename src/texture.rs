@@ -25,6 +25,24 @@ impl TextureAtlas {
         Self::generate_snow(&mut data, block_size, atlas_width, 6);
         Self::generate_sand(&mut data, block_size, atlas_width, 7);
         Self::generate_bedrock(&mut data, block_size, atlas_width, 8);
+
+// --- TOOLS & ITEMS (Existing code...) ---
+        
+        // 100. CRAFTING TABLE (Index 21)
+        let idx = 21;
+        for y in 0..block_size {
+            for x in 0..block_size {
+                let i = ((idx / grid_width_in_blocks) * block_size + y) * atlas_width + ((idx % grid_width_in_blocks) * block_size + x);
+                let pixel_idx = (i * 4) as usize;
+                // Grid pattern for crafting table
+                let border = x == 0 || x == block_size-1 || y == 0 || y == block_size-1 || x == block_size/2 || y == block_size/2;
+                if border {
+                    data[pixel_idx] = 60; data[pixel_idx+1] = 40; data[pixel_idx+2] = 10; data[pixel_idx+3] = 255;
+                } else {
+                    data[pixel_idx] = 160; data[pixel_idx+1] = 110; data[pixel_idx+2] = 60; data[pixel_idx+3] = 255;
+                }
+            }
+        }
         Self::generate_water(&mut data, block_size, atlas_width, 9);
 
         // --- NEW BLOCKS ---
