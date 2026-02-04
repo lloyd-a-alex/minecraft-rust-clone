@@ -34,7 +34,7 @@ pub enum BlockType {
     StonePickaxe = 60, StoneAxe = 61, StoneShovel = 62, StoneSword = 63,
     IronPickaxe = 70, IronAxe = 71, IronShovel = 72, IronSword = 73,
     GoldPickaxe = 80, GoldAxe = 81, GoldShovel = 82, GoldSword = 83,
-    DiamondPickaxe = 90, DiamondAxe = 91, DiamondShovel = 92, DiamondSword = 93,
+DiamondPickaxe = 90, DiamondAxe = 91, DiamondShovel = 92, DiamondSword = 93,
     CraftingTable = 100, Furnace = 101,
 }
 
@@ -66,7 +66,8 @@ impl BlockType {
             BlockType::Stick => (40, 40, 40), BlockType::Coal => (41, 41, 41), BlockType::IronIngot => (42, 42, 42), BlockType::GoldIngot => (43, 43, 43), BlockType::Diamond => (44, 44, 44),
             BlockType::WoodPickaxe => (50, 50, 50), BlockType::WoodAxe => (51, 51, 51), BlockType::WoodShovel => (52, 52, 52), BlockType::WoodSword => (53, 53, 53),
             BlockType::StonePickaxe => (60, 60, 60), BlockType::StoneAxe => (61, 61, 61), BlockType::StoneShovel => (62, 62, 62), BlockType::StoneSword => (63, 63, 63),
-            BlockType::IronPickaxe => (70, 70, 70), BlockType::IronAxe => (71, 71, 71), BlockType::IronShovel => (72, 72, 72), BlockType::IronSword => (73, 73, 73),
+BlockType::IronPickaxe => (70, 70, 70), BlockType::IronAxe => (71, 71, 71), BlockType::IronShovel => (72, 72, 72), BlockType::IronSword => (73, 73, 73),
+            BlockType::CraftingTable => (14, 14, 14), // Use planks texture for now, or add custom index if you have one
             _ => (0, 0, 0),
         }
     }
@@ -193,6 +194,17 @@ impl World {
         }
         None
     }
+    pub fn get_affected_chunks(&self, pos: BlockPos) -> Vec<(i32, i32)> {
+        let cx = pos.x.div_euclid(CHUNK_SIZE_X as i32);
+        let cz = pos.z.div_euclid(CHUNK_SIZE_Z as i32);
+        let lx = pos.x.rem_euclid(CHUNK_SIZE_X as i32);
+        let lz = pos.z.rem_euclid(CHUNK_SIZE_Z as i32);
+        let mut u = vec![(cx, cz)];
+        if lx == 0 { u.push((cx - 1, cz)); } else if lx == 15 { u.push((cx + 1, cz)); }
+        if lz == 0 { u.push((cx, cz - 1)); } else if lz == 15 { u.push((cx, cz + 1)); }
+        u
+    }
+
     pub fn break_block(&mut self, pos: BlockPos) -> Vec<(i32, i32)> {
         let block_type = self.get_block(pos);
         if block_type != BlockType::Air && block_type != BlockType::Bedrock && !block_type.is_water() {
@@ -201,10 +213,17 @@ impl World {
              let drop_item = match block_type { BlockType::Stone => BlockType::Cobblestone, BlockType::CoalOre => BlockType::Coal, BlockType::IronOre => BlockType::IronOre, BlockType::DiamondOre => BlockType::Diamond, BlockType::Grass => BlockType::Dirt, _ => block_type };
              self.entities.push(ItemEntity { position: Vec3::new(pos.x as f32 + 0.5, pos.y as f32 + 0.5, pos.z as f32 + 0.5), velocity, item_type: drop_item, count: 1, pickup_delay: 1.0, lifetime: 300.0, rotation: 0.0, bob_offset: rng.next_f32() * 10.0 });
         }
-        self.set_block_world(pos, BlockType::Air);
-        self.trigger_water_update(pos)
+self.set_block_world(pos, BlockType::Air);
+        let mut c = self.trigger_water_update(pos);
+        c.extend(self.get_affected_chunks(pos));
+        c.sort(); c.dedup(); c
     }
-    pub fn place_block(&mut self, pos: BlockPos, block: BlockType) -> Vec<(i32, i32)> { self.set_block_world(pos, block); self.trigger_water_update(pos) }
+    pub fn place_block(&mut self, pos: BlockPos, block: BlockType) -> Vec<(i32, i32)> { 
+        self.set_block_world(pos, block); 
+        let mut c = self.trigger_water_update(pos);
+        c.extend(self.get_affected_chunks(pos));
+        c.sort(); c.dedup(); c
+    }
     fn trigger_water_update(&mut self, start_pos: BlockPos) -> Vec<(i32, i32)> {
         let mut updates = Vec::new();
         let cx = start_pos.x.div_euclid(CHUNK_SIZE_X as i32); let cz = start_pos.z.div_euclid(CHUNK_SIZE_Z as i32);

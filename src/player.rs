@@ -14,35 +14,99 @@ pub struct Inventory {
     pub slots: [Option<ItemStack>; INVENTORY_SIZE],
     pub selected_hotbar_slot: usize,
     pub cursor_item: Option<ItemStack>, 
-    pub crafting_grid: [Option<ItemStack>; 4],
+    pub crafting_grid: Vec<Option<ItemStack>>, // Changed to Vec for 3x3 support
     pub crafting_output: Option<ItemStack>,
 }
 #[allow(dead_code)]
 impl Inventory {
-    pub fn new() -> Self { Inventory { slots: [None; INVENTORY_SIZE], selected_hotbar_slot: 0, cursor_item: None, crafting_grid: [None; 4], crafting_output: None } }
+    pub fn new() -> Self { Inventory { slots: [None; INVENTORY_SIZE], selected_hotbar_slot: 0, cursor_item: None, crafting_grid: vec![None; 9], crafting_output: None } }
     pub fn get_selected_item(&self) -> Option<BlockType> { self.slots[self.selected_hotbar_slot].map(|stack| stack.item) }
     pub fn remove_one_from_hand(&mut self) { if let Some(stack) = &mut self.slots[self.selected_hotbar_slot] { if stack.count > 1 { stack.count -= 1; } else { self.slots[self.selected_hotbar_slot] = None; } } }
-    pub fn drop_item(&mut self, drop_stack: bool) -> Option<ItemStack> {
+pub fn drop_item(&mut self, drop_all: bool) -> Option<ItemStack> {
         if let Some(stack) = &mut self.slots[self.selected_hotbar_slot] {
-            if drop_stack { let ret = *stack; self.slots[self.selected_hotbar_slot] = None; return Some(ret); } 
-            else { let ret = ItemStack::new(stack.item, 1); if stack.count > 1 { stack.count -= 1; } else { self.slots[self.selected_hotbar_slot] = None; } return Some(ret); }
-        } None
+            if drop_all {
+                let ret = *stack;
+                self.slots[self.selected_hotbar_slot] = None;
+                return Some(ret);
+            } else {
+                let mut ret = *stack;
+                ret.count = 1;
+                if stack.count > 1 { stack.count -= 1; } else { self.slots[self.selected_hotbar_slot] = None; }
+                return Some(ret);
+            }
+        }
+        None
     }
     pub fn select_slot(&mut self, slot: usize) { self.selected_hotbar_slot = slot.clamp(0, HOTBAR_SIZE - 1); }
     pub fn add_item(&mut self, item: BlockType) -> bool {
         for slot in &mut self.slots { if let Some(stack) = slot { if stack.item == item && stack.count < 64 { stack.count += 1; return true; } } }
         for slot in &mut self.slots { if slot.is_none() { *slot = Some(ItemStack::new(item, 1)); return true; } } false 
     }
-    pub fn check_recipes(&mut self) {
-        let grid = &self.crafting_grid;
-        let i0 = grid[0].map(|s| s.item); let i1 = grid[1].map(|s| s.item); let i2 = grid[2].map(|s| s.item); let i3 = grid[3].map(|s| s.item);
-        if matches!(i0, Some(BlockType::Wood)) && i1.is_none() && i2.is_none() && i3.is_none() { self.crafting_output = Some(ItemStack::new(BlockType::Planks, 4)); return; }
-        if matches!(i0, Some(BlockType::Planks)) && matches!(i2, Some(BlockType::Planks)) && i1.is_none() && i3.is_none() { self.crafting_output = Some(ItemStack::new(BlockType::Stick, 4)); return; }
-        // Simple Crafting logic extension...
-        self.crafting_output = None;
+pub fn check_recipes(&mut self) {
+        // Map grid to simple ID array for matching
+        let g: Vec<u8> = self.crafting_grid.iter().map(|s| s.map(|i| i.item as u8).unwrap_or(0)).collect();
+        // 3x3 Grid Indices:
+        // 0 1 2
+        // 3 4 5
+        // 6 7 8
+        
+        let out = match (g[0], g[1], g[2], g[3], g[4], g[5], g[6], g[7], g[8]) {
+            // -- BASICS --
+            (4,0,0, 0,0,0, 0,0,0) => Some((BlockType::Planks, 4)), // Wood -> 4 Planks
+            (0,14,0, 0,14,0, 0,0,0) => Some((BlockType::Stick, 4)), // 2 Planks -> 4 Sticks
+            (0,10,0, 0,15,0, 0,0,0) => Some((BlockType::Torch, 4)), // CoalOre + Stick -> 4 Torch (User request)
+            (14,14,0, 14,14,0, 0,0,0) => Some((BlockType::CraftingTable, 1)), // 2x2 Planks -> Crafting Table
+
+            // -- WOOD TOOLS --
+            (14,14,14, 0,15,0, 0,15,0) => Some((BlockType::WoodPickaxe, 1)),
+            (14,14,0, 14,15,0, 0,15,0) => Some((BlockType::WoodAxe, 1)),
+            (0,14,0, 0,15,0, 0,15,0) => Some((BlockType::WoodShovel, 1)),
+            (0,14,0, 0,14,0, 0,15,0) => Some((BlockType::WoodSword, 1)),
+
+            // -- STONE TOOLS --
+            (16,16,16, 0,15,0, 0,15,0) => Some((BlockType::StonePickaxe, 1)),
+            (16,16,0, 16,15,0, 0,15,0) => Some((BlockType::StoneAxe, 1)),
+            (0,16,0, 0,15,0, 0,15,0) => Some((BlockType::StoneShovel, 1)),
+            (0,16,0, 0,16,0, 0,15,0) => Some((BlockType::StoneSword, 1)),
+
+            // -- IRON TOOLS --
+            (17,17,17, 0,15,0, 0,15,0) => Some((BlockType::IronPickaxe, 1)),
+            (17,17,0, 17,15,0, 0,15,0) => Some((BlockType::IronAxe, 1)),
+            (0,17,0, 0,15,0, 0,15,0) => Some((BlockType::IronShovel, 1)),
+            (0,17,0, 0,17,0, 0,15,0) => Some((BlockType::IronSword, 1)),
+
+            // -- GOLD TOOLS --
+            (18,18,18, 0,15,0, 0,15,0) => Some((BlockType::GoldPickaxe, 1)),
+            (18,18,0, 18,15,0, 0,15,0) => Some((BlockType::GoldAxe, 1)),
+            (0,18,0, 0,15,0, 0,15,0) => Some((BlockType::GoldShovel, 1)),
+            (0,18,0, 0,18,0, 0,15,0) => Some((BlockType::GoldSword, 1)),
+
+            // -- DIAMOND TOOLS --
+            (19,19,19, 0,15,0, 0,15,0) => Some((BlockType::DiamondPickaxe, 1)),
+            (19,19,0, 19,15,0, 0,15,0) => Some((BlockType::DiamondAxe, 1)),
+            (0,19,0, 0,15,0, 0,15,0) => Some((BlockType::DiamondShovel, 1)),
+            (0,19,0, 0,19,0, 0,15,0) => Some((BlockType::DiamondSword, 1)),
+
+            // -- INVENTORY 2x2 FALLBACK (Mapped to 3x3 slots 0,1,3,4) --
+            // If user uses E-inventory, we check the top-left corner only
+            (4,0,0, 0,0,0, _,_,_) => Some((BlockType::Planks, 4)), 
+            (14,14,0, 14,14,0, _,_,_) => Some((BlockType::CraftingTable, 1)), 
+            (0,14,0, 0,14,0, _,_,_) => Some((BlockType::Stick, 4)),
+
+            _ => None
+        };
+        
+        self.crafting_output = out.map(|(i, c)| ItemStack::new(i, c));
     }
+    
     pub fn craft(&mut self) {
-        if self.crafting_output.is_some() { for i in 0..4 { if let Some(stack) = &mut self.crafting_grid[i] { if stack.count > 1 { stack.count -= 1; } else { self.crafting_grid[i] = None; } } } }
+        if self.crafting_output.is_some() { 
+            for i in 0..9 { 
+                if let Some(stack) = &mut self.crafting_grid[i] { 
+                    if stack.count > 1 { stack.count -= 1; } else { self.crafting_grid[i] = None; } 
+                } 
+            } 
+        }
     }
 }
 
@@ -56,7 +120,7 @@ pub struct Player {
     pub on_ground: bool, pub walk_time: f32,
     pub height: f32, pub radius: f32,
     pub health: f32, pub max_health: f32, pub invincible_timer: f32,
-    pub is_dead: bool, pub right_handed: bool, pub inventory_open: bool,
+pub is_dead: bool, pub right_handed: bool, pub inventory_open: bool, pub crafting_open: bool,
 }
 
 #[allow(dead_code)]
@@ -67,7 +131,7 @@ impl Player {
             keys: KeyState { forward: false, backward: false, left: false, right: false, up: false, down: false },
             speed: 5.0, sensitivity: 0.002, inventory: Inventory::new(),
             on_ground: false, walk_time: 0.0, height: 1.8, radius: 0.25,
-            health: 20.0, max_health: 20.0, invincible_timer: 3.0, is_dead: false, right_handed: true, inventory_open: false,
+health: 20.0, max_health: 20.0, invincible_timer: 3.0, is_dead: false, right_handed: true, inventory_open: false, crafting_open: false,
         }
     }
     pub fn respawn(&mut self) { self.position = Vec3::new(0.0, 80.0, 0.0); self.velocity = Vec3::ZERO; self.health = self.max_health; self.is_dead = false; self.invincible_timer = 3.0; }
@@ -119,11 +183,18 @@ impl Player {
              self.walk_time += dt * 10.0;
         }
         
-        let next_y = self.position.y + self.velocity.y * dt;
+let next_y = self.position.y + self.velocity.y * dt;
         if self.velocity.y <= 0.0 {
             if let Some(ground_y) = self.check_ground(world, Vec3::new(self.position.x, next_y, self.position.z)) {
-                self.position.y = ground_y; self.velocity.y = 0.0; self.on_ground = true;
-                if !in_water && self.velocity.y < -14.0 { self.health -= (self.velocity.y.abs() - 12.0) * 0.5; }
+                self.position.y = ground_y; 
+                // Fix: Check damage BEFORE zeroing velocity
+                if !in_water && self.velocity.y < -14.0 { 
+                    let dmg = (self.velocity.y.abs() - 12.0) * 0.5;
+                    self.health -= dmg;
+                    log::info!("Oof! Fall damage: {:.1} (Vel: {:.1})", dmg, self.velocity.y);
+                }
+                self.velocity.y = 0.0; 
+                self.on_ground = true;
             } else { self.position.y = next_y; self.on_ground = false; }
         } else {
             self.position.y = next_y; self.on_ground = false;

@@ -74,7 +74,8 @@ fn attempt_ngrok(port: &str) -> Option<String> {
     });
 
     let mut has_printed_waiting = false;
-    for _ in 0..20 { // 10 seconds max wait (reduced from 30)
+    for i in 0..60 { // Increased to 30s
+        if i % 4 == 0 { print!("."); let _ = io::stdout().flush(); }
         // Check Skip
         if rx.try_recv().is_ok() {
             log::info!("⏩ User skipped Ngrok.");
@@ -96,16 +97,21 @@ fn attempt_ngrok(port: &str) -> Option<String> {
             return None;
         }
 
-        // Check API for Success
+// Check API for Success
         if let Ok(resp) = reqwest::blocking::get("http://127.0.0.1:4040/api/tunnels") {
             if let Ok(json) = resp.json::<serde_json::Value>() {
-                if let Some(url) = json["tunnels"][0]["public_url"].as_str() {
-                    let clean = url.replace("tcp://", "");
-                    log::info!("✅ NGROK CONNECTED: {}", clean);
-                    return Some(clean.to_string());
+                if let Some(tunnels) = json["tunnels"].as_array() {
+                    if !tunnels.is_empty() {
+                         if let Some(url) = tunnels[0]["public_url"].as_str() {
+                            let clean = url.replace("tcp://", "");
+                            println!("\n");
+                            log::info!("✅ NGROK CONNECTED: {}", clean);
+                            return Some(clean.to_string());
+                        }
+                    }
                 }
             }
-        } else if !has_printed_waiting {
+        }         else if !has_printed_waiting {
             log::info!("Waiting for ngrok to start (5-10 seconds)...");
             has_printed_waiting = true;
         }

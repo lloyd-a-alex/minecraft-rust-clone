@@ -135,9 +135,21 @@ fn run_game(network: NetworkManager, title: &str) {
                             // Check inventory
                             let iby = by + sh * 1.5;
                             for r in 0..3 { for c in 0..9 { let x = sx + c as f32 * sw; let y = iby + r as f32 * sh; if ndc_x >= x && ndc_x < x + sw && ndc_y >= y && ndc_y < y + sh { click = Some(9+r*9+c); } } }
-                            // Check Crafting (2x2)
+// Check Crafting (3x3 vs 2x2)
                             let cx = 0.3; let cy = 0.5;
-                            for r in 0..2 { for c in 0..2 { let x = cx + c as f32 * sw; let y = cy - r as f32 * sh; if ndc_x >= x && ndc_x < x + sw && ndc_y >= y && ndc_y < y + sh { click = Some(99); craft = true; c_idx = r*2+c; } } }
+                            let grid_size = if player.crafting_open { 3 } else { 2 };
+                            for r in 0..grid_size { 
+                                for c in 0..grid_size { 
+                                    let x = cx + c as f32 * sw; let y = cy - r as f32 * sh; 
+                                    if ndc_x >= x && ndc_x < x + sw && ndc_y >= y && ndc_y < y + sh { 
+                                        click = Some(99); craft = true; 
+                                        c_idx = if player.crafting_open { r*3+c } else { 
+                                            // Map 2x2 UI to 3x3 grid slots (0,1,3,4)
+                                            match r*2+c { 0=>0, 1=>1, 2=>3, 3=>4, _=>0 }
+                                        }; 
+                                    } 
+                                } 
+                            }
                             // Check Output
                             let ox = cx + 3.0*sw; let oy = cy - 0.5*sh;
                             if ndc_x >= ox && ndc_x < ox+sw && ndc_y >= oy && ndc_y < oy+sh { if let Some(o) = player.inventory.crafting_output { if player.inventory.cursor_item.is_none() { player.inventory.cursor_item = Some(o); player.inventory.craft(); player.inventory.check_recipes(); } } }
@@ -150,7 +162,7 @@ fn run_game(network: NetworkManager, title: &str) {
                             left_click = pressed; if !pressed { breaking_pos = None; break_progress = 0.0; }
                         }
                     } else if button == MouseButton::Right && pressed && !player.inventory_open {
-                        // Place Block
+// Place Block
                         let (sin, cos) = player.rotation.x.sin_cos(); let (ysin, ycos) = player.rotation.y.sin_cos();
                         let dir = glam::Vec3::new(ycos * cos, sin, ysin * cos).normalize();
                         if let Some((_, place)) = world.raycast(player.position + glam::Vec3::new(0.0, player.height*0.9, 0.0), dir, 5.0) {
@@ -158,13 +170,28 @@ fn run_game(network: NetworkManager, title: &str) {
                             let p_max = player.position + glam::Vec3::new(player.radius, player.height, player.radius);
                             let b_min = glam::Vec3::new(place.x as f32, place.y as f32, place.z as f32);
                             let b_max = b_min + glam::Vec3::ONE;
-                                        if let Some(blk) = player.inventory.get_selected_item() {
-                                            if !blk.is_tool() && !blk.is_item() {
-                                                let c = world.place_block(place, blk); 
-                                                network.send_packet(Packet::BlockUpdate { pos: place, block: blk });
-                                                log_chunk_updates(&c, "Placing");
-                                                for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
+                            
+                            // Collision Check (AABB)
+                            let intersect_x = p_min.x < b_max.x && p_max.x > b_min.x;
+                            let intersect_y = p_min.y < b_max.y && p_max.y > b_min.y;
+                            let intersect_z = p_min.z < b_max.z && p_max.z > b_min.z;
+                            
+                            if !(intersect_x && intersect_y && intersect_z) {
+                                if let Some(blk) = player.inventory.get_selected_item() {
+                                    if !blk.is_tool() && !blk.is_item() {
+                                        let c = world.place_block(place, blk); 
+                                        player.inventory.remove_one_from_hand(); // Fix counter
+                                        network.send_packet(Packet::BlockUpdate { pos: place, block: blk });
+                                        log_chunk_updates(&c, "Placing");
+                                        for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
+                                    } else if blk == BlockType::CraftingTable { // Handle Interact (Right Click Table)
+                                        if world.get_block(place) == BlockType::CraftingTable {
+                                            player.inventory_open = true;
+                                            player.crafting_open = true; // Open 3x3
+                                            let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined); window_clone.set_cursor_visible(true);
                                         }
+                                    }
+                                }
                             }
                         }
                     }
@@ -182,10 +209,18 @@ fn run_game(network: NetworkManager, title: &str) {
                                 if is_paused { let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined); window_clone.set_cursor_visible(true); }
                                 else { let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); window_clone.set_cursor_visible(false); }
                             }
-                        } else if key == winit::keyboard::KeyCode::KeyE && pressed && !is_paused {
+} else if key == winit::keyboard::KeyCode::KeyE && pressed && !is_paused {
                             player.inventory_open = !player.inventory_open;
+                            player.crafting_open = false; // Reset 3x3
                             if player.inventory_open { let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined); window_clone.set_cursor_visible(true); }
                             else { let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); window_clone.set_cursor_visible(false); }
+                        } else if key == winit::keyboard::KeyCode::KeyQ && pressed && !is_paused && !player.inventory_open {
+                             let drop_all = event.modifiers.shift_key();
+                             if let Some(stack) = player.inventory.drop_item(drop_all) {
+                                 let dir = glam::Vec3::new(player.rotation.y.cos() * player.rotation.x.cos(), player.rotation.x.sin(), player.rotation.y.sin() * player.rotation.x.cos()).normalize();
+                                 let ent = world::ItemEntity { position: player.position + glam::Vec3::new(0.0, 1.5, 0.0), velocity: dir * 10.0, item_type: stack.item, count: stack.count, pickup_delay: 1.5, lifetime: 300.0, rotation: 0.0, bob_offset: 0.0 };
+                                 world.entities.push(ent);
+                             }
                         } else if !is_paused { player.handle_input(key, pressed); }
                     }
                 },
@@ -195,7 +230,9 @@ fn run_game(network: NetworkManager, title: &str) {
                 },
                 _ => {}
             },
-            Event::AboutToWait => {
+Event::AboutToWait => {
+                let now = Instant::now(); let dt = (now - last_frame).as_secs_f32(); last_frame = now;
+
                 // Performance logging
                 frame_count += 1;
                 perf_timer += dt;
@@ -211,12 +248,11 @@ fn run_game(network: NetworkManager, title: &str) {
                     match pkt {
                         Packet::PlayerMove { id, x, y, z, ry } => { if let Some(p) = world.remote_players.iter_mut().find(|p| p.id == id) { p.position = glam::Vec3::new(x,y,z); p.rotation = ry; } else { world.remote_players.push(world::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); } },
                         Packet::BlockUpdate { pos, block } => { let c = world.place_block(pos, block); for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); } },
-                        _ => {}
+_ => {}
                     }
                 }
-                let now = Instant::now(); let dt = (now - last_frame).as_secs_f32(); last_frame = now;
-                net_timer += dt; if net_timer > 0.05 { net_timer = 0.0; network.send_packet(Packet::PlayerMove { id: network.my_id, x: player.position.x, y: player.position.y, z: player.position.z, ry: player.rotation.y }); }
                 
+                net_timer += dt; if net_timer > 0.05 { net_timer = 0.0; network.send_packet(Packet::PlayerMove { id: network.my_id, x: player.position.x, y: player.position.y, z: player.position.z, ry: player.rotation.y }); }
                 if !is_paused {
                     player.update(dt, &world); world.update_entities(dt, &mut player);
                     if left_click && !player.inventory_open {

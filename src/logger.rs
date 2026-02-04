@@ -1,14 +1,15 @@
 use log::{info, warn, error};
 
 pub fn init_logger() {
+use std::io::Write;
     env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Debug) // Changed from Info to Debug for more details
-        .filter_module("wgpu_core", log::LevelFilter::Warn) // Changed from Error to Warn
-        .filter_module("wgpu_hal", log::LevelFilter::Warn)  // Changed from Error to Warn
-        .filter_module("naga", log::LevelFilter::Warn)      // Changed from Error to Warn
-        .format_timestamp_millis()
-        .format_module_path(false)
-        .format_target(false)
+        .filter_level(log::LevelFilter::Debug)
+        .filter_module("wgpu_core", log::LevelFilter::Warn)
+        .filter_module("wgpu_hal", log::LevelFilter::Warn)
+        .filter_module("naga", log::LevelFilter::Warn)
+        .format(|buf, record| {
+            writeln!(buf, "[{} {:<5}] {}", buf.timestamp_millis(), record.level(), record.args())
+        })
         .init();
 
     log::info!("╔════════════════════════════════════════════════════════════╗");
