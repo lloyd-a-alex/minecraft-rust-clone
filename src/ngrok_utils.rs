@@ -36,6 +36,13 @@ fn attempt_ngrok(port: &str) -> Option<String> {
     if token_file.exists() {
         if let Ok(token) = fs::read_to_string(token_file) {
             configure_ngrok(token.trim());
+            log::info!("Loaded ngrok token from file");
+        }
+    } else {
+        // No token file, ask immediately instead of waiting for crash
+        log::info!("No ngrok token found. Starting auth flow...");
+        if let Some(url) = handle_ngrok_auth(port) {
+            return Some(url);
         }
     }
 
@@ -66,14 +73,14 @@ fn attempt_ngrok(port: &str) -> Option<String> {
         let _ = tx.send(());
     });
 
-    for _ in 0..30 { // 15 seconds max wait
+    let mut has_printed_waiting = false;
+    for _ in 0..20 { // 10 seconds max wait (reduced from 30)
         // Check Skip
         if rx.try_recv().is_ok() {
-            println!("⏩ User skipped Ngrok.");
+            log::info!("⏩ User skipped Ngrok.");
             let _ = child.kill();
             return None;
         }
-
         // Check Crash
         if let Ok(Some(_)) = child.try_wait() {
             // Read the error
@@ -94,10 +101,13 @@ fn attempt_ngrok(port: &str) -> Option<String> {
             if let Ok(json) = resp.json::<serde_json::Value>() {
                 if let Some(url) = json["tunnels"][0]["public_url"].as_str() {
                     let clean = url.replace("tcp://", "");
-                    println!("✅ NGROK CONNECTED: {}", clean);
+                    log::info!("✅ NGROK CONNECTED: {}", clean);
                     return Some(clean.to_string());
                 }
             }
+        } else if !has_printed_waiting {
+            log::info!("Waiting for ngrok to start (5-10 seconds)...");
+            has_printed_waiting = true;
         }
         thread::sleep(Duration::from_millis(500));
     }
@@ -144,11 +154,11 @@ fn attempt_ssh_tunnel(port: &str) -> Option<String> {
         let _ = tx_skip.send(());
     });
 
-    println!("🔄 Waiting for SSH... (Press ENTER to skip)");
+    log::info!("🔄 Starting SSH tunnel (faster connect)...");
     
-    for _ in 0..40 { // 20 seconds
+    for _ in 0..12 { // 6 seconds max (reduced from 20)
         if rx_skip.try_recv().is_ok() {
-            println!("⏩ User skipped SSH.");
+            log::info!("⏩ User skipped SSH.");
             let _ = child.kill();
             return None;
         }

@@ -208,14 +208,29 @@ impl World {
     fn trigger_water_update(&mut self, start_pos: BlockPos) -> Vec<(i32, i32)> {
         let mut updates = Vec::new();
         let cx = start_pos.x.div_euclid(CHUNK_SIZE_X as i32); let cz = start_pos.z.div_euclid(CHUNK_SIZE_Z as i32);
-        updates.push((cx, cz)); updates.push((cx-1, cz)); updates.push((cx+1, cz)); updates.push((cx, cz-1)); updates.push((cx, cz+1));
+        // Only update affected chunks
+        updates.push((cx, cz));
         
-        let mut queue = VecDeque::new(); queue.push_back(start_pos);
+        // For water updates, limit to immediate neighbors
+        let mut queue = VecDeque::new(); 
+        queue.push_back(start_pos);
         let b = self.get_block(start_pos);
-        if !b.is_water() { for (dx, dy, dz) in &[(0,1,0), (0,-1,0), (1,0,0), (-1,0,0), (0,0,1), (0,0,-1)] { if self.get_block(BlockPos{x:start_pos.x+dx, y:start_pos.y+dy, z:start_pos.z+dz}).is_water() { queue.push_back(BlockPos{x:start_pos.x+dx, y:start_pos.y+dy, z:start_pos.z+dz}); } } }
-        let mut visited = HashSet::new(); let mut steps = 0;
+        if !b.is_water() { 
+            for (dx, dy, dz) in &[(0,1,0), (0,-1,0), (1,0,0), (-1,0,0), (0,0,1), (0,0,-1)] { 
+                let check_pos = BlockPos{x:start_pos.x+dx, y:start_pos.y+dy, z:start_pos.z+dz};
+                if self.get_block(check_pos).is_water() { 
+                    queue.push_back(check_pos); 
+                } 
+            } 
+        }
+        let mut visited = HashSet::new(); 
+        let mut steps = 0;
+        let max_steps = 50; // Reduced from 200 to prevent lag
         while let Some(pos) = queue.pop_front() {
-            if steps > 200 { break; }
+            if steps > max_steps { 
+                log::debug!("Water update reached max steps ({})", max_steps);
+                break; 
+            }
             if !visited.insert(pos) { continue; }
             steps += 1;
             let current = self.get_block(pos);
@@ -255,7 +270,12 @@ impl World {
             let dist_sq = entity.position.distance_squared(player.position);
             if dist_sq < 9.0 && entity.pickup_delay <= 0.0 {
                 let dir = (player.position - entity.position).normalize(); entity.position += dir * 10.0 * dt;
-                if dist_sq < 2.25 { if player.inventory.add_item(entity.item_type) { continue; } }
+                if dist_sq < 2.25 { 
+                    if player.inventory.add_item(entity.item_type) { 
+                        log::info!("🎁 Picked up {:?}", entity.item_type);
+                        continue; 
+                    } 
+                }
             }
             retained.push(entity);
         }

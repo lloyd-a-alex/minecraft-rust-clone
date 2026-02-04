@@ -1,0 +1,90 @@
+Updated Version Table:  
+Version    Milestone Name                      Key Changes / "Diabolical" Shifts
+0.0.1      The Gray Void                       Initial Ursina Python script. Basic red crosshair, gray screen, broken shaders.
+0.1.0      Procedural Awakening                Added procedural texture generation in memory (Grass, Dirt, Stone). Movement enabled.
+0.2.0      The Hand Update                     Added the "Arm/Hand" entity, head bobbing, and dynamic FOV for sprinting.
+0.2.1      The Unlit Patch                     Fixed "White Screen" by removing broken fog and switching to unlit materials.
+0.3.0      Survival Alpha                      Added hotbar selection (1-5), tree generation, and inventory UI.
+1.0.0      The Rust Migration                  DIABOLICAL REWRITE #1. Abandoned Python/Ursina. Moved to Rust + WGPU for massive performance.
+1.0.1      Memory Leak Fix                     Resolved buffer overflows in write_texture. Fixed math overflow panics.
+1.1.0      The Glam Update                     Switched math backend to glam. Implemented Mouse Look and Cursor Locking.
+1.1.1      Collision Patch                     Fixed coordinate system mismatch in world.rs so player stops falling through the void.
+1.2.0      Meshing Overhaul                    Transitioned from naive instancing to Chunk Mesh Generation to fix intense lag.
+1.3.0      The Atmosphere Update               Added Day/Night cycles, Beta 1.7.3 Style Fog, and Ambient Occlusion.
+1.3.1      Visual Fidelity Fix                 Resolved the "grass panes" bug by fixing global neighbor culling and UV winding order.
+1.3.2      Full Block Rendering Fix            Fixed blocks not rendering all six faces across all biomes (snow, grass, sand). Corrected face culling logic, eliminated compiler warnings, ensured consistent 3D block rendering.
+
+1.3.3      Vertical Collision Patch             Fixed critical variable shadowing bug in check_collision_vertical (renamed _y to y). Added delta time clamping to prevent clipping through blocks on frame spikes.
+1.4.0      The Full Cube Update                 DIABOLICAL REBUILD #2. Overhauled face culling system in renderer.rs. Every block now renders all 6 faces when exposed to air/transparent blocks. Full cubes guaranteed—no more "panes". Proper neighbor checking across chunk boundaries.
+1.4.1      Tree Density Fix                     Replaced uniform modulo-based tree placement with deterministic hash-based spawn logic. Forest biome trees now appear naturally (~2% chance) instead of grid-like. Uses wrapping multiplication to prevent overflow.
+1.4.2      Compiler Cleanup                     Removed #[allow(dead_code)] warnings. Properly integrated is_opaque() into renderer culling pipeline. Marked unused get_selected() as #[allow(dead_code)] pending interaction system.
+1.5.0      The Raycast Update                   Implemented Fast Voxel Traversal raycasting algorithm. Added world.raycast() for block interaction detection, returning hit + placement positions. Enabled proper block breaking/placing.
+1.5.1      Block Interaction System             Integrated mouse input in main.rs. Left-click breaks blocks (sets to Air). Right-click places blocks from hotbar. Eye position at 1.62 units above center.
+1.5.2      Mesh Rebuild on Modification         Hooked block break/place into renderer.rebuild_chunks(). World changes now instantly reflect in chunk meshes.
+1.5.3      Mutability Refactor                  Made world mutable in main.rs and threaded &mut World through event loop to satisfy borrow checker while still allowing interactions.
+1.5.4      Raycasting Mutability Fix            t_max_x / t_max_y / t_max_z made mutable in raycast loop so traversal increments compile and run correctly.
+1.5.5      Player Interaction Cleanup           get_selected() now routed through player.hotbar.get_selected(). Block placement uses selected hotbar item, fully functional and tested.
+
+1.6.0      Inventory Overhaul                   Expanded inventory to 36 slots (9 hotbar + 27 storage). Implemented stacking, item structs, and clean slot indexing.
+1.6.1      Item Drops & Pickup                  Added ItemEntity with position/velocity/count. Dropped items fall, bounce slightly, and can be picked up within radius. Inventory.add_item aggregates stacks.
+1.6.2      Health & Death System                Introduced 20 HP health bar (10 hearts), fall damage, death state, and respawn with R key. YOU DIED + RESPAWN UI.
+1.6.3      Stack Count Rendering                Slot items render with count numbers using bitmap font. Only non-1 stacks show text overlay.
+1.6.4      Water Physics Alpha                  Implemented basic water levels (Water1–Water8). Swimming slows movement, falls into water cancel fall damage if deep enough.
+1.6.5      Crafting Grid UI (2x2)               Added 2x2 crafting grid + output slot. Crafting grid stored in Inventory, output calculated by recipe matcher.
+1.6.6      Player Height & Feel                 Adjusted player height and eye offset so logs/blocks line up properly in view. Head bob tuned to feel more Minecraft-like.
+1.6.7      World Seeds                          Worlds keyed off numeric seeds. Same seed → identical terrain. Start of reproducible worlds system.
+
+1.7.0      Custom RNG System                    DIABOLICAL REWRITE #3. Replaced rand crate with SimpleRng (LCG) for deterministic worldgen without external dep. All randomness (trees, ores, noise permutation) seeded.
+1.7.1      Floating-Point Bugfixes              Fixed vz undefined in renderer, cleaned Operations type mismatch and f32/u32 warnings. Stabilized math across world and renderer.
+1.7.2      Entity Borrow Fix                    Resolved borrow checker conflicts in entity update and world iteration by using take/retain pattern on self.entities.
+1.7.3      Entity Rendering & Shadows           3D spinning items with bobbing and simple blob shadows added. Items now visually stand out and feel Minecraft-y.
+1.7.4      Inventory Click Mapping              Corrected NDC ↔ screen-space mapping for mouse clicks. Inventory and hotbar slots now clickable under cursor reliably.
+1.7.5      Unused Import Cleanup                Removed VecDeque, HashSet, Mat4, and unused CHUNK_SIZE_* imports. Cleaned compiler warnings without removing functionality.
+
+1.8.0      The World Gen Overhaul               DIABOLICAL REBUILD #4. Beta 1.7.3-style terrain. Large Perlin rivers (width ~0.15) carve through land, sand beaches (~0.22) around water, smooth mountains (height 50–100), and diverse biomes (plains, forest, desert, mountains, snow).
+1.8.1      Font Texture Fix                     Moved font tiles from atlas indices 16+ to 200+ so they no longer overwrite ore textures. Fixed “random ores in UI text” bug. Tweaked water alpha to ~150 for translucency.
+1.8.2      Tree Rarity Tuning                   Forest tree probability ≈2%, plains ≈0.2%, other biomes ≈0%. Tree heights 4–7 blocks, sparse foliage (10% leaf holes), and no trees in river tiles.
+1.8.3      Player Height Adjustment v2          Eye height locked at 1.62 blocks. Head bob amplitude set to ~0.05. Player now looks logs dead-on, matching classic Minecraft feel.
+1.8.4      Water Translucency & Levels          Water blocks use per-level height (Water8 full, down to Water1). Proper translucency and stacked water visuals.
+1.8.5      Crafting Grid Reposition             Moved 2x2 crafting grid higher in inventory (around Y=0.5). Updated click bounds so slots and arrows line up visually.
+1.8.6      Item Drop Physics v2                 Dropped items no longer jitter or bob violently. Horizontal velocity damped by friction, vertical snaps on ground. Items spawn at exact block center.
+1.8.7      Block Breaking Overlay System        Replaced simple progress bar with 8-stage breaking overlay textures. Break speed depends on block hardness and tool speed.
+1.8.8      Sun/Moon & Sky Cycle                 Implemented day-night cycle with moving sun and moon, smooth sky color transitions (blue → orange → night blue) driven by TimeUniform.
+1.8.9      Terrain Gen Optimization             Reduced render distance, memoized noise lookups, chunk-based caching. Only changed chunks re-meshed.
+
+1.9.0      Performance Crisis Resolution        DIABOLICAL FPS RECOVERY. Cached chunk meshes, batched entity updates, optimized water simulation, added frustum-ish culling. FPS back to ~120–180 at 720p.
+1.9.1      Water Physics Optimization           Limited water flood-fill steps, processed only boundaries, and reused queues. Avoided runaway CPU usage in large fluid regions.
+1.9.2      Block Hardness System                BlockType hardness added (dirt/grass/sand soft, stone/ores hard, bedrock unbreakable). Break time = hardness / tool_speed.
+1.9.3      Tool Speed & Class System            Tool classes (pickaxe/axe/shovel/shears) and speed multipliers added (wood/stone/iron/gold/diamond). Wrong tool → slower breaking.
+1.9.4      Ore Distribution Expansion           Ore BlockTypes with proper depth probabilities (Coal, Iron, Gold, Diamond). Ore drops and cobblestone behavior hooked up.
+1.9.5      Compiler Warnings Cleanup            Fixed mut height warning, renamed hit_block → _hit_block. Marked unused variants with #[allow(dead_code)]. Clean build before next big step.
+
+1.10.0     Multiplayer Foundation               Introduced network.rs with NetworkManager. Client-host TCP system using serde + bincode. Packets for Handshake, PlayerMove, BlockUpdate, Disconnect. One-host + one-client model.
+1.10.1     Block Sync Broadcasting              Hooked block breaking/placing to BlockUpdate packets. Both peers see same block changes when network packets arrive.
+1.10.2     Remote Player Struct & Rendering     Added RemotePlayer struct (id, position, rotation). Renderer draws other players as simple skin-textured boxes (body+head) rotated by their Y rotation.
+1.10.3     Join Flow & Default IP               main.rs join flow improved: pressing Enter on IP prompt defaults to 127.0.0.1:7878. Eliminated crash when user provided empty IP string.
+1.10.4     Connection Timeout Handling          NetworkManager.join now prints clear “CONNECTION TIMED OUT: Could not find server at 127.0.0.1:7878” panic message when server unreachable, instead of silent hang.
+1.10.5     Dual-Instance Local Test Mode        Allowed host + client to run on same machine (log shows HOSTING SERVER ON 0.0.0.0:7878 and CONNECTING TO: 127.0.0.1:7878). Verified NEW PLAYER CONNECTED logging from TcpListener.
+
+1.11.0     Git & History Tracker Integration    Set up full Git + GitHub CLI workflow: git init, commit, branch main, gh auth login, gh repo create, and remote origin configured. Repository `lloyd-a-alex/minecraft-rust-clone` created and first push done.
+1.11.1     save.bat Macro                       Added root save.bat: runs git add ., git commit "AI Update: %date% %time%", git push -u origin main. Single save command snapshots full project state.
+1.11.2     Branch Normalization                  Renamed local branch master → main and pushed main, then set origin/main tracking. Ensured save script pushes correct branch and fixed “src refspec main does not match any” errors.
+1.11.3     Repo Default-Branch Cleanup           Used gh repo edit --default-branch main and git push origin --delete master to make main the only canonical branch. Prevented accidental pushes to master.
+1.11.4     src/save.bat Relay                    Added src\save.bat that cd .. and calls root save.bat so you can type save from src as well. Makes saving agnostic to working directory.
+
+1.12.0     UI & Inventory Polish                 Restored full UI stack from old project into current renderer: arm/hand swing, hotbar, hearts, inventory grid, crafting grid, and cursor item rendering, all in a dedicated ui_pipeline.
+1.12.1     Crafting UI Reposition                Crafting 2×2 grid moved to around (0.3, 0.5) in NDC in inventory screen, with output slot and "CRAFTING" label plus "->" arrow. Cursor item follows mouse using proper NDC conversion.
+1.12.2     Pause Menu & State                    Implemented is_paused flag and pause overlay: darkened screen, "PAUSED" title, "ESC RESUME" and "Q QUIT" hints. Pausing stops head bob and hides arm unless inventory open.
+1.12.3     Health & HUD Finalization             Heart row above hotbar, heart textures at index 12, updates with player.health. Hotbar selection highlight added using texture 11, base slot texture 10. Arm swing tied to walk_time.
+1.12.4     Water & Underwater Sky Color          Sky color shifts to deep blue when player’s head block is water (underwater feel). Invincibility timer flashes sky golden. TimeUniform used to drive sky and animations.
+1.12.5     Lighting & Torch Influence            calculate_light samples nearby blocks for torches and boosts light up to 1.0 near them, with falloff by distance. Side faces apply lower AO factor (0.6–0.8).
+
+1.13.0     Entity Rendering Unification          Merged spinning item entities and remote-player rendering through shared add_rotated_quad helper. Items use bobbing + rotation, players rendered as stacked quads with skin/heart textures.
+1.13.1     Mesh & Face Logic Consolidation      should_draw_face handles air, torch, transparent neighbors and water-level mismatches to decide when to draw faces. add_face builds properly lit, textured faces for all six directions.
+1.13.2     Resize Safety & Depth Rebuild         resize() reconfigures surface and recreates depth texture on window size change. Prevents crashes when resizing game window and keeps depth testing correct.
+1.13.3     Logging & Build Banner                logger prints nice box banner, version, and logging level on startup for both host and client processes, making host/client instances obvious in logs.
+
+1.14.0     Multiplayer UX Hardening              Improved host/join logs: HOSTING SERVER ON: 0.0.0.0:7878 and CONNECTING TO: 127.0.0.1:7878 with explicit CONNECTED! / NEW PLAYER CONNECTED messages. Clearer feedback when starting a 2-player session.
+1.14.1     Network Timeout Visibility            Panic messages at src/network.rs:101 emit clear ❌ CONNECTION TIMED OUT errors when join cannot reach server. Encourages correct host-first, then join flow.
+1.14.2     Git Workflow “Feels Good”             Confirmed end-to-end: save from root or src, pushes to GitHub, main-only branch model, remote URLs correct. Project now fully versioned; every AI session can be snapshotted safely.
+

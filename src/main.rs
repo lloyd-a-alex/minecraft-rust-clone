@@ -12,9 +12,11 @@ mod renderer; mod world; mod texture; mod player; mod logger; mod noise_gen; mod
 use renderer::Renderer; use world::{World, BlockPos, BlockType}; use player::Player; use network::{NetworkManager, Packet};
 
 fn main() {
+    // Initialize logger FIRST before any prints
+    logger::init_logger();
+    
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 && args[1] == "--join-localhost" { 
-        logger::init_logger(); 
         run_game(NetworkManager::join("127.0.0.1:7878".to_string()), "Minecraft Clone (Test Client)"); 
         return; 
     }
@@ -60,12 +62,11 @@ fn main() {
 
     } else if choice == "2" {
         // --- ONLINE HOSTING WITH AUTO-FALLBACK ---
+        log::info!("Starting online hosting with fallback...");
         if let Some(addr) = ngrok_utils::start_ngrok_tunnel("7878") { 
-            println!("✅ SERVER LIVE: {}", addr); 
+            log::info!("✅ SERVER LIVE: {}", addr); 
         } else { 
-            println!("❌ All Tunnels failed. Hosting locally on Port 7878."); 
-        }
-        logger::init_logger(); 
+            log::warn!("❌ All Tunnels failed. Hosting locally on Port 7878."); 
         run_game(NetworkManager::host("7878".to_string()), "HOST (Online)");
 
     } else if choice == "3" {
@@ -75,13 +76,11 @@ fn main() {
         std::io::stdin().read_line(&mut ip).unwrap();
         let ip = ip.trim();
         let target = if ip.is_empty() { "127.0.0.1:7878" } else { ip };
-        
-        logger::init_logger(); 
+        log::info!("Joining server at: {}", target);
         run_game(NetworkManager::join(target.to_string()), "CLIENT");
 
     } else {
-        println!("🌲 Starting Singleplayer...");
-        logger::init_logger();
+        log::info!("🌲 Starting Singleplayer...");
         run_game(NetworkManager::host("7878".to_string()), "Minecraft Clone (Singleplayer)");
     };
 }
@@ -106,6 +105,14 @@ fn run_game(network: NetworkManager, title: &str) {
     let mut break_progress = 0.0;
     let mut left_click = false;
     let mut net_timer = 0.0;
+    let mut perf_timer = 0.0;
+    let mut frame_count = 0;
+    let mut last_log_time = Instant::now();
+        fn log_chunk_updates(updates: &[(i32, i32)], action: &str) {
+        if !updates.is_empty() {
+            log::debug!("{} updated chunks: {:?}", action, updates);
+        }
+    }
 
     event_loop.run(move |event, elwt| {
         match event {
@@ -151,14 +158,13 @@ fn run_game(network: NetworkManager, title: &str) {
                             let p_max = player.position + glam::Vec3::new(player.radius, player.height, player.radius);
                             let b_min = glam::Vec3::new(place.x as f32, place.y as f32, place.z as f32);
                             let b_max = b_min + glam::Vec3::ONE;
-                            if !(p_min.x < b_max.x && p_max.x > b_min.x && p_min.y < b_max.y && p_max.y > b_min.y && p_min.z < b_max.z && p_max.z > b_min.z) {
-                                if let Some(blk) = player.inventory.get_selected_item() {
-                                    if !blk.is_tool() && !blk.is_item() {
-                                        let c = world.place_block(place, blk); network.send_packet(Packet::BlockUpdate { pos: place, block: blk });
-                                        player.inventory.remove_one_from_hand();
-                                        for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
-                                    }
-                                }
+                                        if let Some(blk) = player.inventory.get_selected_item() {
+                                            if !blk.is_tool() && !blk.is_item() {
+                                                let c = world.place_block(place, blk); 
+                                                network.send_packet(Packet::BlockUpdate { pos: place, block: blk });
+                                                log_chunk_updates(&c, "Placing");
+                                                for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
+                                        }
                             }
                         }
                     }
@@ -190,6 +196,17 @@ fn run_game(network: NetworkManager, title: &str) {
                 _ => {}
             },
             Event::AboutToWait => {
+                // Performance logging
+                frame_count += 1;
+                perf_timer += dt;
+                if last_log_time.elapsed().as_secs_f32() > 10.0 {
+                    let fps = frame_count as f32 / perf_timer;
+                    log::info!("🎮 Performance: {:.1} FPS, {:.3}ms avg delta", fps, (perf_timer * 1000.0) / frame_count as f32);
+                    frame_count = 0;
+                    perf_timer = 0.0;
+                    last_log_time = Instant::now();
+                }
+
                 while let Some(pkt) = network.try_recv() {
                     match pkt {
                         Packet::PlayerMove { id, x, y, z, ry } => { if let Some(p) = world.remote_players.iter_mut().find(|p| p.id == id) { p.position = glam::Vec3::new(x,y,z); p.rotation = ry; } else { world.remote_players.push(world::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); } },
@@ -212,8 +229,10 @@ fn run_game(network: NetworkManager, title: &str) {
                             let h = blk.get_hardness();
                             if h > 0.0 { break_progress += (speed / h) * dt; } else { break_progress = 1.1; }
                             if break_progress >= 1.0 {
-                                let c = world.break_block(hit); network.send_packet(Packet::BlockUpdate { pos: hit, block: BlockType::Air });
+                                let c = world.break_block(hit); 
+                                network.send_packet(Packet::BlockUpdate { pos: hit, block: BlockType::Air });
                                 for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
+                                log::info!("🔨 Broke {:?} at [{}, {}, {}]", blk, hit.x, hit.y, hit.z);
                                 breaking_pos = None; break_progress = 0.0;
                             }
                         } else { breaking_pos = None; break_progress = 0.0; }

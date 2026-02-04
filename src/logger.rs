@@ -1,21 +1,20 @@
 use log::{info, warn, error};
 
 pub fn init_logger() {
-    // We configure the logger to be "Info" for our game, but "Error" only for the engine.
-    // This suppresses the "Debug utils not enabled" and "Validation layer missing" spam.
     env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Info) // Show our game logs
-        .filter_module("wgpu_core", log::LevelFilter::Error) // Hide wgpu warnings
-        .filter_module("wgpu_hal", log::LevelFilter::Error)  // Hide Vulkan/DX12 warnings
-        .filter_module("naga", log::LevelFilter::Error)      // Hide Shader warnings
+        .filter_level(log::LevelFilter::Debug) // Changed from Info to Debug for more details
+        .filter_module("wgpu_core", log::LevelFilter::Warn) // Changed from Error to Warn
+        .filter_module("wgpu_hal", log::LevelFilter::Warn)  // Changed from Error to Warn
+        .filter_module("naga", log::LevelFilter::Warn)      // Changed from Error to Warn
         .format_timestamp_millis()
+        .format_module_path(false)
+        .format_target(false)
         .init();
 
-    info!("╔════════════════════════════════════════════════════════════╗");
-    info!("║ 🎮 MINECRAFT RUST CLONE - SYSTEM INITIALIZED 🎮           ║");
-    info!("╚════════════════════════════════════════════════════════════╝");
-    info!("Version: 1.0 | Build: CREATIVE");
-    info!("Logging Level: INFO (Engine Warnings Suppressed)");
+    log::info!("╔════════════════════════════════════════════════════════════╗");
+    log::info!("║ 🎮 MINECRAFT RUST CLONE - SYSTEM INITIALIZED 🎮           ║");
+    log::info!("╚════════════════════════════════════════════════════════════╝");
+    log::info!("Version: 1.0 | Build: CREATIVE | Log Level: DEBUG");
 }
 #[allow(dead_code)]
 pub fn log_world_generation(chunk_count: usize, block_count: usize) {
