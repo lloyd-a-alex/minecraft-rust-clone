@@ -321,7 +321,14 @@ cursor.count -= transfer;
  player.velocity = glam::Vec3::ZERO;
                             }
                         } // <-- This closes Packet::Handshake
-                        Packet::PlayerMove { id, x, y, z, ry } => {{ if let Some(p) = world.remote_players.iter_mut().find(|p| p.id == id) { p.position = glam::Vec3::new(x,y,z); p.rotation = ry; } else { world.remote_players.push(world::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); } },
+                        Packet::PlayerMove { id, x, y, z, ry } => {
+                            if let Some(p) = world.remote_players.iter_mut().find(|p| p.id == id) { 
+                                p.position = glam::Vec3::new(x,y,z); 
+                                p.rotation = ry; 
+                            } else { 
+                                world.remote_players.push(world::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); 
+                            }
+                        },
                         Packet::BlockUpdate { pos, block } => { let c = world.place_block(pos, block); for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); } },
                         _ => {}
                     }
