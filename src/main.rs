@@ -73,7 +73,7 @@ fn run_game(network: NetworkManager, title: &str) {
     log::info!("🔍 Searching for dry land...");
 
     // 1. Search a massive radius (0 to 300 blocks)
-    'spawn_search: for r in 0..300 {
+    'spawn_search: for r in 0..300i32 {
         // Optimization: Spiral out
         for x in -r..=r {
             for z in -r..=r {
@@ -298,7 +298,7 @@ cursor.count -= transfer;
                             renderer.rebuild_all_chunks(&world);
 // --- SUPER SAFE SPAWN (Multiplayer) ---
                             let mut spawn_found = false;
-                            'net_spawn: for r in 0..300 {
+                            'net_spawn: for r in 0..300i32 {
                                 for x in -r..=r {
                                     for z in -r..=r {
                                         if x.abs() != r && z.abs() != r { continue; }
@@ -343,7 +343,7 @@ cursor.count -= transfer;
                         if death_timer > 3.0 {
 // --- SUPER SAFE RESPAWN ---
                             let mut spawn_found = false;
-                            'respawn_search: for r in 0..300 {
+                            'respawn_search: for r in 0..300i32 {
                                 for x in -r..=r {
                                     for z in -r..=r {
                                         if x.abs() != r && z.abs() != r { continue; }
