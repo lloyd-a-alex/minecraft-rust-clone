@@ -95,6 +95,7 @@ NetworkManager {
             sender: tx_out,
             receiver: rx_in,
             my_id: 1,
+            seed: Some(seed),
         }
     }
 

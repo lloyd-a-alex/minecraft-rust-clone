@@ -171,7 +171,9 @@ cursor.count -= transfer;
                                             if cursor.count == 0 { player.inventory.cursor_item = None; }
                                         } else {
 // Swap
-                                            let temp = *s; *s = Some(*cursor); player.inventory.cursor_item = temp;
+                                            let temp = *s; 
+                                            *s = *cursor; 
+                                            *cursor = temp;
                                         }
                                     } else {
                                         // Place
@@ -270,6 +272,22 @@ cursor.count -= transfer;
 
 while let Some(pkt) = network.try_recv() {
                     match pkt {
+                        Packet::Handshake { seed, .. } => {
+                            log::info!("🌍 RECEIVED SEED: {}. REBUILDING WORLD...", seed);
+                            world = World::new(seed);
+                            renderer.rebuild_all_chunks(&world);
+                            // Teleport to safe spawn after rebuild
+                            let mut safe = false;
+                            for y in (0..100).rev() {
+                                let b = world.get_block(BlockPos{x:0, y, z:0});
+                                if b.is_solid() && !b.is_water() {
+                                    player.position = glam::Vec3::new(0.5, y as f32 + 2.0, 0.5);
+                                    safe = true;
+                                    break;
+                                }
+                            }
+                            if !safe { player.position = glam::Vec3::new(0.0, 80.0, 0.0); }
+                        },
                         Packet::PlayerMove { id, x, y, z, ry } => { if let Some(p) = world.remote_players.iter_mut().find(|p| p.id == id) { p.position = glam::Vec3::new(x,y,z); p.rotation = ry; } else { world.remote_players.push(world::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); } },
                         Packet::BlockUpdate { pos, block } => { let c = world.place_block(pos, block); for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); } },
                         _ => {}
