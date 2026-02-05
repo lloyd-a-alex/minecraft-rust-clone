@@ -44,19 +44,58 @@ impl TextureAtlas {
             }
         }
 
-        // --- NEW BLOCKS & FIXES ---
-        Self::generate_torch(&mut data, block_size, atlas_width, 24);
+// --- NEW BLOCKS & FIXES ---
+        Self::generate_torch(&mut data, block_size, atlas_width, 20); // Torch reset to 20
         
-        // FIX: Swap textures so Planks are Wood color and Cobble is Stone color
         Self::generate_generic(&mut data, block_size, atlas_width, 14, [200, 150, 100]); // Planks (Brown)
         Self::generate_generic(&mut data, block_size, atlas_width, 15, [139, 69, 19]);   // Stick (Dark Brown)
-        Self::generate_generic(&mut data, block_size, atlas_width, 16, [100, 100, 100]); // Cobble (Grey)
+        Self::generate_noise(&mut data, block_size, atlas_width, 16, [100, 100, 100], 30); // Cobble (Grey Noise)
+        
+        // Ores
+        Self::generate_ore(&mut data, block_size, atlas_width, 10, [20, 20, 20]);    // Coal Ore
+        Self::generate_ore(&mut data, block_size, atlas_width, 11, [200, 150, 100]); // Iron Ore
+        Self::generate_ore(&mut data, block_size, atlas_width, 12, [255, 215, 0]);   // Gold Ore
+        Self::generate_ore(&mut data, block_size, atlas_width, 13, [0, 255, 255]);   // Diamond Ore
+        Self::generate_ore(&mut data, block_size, atlas_width, 22, [255, 0, 0]);     // Redstone Ore
+        Self::generate_ore(&mut data, block_size, atlas_width, 23, [0, 0, 139]);     // Lapis Ore
 
-        // Ores (Indices 17-20)
-        Self::generate_ore(&mut data, block_size, atlas_width, 17, [20, 20, 20]);    // Coal
-        Self::generate_ore(&mut data, block_size, atlas_width, 18, [200, 150, 100]); // Iron
-        Self::generate_ore(&mut data, block_size, atlas_width, 19, [255, 215, 0]);   // Gold
-        Self::generate_ore(&mut data, block_size, atlas_width, 20, [0, 255, 255]);   // Diamond
+        // Crafting Table
+        Self::generate_crafting_side(&mut data, block_size, atlas_width, 25);
+
+        // Furnace
+        Self::generate_generic(&mut data, block_size, atlas_width, 26, [60, 60, 60]); // Top
+        Self::generate_furnace_front(&mut data, block_size, atlas_width, 27, false);
+        
+        // Chest
+        Self::generate_generic(&mut data, block_size, atlas_width, 28, [160, 82, 45]); // Top
+        Self::generate_chest_front(&mut data, block_size, atlas_width, 29);
+
+        // Environment
+        Self::generate_noise(&mut data, block_size, atlas_width, 30, [128, 128, 128], 40); // Gravel
+        Self::generate_generic(&mut data, block_size, atlas_width, 31, [158, 164, 176]); // Clay
+        Self::generate_generic(&mut data, block_size, atlas_width, 32, [218, 204, 165]); // Sandstone Top/Bot
+        Self::generate_sandstone_side(&mut data, block_size, atlas_width, 33); // Side
+        Self::generate_generic(&mut data, block_size, atlas_width, 34, [20, 10, 30]); // Obsidian
+        
+        Self::generate_cactus(&mut data, block_size, atlas_width, 35, true); // Cactus Top
+        Self::generate_cactus(&mut data, block_size, atlas_width, 36, false); // Cactus Side
+        
+        // Plants (Cross Models)
+        Self::generate_flower(&mut data, block_size, atlas_width, 37, [255, 0, 0]); // Rose
+        Self::generate_flower(&mut data, block_size, atlas_width, 38, [255, 255, 0]); // Dandelion
+        Self::generate_deadbush(&mut data, block_size, atlas_width, 39);
+        Self::generate_tallgrass(&mut data, block_size, atlas_width, 45);
+        Self::generate_sugarcane(&mut data, block_size, atlas_width, 46);
+        Self::generate_sapling(&mut data, block_size, atlas_width, 47);
+        
+        // Misc
+        Self::generate_glass(&mut data, block_size, atlas_width, 48);
+        Self::generate_bookshelf(&mut data, block_size, atlas_width, 49);
+        Self::generate_tnt_side(&mut data, block_size, atlas_width, 51); Self::generate_tnt_top(&mut data, block_size, atlas_width, 50);
+        Self::generate_pumpkin(&mut data, block_size, atlas_width, 53); Self::generate_generic(&mut data, block_size, atlas_width, 52, [200, 100, 0]);
+        Self::generate_melon(&mut data, block_size, atlas_width, 55); Self::generate_generic(&mut data, block_size, atlas_width, 54, [100, 200, 0]);
+        Self::generate_brick(&mut data, block_size, atlas_width, 56);
+        Self::generate_mossy(&mut data, block_size, atlas_width, 57);
 
         // Items/Tools (Simplified Placeholders)
         Self::generate_generic(&mut data, block_size, atlas_width, 40, [100, 50, 0]);    // Stick Item
@@ -212,7 +251,7 @@ impl TextureAtlas {
         Self::place_texture(data, size, w, idx, &p);
     }
     
-    fn generate_ore(data: &mut [u8], size: u32, w: u32, idx: u32, color: [u8; 3]) {
+fn generate_ore(data: &mut [u8], size: u32, w: u32, idx: u32, color: [u8; 3]) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for i in 0..size * size {
             p[(i * 4) as usize] = 120; p[(i * 4 + 1) as usize] = 120; p[(i * 4 + 2) as usize] = 120; p[(i * 4 + 3) as usize] = 255;
@@ -222,6 +261,80 @@ impl TextureAtlas {
         }
         Self::place_texture(data, size, w, idx, &p);
     }
+
+    fn generate_noise(data: &mut [u8], size: u32, w: u32, idx: u32, base: [u8; 3], var: i32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for i in 0..size * size {
+            let n = (i % 7) as i32 * var / 7;
+            p[(i * 4) as usize] = (base[0] as i32 + n).clamp(0,255) as u8;
+            p[(i * 4 + 1) as usize] = (base[1] as i32 + n).clamp(0,255) as u8;
+            p[(i * 4 + 2) as usize] = (base[2] as i32 + n).clamp(0,255) as u8;
+            p[(i * 4 + 3) as usize] = 255;
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_cactus(data: &mut [u8], size: u32, w: u32, idx: u32, top: bool) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for i in 0..size * size {
+            let col = if top { [50, 150, 50] } else { [20, 120, 20] };
+            p[(i*4)] = col[0]; p[(i*4)+1] = col[1]; p[(i*4)+2] = col[2]; p[(i*4)+3] = 255;
+            if !top && i % 4 == 0 { // Spikes
+                p[(i*4)] = 0; p[(i*4)+1] = 0; p[(i*4)+2] = 0;
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_flower(data: &mut [u8], size: u32, w: u32, idx: u32, color: [u8; 3]) {
+         let mut p = vec![0u8; (size * size * 4) as usize];
+         let center = size / 2;
+         for y in 0..size {
+             for x in 0..size {
+                 let i = ((y * size + x) * 4) as usize;
+                 let dx = x as i32 - center as i32; let dy = y as i32 - center as i32;
+                 if dx*dx + dy*dy < 10 {
+                     p[i] = color[0]; p[i+1] = color[1]; p[i+2] = color[2]; p[i+3] = 255;
+                 } else if dx == 0 && dy > 0 { // Stem
+                     p[i] = 0; p[i+1] = 128; p[i+2] = 0; p[i+3] = 255;
+                 }
+             }
+         }
+         Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_glass(data: &mut [u8], size: u32, w: u32, idx: u32) {
+         let mut p = vec![0u8; (size * size * 4) as usize];
+         // Frame
+         for i in 0..size {
+             let top = (i * 4) as usize; let btm = (((size-1)*size+i)*4) as usize;
+             let l = ((i*size)*4) as usize; let r = ((i*size+size-1)*4) as usize;
+             for x in [top, btm, l, r] { p[x]=200; p[x+1]=255; p[x+2]=255; p[x+3]=255; }
+         }
+         // Streaks
+         for i in 5..10 { let idx = ((i*size+i)*4) as usize; p[idx]=220; p[idx+1]=255; p[idx+2]=255; p[idx+3]=200; }
+         Self::place_texture(data, size, w, idx, &p);
+    }
+    
+    // Quick Stubs for others
+    fn generate_crafting_side(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [160, 110, 60]); }
+    fn generate_furnace_front(data: &mut [u8], size: u32, w: u32, idx: u32, active: bool) { 
+        Self::generate_generic(data, size, w, idx, [60, 60, 60]); 
+        // Add black hole + orange if active
+    }
+    fn generate_chest_front(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [160, 82, 45]); }
+    fn generate_sandstone_side(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [218, 204, 165]); }
+    fn generate_deadbush(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [100, 60, 20]); }
+    fn generate_tallgrass(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [50, 200, 50]); }
+    fn generate_sugarcane(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [100, 255, 100]); }
+    fn generate_sapling(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [34, 139, 34]); }
+    fn generate_bookshelf(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [100, 50, 20]); }
+    fn generate_tnt_side(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [200, 50, 50]); }
+    fn generate_tnt_top(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [200, 200, 200]); }
+    fn generate_pumpkin(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [255, 140, 0]); }
+    fn generate_melon(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [100, 200, 50]); }
+    fn generate_brick(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [150, 50, 50]); }
+    fn generate_mossy(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [100, 120, 100]); }
     
     fn generate_tool(data: &mut [u8], size: u32, w: u32, idx: u32, color: [u8; 3]) {
         let mut p = vec![0u8; (size * size * 4) as usize];

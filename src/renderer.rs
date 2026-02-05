@@ -110,7 +110,13 @@ impl<'a> Renderer<'a> {
                 if check(1, 0, 0) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 3, tex_side, h); }
                 if check(-1, 0, 0) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 2, tex_side, h); }
                 if check(0, 0, 1) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 4, tex_side, h); }
-                if check(0, 0, -1) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 5, tex_side, h); }
+if check(0, 0, -1) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 5, tex_side, h); }
+                
+                // CROSS MODEL RENDERING (Flowers, Saplings, etc.)
+                if block.is_cross_model() {
+                     let (t, _, _) = block.get_texture_indices();
+                     self.add_cross_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, t);
+                }
             }}}
             if !vertices.is_empty() {
                 let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk VB"), contents: bytemuck::cast_slice(&vertices), usage: BufferUsages::VERTEX });
@@ -150,6 +156,23 @@ impl<'a> Renderer<'a> {
         let t = |p: (f32,f32,f32)| { let r = rotate(p.0, p.2); [c[0]+r.0, c[1]+p.1, c[2]+r.1] };
         v.push(Vertex{position:t(p0), tex_coords:[0.0,1.0], ao:1.0, tex_index:tex}); v.push(Vertex{position:t(p1), tex_coords:[1.0,1.0], ao:1.0, tex_index:tex});
         v.push(Vertex{position:t(p2), tex_coords:[1.0,0.0], ao:1.0, tex_index:tex}); v.push(Vertex{position:t(p3), tex_coords:[0.0,0.0], ao:1.0, tex_index:tex});
+        i.push(*off); i.push(*off+1); i.push(*off+2); i.push(*off); i.push(*off+2); i.push(*off+3); *off += 4;
+    }
+
+fn add_cross_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, x: i32, y: i32, z: i32, tex: u32) {
+        let x = x as f32; let y = y as f32; let z = z as f32;
+        // Diagonal 1
+        v.push(Vertex{position:[x, y+1.0, z], tex_coords:[0.0,0.0], ao:1.0, tex_index:tex});
+        v.push(Vertex{position:[x+1.0, y+1.0, z+1.0], tex_coords:[1.0,0.0], ao:1.0, tex_index:tex});
+        v.push(Vertex{position:[x+1.0, y, z+1.0], tex_coords:[1.0,1.0], ao:1.0, tex_index:tex});
+        v.push(Vertex{position:[x, y, z], tex_coords:[0.0,1.0], ao:1.0, tex_index:tex});
+        i.push(*off); i.push(*off+1); i.push(*off+2); i.push(*off); i.push(*off+2); i.push(*off+3); *off += 4;
+        
+        // Diagonal 2
+        v.push(Vertex{position:[x, y+1.0, z+1.0], tex_coords:[0.0,0.0], ao:1.0, tex_index:tex});
+        v.push(Vertex{position:[x+1.0, y+1.0, z], tex_coords:[1.0,0.0], ao:1.0, tex_index:tex});
+        v.push(Vertex{position:[x+1.0, y, z], tex_coords:[1.0,1.0], ao:1.0, tex_index:tex});
+        v.push(Vertex{position:[x, y, z+1.0], tex_coords:[0.0,1.0], ao:1.0, tex_index:tex});
         i.push(*off); i.push(*off+1); i.push(*off+2); i.push(*off); i.push(*off+2); i.push(*off+3); *off += 4;
     }
 
