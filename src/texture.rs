@@ -274,13 +274,14 @@ fn generate_ore(data: &mut [u8], size: u32, w: u32, idx: u32, color: [u8; 3]) {
         Self::place_texture(data, size, w, idx, &p);
     }
 
-    fn generate_cactus(data: &mut [u8], size: u32, w: u32, idx: u32, top: bool) {
+fn generate_cactus(data: &mut [u8], size: u32, w: u32, idx: u32, top: bool) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for i in 0..size * size {
             let col = if top { [50, 150, 50] } else { [20, 120, 20] };
-            p[(i*4)] = col[0]; p[(i*4)+1] = col[1]; p[(i*4)+2] = col[2]; p[(i*4)+3] = 255;
+            let base = (i * 4) as usize;
+            p[base] = col[0]; p[base+1] = col[1]; p[base+2] = col[2]; p[base+3] = 255;
             if !top && i % 4 == 0 { // Spikes
-                p[(i*4)] = 0; p[(i*4)+1] = 0; p[(i*4)+2] = 0;
+                p[base] = 0; p[base+1] = 0; p[base+2] = 0;
             }
         }
         Self::place_texture(data, size, w, idx, &p);
@@ -318,9 +319,9 @@ fn generate_ore(data: &mut [u8], size: u32, w: u32, idx: u32, color: [u8; 3]) {
     
     // Quick Stubs for others
     fn generate_crafting_side(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [160, 110, 60]); }
-    fn generate_furnace_front(data: &mut [u8], size: u32, w: u32, idx: u32, active: bool) { 
+fn generate_furnace_front(data: &mut [u8], size: u32, w: u32, idx: u32, _active: bool) { 
         Self::generate_generic(data, size, w, idx, [60, 60, 60]); 
-        // Add black hole + orange if active
+        // Add black hole + orange if active (Placeholder logic removed to stop warning)
     }
     fn generate_chest_front(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [160, 82, 45]); }
     fn generate_sandstone_side(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [218, 204, 165]); }
