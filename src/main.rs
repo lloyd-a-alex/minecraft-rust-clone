@@ -289,18 +289,24 @@ cursor.count -= transfer;
                                  // "Spew" logic: If Shift is held, loop through the stack count and drop individually
                                  let loop_count = if drop_all { stack.count } else { 1 };
                                  
-                                 for i in 0..loop_count {
-                                     // Cheap pseudo-randomness for spread
-                                     let r_x = ((i * 13 + (player.position.x * 100.0) as u8) % 10) as f32 / 20.0 - 0.25;
-                                     let r_y = ((i * 7 + (player.position.y * 100.0) as u8) % 10) as f32 / 20.0 - 0.25;
-                                     let r_z = ((i * 19 + (player.position.z * 100.0) as u8) % 10) as f32 / 20.0 - 0.25;
+for i in 0..loop_count {
+                                     // Safe Math: Cast to u32 first to prevent overflow panic
+                                     let i_u32 = i as u32;
+                                     let px_u32 = (player.position.x * 100.0) as u32;
+                                     let py_u32 = (player.position.y * 100.0) as u32;
+                                     let pz_u32 = (player.position.z * 100.0) as u32;
+
+                                     let r_x = (i_u32.wrapping_mul(13).wrapping_add(px_u32) % 20) as f32 / 40.0 - 0.25;
+                                     let r_y = (i_u32.wrapping_mul(7).wrapping_add(py_u32) % 20) as f32 / 40.0 - 0.25;
+                                     let r_z = (i_u32.wrapping_mul(19).wrapping_add(pz_u32) % 20) as f32 / 40.0 - 0.25;
+                                     
                                      let jitter = glam::Vec3::new(r_x, r_y, r_z);
                                      
                                      let ent = world::ItemEntity { 
                                          position: player.position + glam::Vec3::new(0.0, 1.5, 0.0), 
                                          velocity: (base_dir + jitter).normalize() * 10.0, 
                                          item_type: stack.item, 
-                                         count: 1, // Drop as 1s so they scatter
+                                         count: 1, 
                                          pickup_delay: 1.5, 
                                          lifetime: 300.0, 
                                          rotation: 0.0, 

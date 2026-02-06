@@ -21,18 +21,18 @@ impl TextureAtlas {
         Self::generate_noise(&mut data, block_size, atlas_width, 0, [100, 170, 80], 20); 
         // Grass Side (Dirt + Green Overlay)
         Self::generate_grass_side(&mut data, block_size, atlas_width, 1);
-        // Dirt (Brown Noise)
-        Self::generate_noise(&mut data, block_size, atlas_width, 2, [139, 69, 19], 30);
-        // Stone (Grey Noise)
+// Dirt (Coarse / Clumpy)
+        Self::generate_dirt(&mut data, block_size, atlas_width, 2);
+        // Stone
         Self::generate_noise(&mut data, block_size, atlas_width, 3, [125, 125, 125], 20);
-        // Wood Side (Bark - Vertical Streaks)
+        // Wood Side
         Self::generate_wood_side(&mut data, block_size, atlas_width, 4, [110, 80, 50]);
-        // Leaves (Green pattern)
-        Self::generate_leaves(&mut data, block_size, atlas_width, 5, [50, 120, 50]);
+        // Leaves (Variegated / Fancy)
+        Self::generate_leaves_fancy(&mut data, block_size, atlas_width, 5);
         // Snow
         Self::generate_noise(&mut data, block_size, atlas_width, 6, [245, 250, 255], 10);
-        // Sand
-        Self::generate_noise(&mut data, block_size, atlas_width, 7, [238, 228, 170], 15);
+        // Sand (Fixed color - less green, more beige/gold)
+        Self::generate_noise(&mut data, block_size, atlas_width, 7, [225, 210, 150], 15);
         // Bedrock (High Contrast)
         Self::generate_bedrock(&mut data, block_size, atlas_width, 8);
         // Water (Animated Blue)
@@ -212,6 +212,56 @@ fn generate_noise(data: &mut [u8], size: u32, w: u32, idx: u32, base_col: [u8; 3
             p[base+1] = (base_col[1] as i32 + g_offset).clamp(0,255) as u8;
             p[base+2] = (base_col[2] as i32 + b_offset).clamp(0,255) as u8;
             p[base+3] = 255;
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+fn generate_dirt(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y * size + x) * 4) as usize;
+                // Base brown
+                let mut r = 139; let mut g = 69; let mut b = 19;
+                
+                // "Clumps" logic - larger noise pattern
+                if ((x / 2) + (y / 2)) % 3 == 0 {
+                    r = 110; g = 55; b = 15; // Darker clump
+                } else if (x + y * 3) % 7 == 0 {
+                    r = 160; g = 90; b = 40; // Lighter speck
+                }
+                
+                // Minor noise
+                let var = ((x * 13 ^ y * 23) % 15) as i32 - 7;
+                p[i] = (r as i32 + var).clamp(0, 255) as u8;
+                p[i+1] = (g as i32 + var).clamp(0, 255) as u8;
+                p[i+2] = (b as i32 + var).clamp(0, 255) as u8;
+                p[i+3] = 255;
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_leaves_fancy(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y * size + x) * 4) as usize;
+                
+                // Variegated pattern: Checkerboard-ish clusters
+                let cluster = ((x / 2) + (y / 2)) % 2 == 0;
+                
+                if (x % 4 == 0 && y % 4 != 0) || (y % 4 == 0 && x % 4 != 0) {
+                    p[i+3] = 0; // Transparent holes for "fancy" graphics look
+                } else {
+                    if cluster {
+                        p[i] = 40; p[i+1] = 100; p[i+2] = 40; // Dark Green
+                    } else {
+                        p[i] = 70; p[i+1] = 140; p[i+2] = 70; // Lighter Green
+                    }
+                    p[i+3] = 255;
+                }
+            }
         }
         Self::place_texture(data, size, w, idx, &p);
     }
