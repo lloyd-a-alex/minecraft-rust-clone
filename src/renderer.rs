@@ -236,7 +236,15 @@ pub fn render_main_menu(&mut self, menu: &MainMenu, width: u32, height: u32) -> 
     for y in -4..4 { for x in -4..4 {
         add_quad(&crate::main::Rect{x: x as f32 * 0.5, y: y as f32 * 0.5, w: 0.5, h: 0.5}, 2);
     }}
-
+// 1.5 Draw Title (Big Text)
+        // Positioned at top (y=0.6), Scale 6.0 (Huge)
+        let title_text = "MINECRAFT";
+        let aspect_ratio = width as f32 / height as f32;
+        let title_scale = 5.0;
+        let title_w = title_text.len() as f32 * 7.0 * title_scale; // Approx width calc
+        let title_x_ndc = -(title_w / width as f32); // Rough centering
+        
+        self.draw_text(title_text, -0.35, 0.6, 0.008, &mut vertices, &mut indices, &mut idx_offset);
     // 2. Buttons & Text
     for btn in &menu.buttons {
         add_quad(&btn.rect, if btn.hovered { 251 } else { 250 });

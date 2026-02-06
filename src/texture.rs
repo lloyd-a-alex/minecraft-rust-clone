@@ -692,7 +692,7 @@ fn generate_obsidian(data: &mut [u8], size: u32, w: u32, idx: u32) {
         Self::generate_generic(data, size, w, idx, [200, 200, 200]);
     }
 
-    fn generate_font(data: &mut [u8], size: u32, w: u32, start_idx: u32) {
+fn generate_font(data: &mut [u8], size: u32, w: u32, start_idx: u32) {
         let chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789->";
         let patterns: [[u8; 5]; 38] = [
             [0xE, 0x11, 0x1F, 0x11, 0x11], [0x1E, 0x11, 0x1E, 0x11, 0x1E], [0xE, 0x11, 0x10, 0x11, 0xE], [0x1E, 0x11, 0x11, 0x11, 0x1E],
@@ -727,4 +727,24 @@ fn generate_obsidian(data: &mut [u8], size: u32, w: u32, idx: u32) {
             Self::place_texture(data, size, w, start_idx + i as u32, &p);
         }
     }
-}
+
+    // --- 9. UI BUTTONS ---
+    fn generate_button(data: &mut [u8], size: u32, w: u32, idx: u32, hovered: bool) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        // Minecraft Style: Dark Grey body, Lighter border top/left, Darker border btm/right
+        let base_col = if hovered { [120, 120, 160] } else { [100, 100, 100] }; 
+        let light_border = if hovered { [160, 160, 210] } else { [160, 160, 160] };
+        let dark_border = if hovered { [60, 60, 90] } else { [40, 40, 40] };
+
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y * size + x) * 4) as usize;
+                let mut c = base_col;
+                if x == 0 || y == 0 || x == 1 || y == 1 { c = light_border; }
+                else if x >= size - 2 || y >= size - 2 { c = dark_border; }
+                
+                p[i] = c[0]; p[i+1] = c[1]; p[i+2] = c[2]; p[i+3] = 255;
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }

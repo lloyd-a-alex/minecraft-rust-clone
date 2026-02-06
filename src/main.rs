@@ -19,9 +19,14 @@ enum MenuAction { Singleplayer, Host, Join, Stress, Quit }
 struct MenuButton { rect: Rect, text: String, action: MenuAction, hovered: bool }
 pub struct MainMenu { buttons: Vec<MenuButton> }
 impl MainMenu {
-    fn new() -> Self {
+fn new() -> Self {
         let mut b = Vec::new();
-        let w = 0.6; let h = 0.15; let g = 0.05; let sy = 0.4;
+        // Minecraft proportions: Buttons are roughly 400px wide on 1080p -> ~0.4 width in NDC
+        let w = 0.5; 
+        let h = 0.1; 
+        let g = 0.04; // Gap
+        let sy = 0.1; // Start Y (lower than before to make room for Title)
+
         b.push(MenuButton{rect:Rect{x:0.0,y:sy,w,h}, text:"SINGLEPLAYER".to_string(), action:MenuAction::Singleplayer, hovered:false});
         b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g),w,h}, text:"HOST ONLINE".to_string(), action:MenuAction::Host, hovered:false});
         b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g)*2.0,w,h}, text:"JOIN GAME".to_string(), action:MenuAction::Join, hovered:false});
