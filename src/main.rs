@@ -306,11 +306,13 @@ cursor.count -= transfer;
                                          rotation: 0.0, 
                                          bob_offset: i as f32 * 0.5 
                                      };
-                                     world.entities.push(ent);
+world.entities.push(ent);
                                  }
                              }
-                    if !pressed { player.handle_input(key, false); }
-                    else if !is_paused && !player.inventory_open { player.handle_input(key, true); }
+                        } // <--- Added missing closing brace for KeyQ block
+
+                        if !pressed { player.handle_input(key, false); }
+                        else if !is_paused && !player.inventory_open { player.handle_input(key, true); }
                     }
                 },
                 WindowEvent::RedrawRequested => {
