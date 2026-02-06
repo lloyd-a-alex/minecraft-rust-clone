@@ -709,7 +709,7 @@ fn generate_font(data: &mut [u8], size: u32, w: u32, start_idx: u32) {
             // ->
             [0x0, 0x0, 0xF, 0x0, 0x0], [0x0, 0x2, 0x4, 0x8, 0x0],
         ];
-        for (i, _) in chars.iter().enumerate() {
+for (i, _) in chars.iter().enumerate() {
             let mut p = vec![0u8; (size * size * 4) as usize];
             let pattern = patterns[i];
             for y in 0..5 {
@@ -724,27 +724,7 @@ fn generate_font(data: &mut [u8], size: u32, w: u32, start_idx: u32) {
                     }
                 }
             }
-Self::place_texture(data, size, w, start_idx + i as u32, &p);
-    }
-    // Brace removed here so the following functions stay inside the impl
-
-    // --- 9. UI BUTTONS ---
-    fn generate_button(data: &mut [u8], size: u32, w: u32, idx: u32, hovered: bool) {
-        let mut p = vec![0u8; (size * size * 4) as usize];
-        // Minecraft Style: Dark Grey body, Lighter border top/left, Darker border btm/right
-        let base_col = if hovered { [120, 120, 160] } else { [100, 100, 100] }; 
-        let light_border = if hovered { [160, 160, 210] } else { [160, 160, 160] };
-        let dark_border = if hovered { [60, 60, 90] } else { [40, 40, 40] };
-
-        for y in 0..size {
-            for x in 0..size {
-                let i = ((y * size + x) * 4) as usize;
-                let mut c = base_col;
-                if x == 0 || y == 0 || x == 1 || y == 1 { c = light_border; }
-                else if x >= size - 2 || y >= size - 2 { c = dark_border; }
-                
-                p[i] = c[0]; p[i+1] = c[1]; p[i+2] = c[2]; p[i+3] = 255;
-            }
+            Self::place_texture(data, size, w, start_idx + i as u32, &p);
         }
-        Self::place_texture(data, size, w, idx, &p);
     }
+}

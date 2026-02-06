@@ -133,9 +133,9 @@ pub struct Player {
     pub on_ground: bool,
     pub inventory: Inventory,
     pub keys: PlayerKeys,
-    pub hotbar: crate::Hotbar, // Fixed import from crate root
-
-    // Added missing fields
+    pub hotbar: crate::Hotbar, // Fixed import
+    
+    // New fields required by Main Menu & Gameplay logic
     pub is_flying: bool,
     pub is_sprinting: bool,
     pub health: f32,
@@ -160,30 +160,30 @@ pub struct PlayerKeys {
 impl Player {
 pub fn new() -> Self {
 Player {
-        position: Vec3::new(0.0, 100.0, 0.0), // Fixed 'pos' error
-        rotation: Vec3::ZERO,
-        velocity: Vec3::ZERO,
-        height: 1.8,
-        radius: 0.3,
-        on_ground: false,
-        inventory: Inventory::new(),
-        keys: PlayerKeys::default(),
-        hotbar: crate::Hotbar::new(), // Fixed import
-
-        is_flying: false,
-        is_sprinting: false,
-        health: 20.0,
-        max_health: 20.0,
-        air: 10.0,
-        max_air: 10.0,
-        invincible_timer: 0.0,
-        speed: 5.0,
-        walk_time: 0.0,
-        sensitivity: 0.005,
-        inventory_open: false,
-        crafting_open: false,
-        is_dead: false,
-    }
+            position: Vec3::new(0.0, 100.0, 0.0),
+            rotation: Vec3::ZERO,
+            velocity: Vec3::ZERO,
+            height: 1.8,
+            radius: 0.3,
+            on_ground: false,
+            inventory: Inventory::new(),
+            keys: PlayerKeys::default(),
+            hotbar: crate::Hotbar::new(),
+            
+            is_flying: false,
+            is_sprinting: false,
+            health: 20.0,
+            max_health: 20.0,
+            air: 10.0,
+            max_air: 10.0,
+            invincible_timer: 0.0,
+            speed: 5.0,
+            walk_time: 0.0,
+            sensitivity: 0.005,
+            inventory_open: false,
+            crafting_open: false,
+            is_dead: false,
+        }
     }
     pub fn respawn(&mut self) { self.position = Vec3::new(0.0, 80.0, 0.0); self.velocity = Vec3::ZERO; self.health = self.max_health; self.is_dead = false; self.invincible_timer = 3.0; }
     
