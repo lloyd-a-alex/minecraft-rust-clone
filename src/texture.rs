@@ -158,31 +158,31 @@ impl TextureAtlas {
         Self::clear_tile(&mut data, block_size, atlas_width, UI_BAR);
         Self::generate_ui_bar_data(&mut data, block_size, atlas_width, UI_BAR);
 
-        // --- FONT ---
-        Self::generate_font(&mut data, block_size, atlas_width, 200);
+Self::generate_font(&mut data, block_size, atlas_width, 200);
 
         TextureAtlas { data, size: block_size, grid_size: grid_width_in_blocks }
+    }
 
-fn clear_tile(data: &mut [u8], blocksize: u32, atlaswidth: u32, grididx: u32) {
-    let blocks_per_row = atlaswidth / blocksize;
-    let gridx = grididx % blocks_per_row;
-    let gridy = grididx / blocks_per_row;
-    let basex = gridx * blocksize;
-    let basey = gridy * blocksize;
-    for y in 0..blocksize {
-        for x in 0..blocksize {
-            let dstx = basex + x;
-            let dsty = basey + y;
-            let dstidx = ((dsty * atlaswidth + dstx) * 4) as usize;
-            if dstidx + 3 < data.len() {
-                data[dstidx + 0] = 0;
-                data[dstidx + 1] = 0;
-                data[dstidx + 2] = 0;
-                data[dstidx + 3] = 0;
+    fn clear_tile(data: &mut [u8], blocksize: u32, atlaswidth: u32, grididx: u32) {
+        let blocks_per_row = atlaswidth / blocksize;
+        let gridx = grididx % blocks_per_row;
+        let gridy = grididx / blocks_per_row;
+        let basex = gridx * blocksize;
+        let basey = gridy * blocksize;
+        for y in 0..blocksize {
+            for x in 0..blocksize {
+                let dstx = basex + x;
+                let dsty = basey + y;
+                let dstidx = ((dsty * atlaswidth + dstx) * 4) as usize;
+                if dstidx + 3 < data.len() {
+                    data[dstidx + 0] = 0;
+                    data[dstidx + 1] = 0;
+                    data[dstidx + 2] = 0;
+                    data[dstidx + 3] = 0;
+                }
             }
         }
     }
-}
     }
     fn place_texture(data: &mut [u8], block_size: u32, atlas_width: u32, grid_idx: u32, pixels: &[u8]) {
         let blocks_per_row = atlas_width / block_size;
