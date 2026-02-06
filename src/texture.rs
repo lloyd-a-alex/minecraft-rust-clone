@@ -183,7 +183,7 @@ Self::generate_font(&mut data, block_size, atlas_width, 200);
             }
         }
     }
-    }
+    
     fn place_texture(data: &mut [u8], block_size: u32, atlas_width: u32, grid_idx: u32, pixels: &[u8]) {
         let blocks_per_row = atlas_width / block_size;
         let grid_x = grid_idx % blocks_per_row;
@@ -537,7 +537,7 @@ fn generate_skin(data: &mut [u8], size: u32, w: u32, idx: u32) {
                     }
                 }
             }
-            Self::place_texture(data, size, w, start_idx + i as u32, &p);
+Self::place_texture(data, size, w, start_idx + i as u32, &p);
         }
     }
 }
