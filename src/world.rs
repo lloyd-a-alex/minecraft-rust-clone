@@ -31,55 +31,62 @@ pub enum BlockType {
     WoodAxe = 26, StoneAxe = 27, IronAxe = 28, GoldAxe = 29, DiamondAxe = 30,
     WoodShovel = 31, StoneShovel = 32, IronShovel = 33, GoldShovel = 34, DiamondShovel = 35,
     WoodSword = 36, StoneSword = 37, IronSword = 38, GoldSword = 39, DiamondSword = 40,
-    Coal = 41,
-    // New Environment Blocks
-    Gravel = 50, Clay = 51, Sandstone = 52, Obsidian = 53, Cactus = 54, 
+    Coal = 41, Gravel = 50, Clay = 51, Sandstone = 52, Obsidian = 53, Cactus = 54, 
+    Ice = 501, Mycelium = 502, LilyPad = 503, Vine = 504,
     Rose = 55, Dandelion = 56, DeadBush = 57, TallGrass = 58, Sugarcane = 59,
     OakSapling = 60, Glass = 61, Bookshelf = 62, TNT = 63, Pumpkin = 64, Melon = 65,
-    BrickBlock = 66, MossyCobble = 67, 
+    BrickBlock = 66, MossyCobble = 67, Lava = 70, Fire = 71,
+    SpruceWood = 72, SpruceLeaves = 73, BirchWood = 74, BirchLeaves = 75,
     CraftingTable = 100, Furnace = 101, FurnaceActive = 102, Chest = 103,
+    WheatSeeds = 110, Wheat = 111, Bread = 112, Apple = 113, Porkchop = 114, CookedPorkchop = 115,
 }
 
 impl BlockType {
     pub fn get_water_level(&self) -> u8 { if *self == BlockType::Water { 8 } else { 0 } }
 pub fn is_transparent(&self) -> bool { 
-        matches!(self, BlockType::Air | BlockType::Water | BlockType::Leaves | BlockType::Torch | 
-                       BlockType::Glass | BlockType::Rose | BlockType::Dandelion | BlockType::DeadBush | 
-                       BlockType::TallGrass | BlockType::OakSapling | BlockType::Sugarcane | BlockType::Cactus) 
+        matches!(self, BlockType::Air | BlockType::Water | BlockType::Lava | BlockType::Leaves | BlockType::SpruceLeaves | BlockType::BirchLeaves | 
+                       BlockType::Torch | BlockType::Fire | BlockType::Glass | BlockType::Rose | BlockType::Dandelion | 
+                       BlockType::DeadBush | BlockType::TallGrass | BlockType::OakSapling | BlockType::Sugarcane | 
+                       BlockType::Cactus | BlockType::Ice | BlockType::LilyPad | BlockType::Vine | BlockType::Wheat) 
     }
 
-    pub fn is_solid(&self) -> bool {
-        !matches!(self, BlockType::Air | BlockType::Water | BlockType::Torch | BlockType::Stick | 
-                        BlockType::IronIngot | BlockType::GoldIngot | BlockType::Diamond | BlockType::Coal |
-                        BlockType::Rose | BlockType::Dandelion | BlockType::DeadBush | BlockType::TallGrass | 
-                        BlockType::OakSapling | BlockType::Sugarcane) && !self.is_tool()
-    }
 
     pub fn is_cross_model(&self) -> bool {
         matches!(self, BlockType::Rose | BlockType::Dandelion | BlockType::DeadBush | BlockType::TallGrass | BlockType::OakSapling | BlockType::Sugarcane)
     }
-    pub fn is_water(&self) -> bool { matches!(self, BlockType::Water) }
-    pub fn is_tool(&self) -> bool { (*self as u8) >= 21 && (*self as u8) <= 40 }
-    pub fn is_item(&self) -> bool { matches!(self, BlockType::Stick | BlockType::IronIngot | BlockType::GoldIngot | BlockType::Diamond | BlockType::Coal) }
+pub fn is_water(&self) -> bool { matches!(self, BlockType::Water) }
+
+pub fn is_solid(&self) -> bool {
+    !matches!(self, BlockType::Air | BlockType::Water | BlockType::Lava | BlockType::Rose | BlockType::Dandelion | BlockType::DeadBush | BlockType::TallGrass | BlockType::OakSapling | BlockType::Sugarcane | BlockType::Fire)
+}
+
+pub fn is_tool(&self) -> bool { (*self as u8) >= 21 && (*self as u8) <= 40 }
     
 pub fn get_texture_indices(&self) -> (u32, u32, u32) {
-        match self {
+match self {
             BlockType::Grass => (0, 2, 1), BlockType::Dirt => (2, 2, 2), BlockType::Stone => (3, 3, 3),
             BlockType::Wood => (4, 4, 4), BlockType::Leaves => (5, 5, 5), BlockType::Snow => (6, 6, 6),
             BlockType::Sand => (7, 7, 7), BlockType::Bedrock => (8, 8, 8), BlockType::Water => (9, 9, 9),
+            BlockType::Lava => (200, 200, 200), BlockType::Fire => (201, 201, 201),
+            BlockType::SpruceWood => (202, 202, 202), BlockType::SpruceLeaves => (203, 203, 203),
+            BlockType::BirchWood => (204, 204, 204), BlockType::BirchLeaves => (205, 205, 205),
             BlockType::CoalOre => (10, 10, 10), BlockType::IronOre => (11, 11, 11), BlockType::GoldOre => (12, 12, 12), BlockType::DiamondOre => (13, 13, 13),
             BlockType::RedstoneOre => (22, 22, 22), BlockType::LapisOre => (23, 23, 23),
             BlockType::Planks => (14, 14, 14), BlockType::Stick => (15, 15, 15), BlockType::Cobblestone => (16, 16, 16),
-            BlockType::Torch => (20, 20, 20), BlockType::CraftingTable => (21, 25, 14), // Top=21, Side=25, Bottom=14 (Fixed Side)
-            BlockType::Furnace => (26, 27, 26), // Top, Front, Side
-            BlockType::Chest => (28, 29, 28), // Top, Front, Side
+            BlockType::Torch => (20, 20, 20), BlockType::CraftingTable => (21, 25, 14), 
+            BlockType::Furnace => (26, 27, 26), BlockType::Chest => (28, 29, 28),
             BlockType::Gravel => (30, 30, 30), BlockType::Clay => (31, 31, 31), BlockType::Sandstone => (32, 33, 32),
-            BlockType::Obsidian => (34, 34, 34), BlockType::Cactus => (35, 36, 35), // Top, Side, Bottom
+            BlockType::Obsidian => (34, 34, 34), BlockType::Cactus => (35, 36, 35),
+            BlockType::Ice => (60, 60, 60), BlockType::LilyPad => (61, 61, 61), 
+            BlockType::Mycelium => (62, 2, 63), // Top, Bot, Side
+            BlockType::Vine => (64, 64, 64),
             BlockType::Rose => (37, 37, 37), BlockType::Dandelion => (38, 38, 38), BlockType::DeadBush => (39, 39, 39),
             BlockType::TallGrass => (45, 45, 45), BlockType::Sugarcane => (46, 46, 46), BlockType::OakSapling => (47, 47, 47),
-            BlockType::Glass => (48, 48, 48), BlockType::Bookshelf => (14, 49, 14), // Planks top/bot, Books side
+            BlockType::Glass => (48, 48, 48), BlockType::Bookshelf => (14, 49, 14), 
             BlockType::TNT => (50, 51, 50), BlockType::Pumpkin => (52, 53, 52), BlockType::Melon => (54, 55, 54),
             BlockType::BrickBlock => (56, 56, 56), BlockType::MossyCobble => (57, 57, 57),
+            BlockType::Wheat => (80, 80, 80), BlockType::Bread => (81, 81, 81), BlockType::Apple => (82, 82, 82),
+            BlockType::Porkchop => (83, 83, 83), BlockType::CookedPorkchop => (84, 84, 84),
             t if t.is_tool() => { let i = *t as u32; (i, i, i) }
             _ => (0, 0, 0),
         }
@@ -254,7 +261,8 @@ fn generate_terrain(&mut self) {
             }
         }
         
-        // 2. Decorators (Trees, Cacti, Flowers, Sugar Cane)
+        // 2. Diabolical Decorators (Biome Specifics)
+// 2. Diabolical Decorators (Biome Specifics)
         for cx in -render_distance..=render_distance {
             for cz in -render_distance..=render_distance {
                 let chunk_x_world = cx * (CHUNK_SIZE_X as i32); let chunk_z_world = cz * (CHUNK_SIZE_Z as i32);
@@ -262,7 +270,14 @@ fn generate_terrain(&mut self) {
                     for lz in 0..CHUNK_SIZE_Z {
                         let wx = chunk_x_world + lx as i32; let wz = chunk_z_world + lz as i32;
                         let height = noise_gen.get_height(wx, wz);
-                        if noise_gen.get_river_noise(wx, wz).abs() < 0.15 { continue; }
+                        // Skip rivers for most decoration
+                        if noise_gen.get_river_noise(wx, wz).abs() < 0.15 { 
+                            if height < WATER_LEVEL - 1 {
+                                let mut rng = SimpleRng::new((wx as u64).wrapping_mul(self.seed as u64).wrapping_add(wz as u64));
+                                if rng.next_f32() < 0.2 { self.set_block_world(BlockPos{x:wx, y:height, z:wz}, BlockType::Clay); }
+                            }
+                            continue; 
+                        }
                         let biome = noise_gen.get_biome(wx, wz, height);
                         let mut rng = SimpleRng::new((wx as u64).wrapping_mul(self.seed as u64) ^ (wz as u64));
                         let r = rng.next_f32();
@@ -271,48 +286,79 @@ fn generate_terrain(&mut self) {
                         let above = BlockPos{x:wx, y:height+1, z:wz};
                         let ground = self.get_block(surface_pos);
 
-                        // CACTUS
-                        if biome == "desert" && ground == BlockType::Sand && r < 0.01 {
-                            let h = 1 + (rng.next_f32() * 3.0) as i32;
-                            for i in 0..h { self.set_block_world(BlockPos{x:wx, y:height+1+i, z:wz}, BlockType::Cactus); }
-                        }
-                        // DEAD BUSH
-                        else if biome == "desert" && ground == BlockType::Sand && r < 0.02 {
-                             self.set_block_world(above, BlockType::DeadBush);
-                        }
-                        // SUGAR CANE (Near Water)
-                        else if (biome == "forest" || biome == "plains") && (ground == BlockType::Grass || ground == BlockType::Sand) {
-                             // Check for water neighbor
-                             let mut near_water = false;
-                             for (dx, dz) in &[(1,0),(-1,0),(0,1),(0,-1)] {
-                                 if self.get_block(BlockPos{x:wx+dx, y:height, z:wz+dz}) == BlockType::Water { near_water = true; break; }
+                        if biome == "swamp" {
+                             if ground == BlockType::Water && r < 0.05 { self.set_block_world(above, BlockType::LilyPad); }
+                             if ground == BlockType::Grass && r < 0.02 {
+                                 let h = 4 + (rng.next_f32() * 3.0) as i32;
+                                 for i in 1..=h { self.set_block_world(BlockPos{x:wx, y:height+i, z:wz}, BlockType::Wood); }
+                                 for ly in (height+h-2)..(height+h+2) {
+                                     let rad = if ly > height+h { 1 } else { 3 };
+                                     for dx in -rad..=rad { for dz in -rad..=rad {
+                                         if (dx*dx + dz*dz) > rad*rad+2 { continue; }
+                                         let lp = BlockPos{x:wx+dx, y:ly, z:wz+dz};
+                                         if self.get_block(lp) == BlockType::Air { 
+                                             self.set_block_world(lp, BlockType::Leaves);
+                                             if rng.next_f32() < 0.2 && ly > height+2 {
+                                                  let vlen = (rng.next_f32() * 3.0) as i32;
+                                                  for k in 1..vlen { self.set_block_world(BlockPos{x:wx+dx, y:ly-k, z:wz+dz}, BlockType::Vine); }
+                                             }
+                                         }
+                                     }}
+                                 }
                              }
-                             if near_water && r < 0.05 {
-                                 let h = 1 + (rng.next_f32() * 3.0) as i32;
-                                 for i in 0..h { self.set_block_world(BlockPos{x:wx, y:height+1+i, z:wz}, BlockType::Sugarcane); }
-                             }
-                        }
-                        // TREES
-                        if biome == "forest" && ground == BlockType::Grass && r < 0.02 {
-                            if height > WATER_LEVEL {
-                                let tree_h = 4 + (rng.next_f32() * 2.0) as i32;
-                                for i in 1..=tree_h { self.set_block_world(BlockPos{x:wx, y:height+i, z:wz}, BlockType::Wood); }
-                                for ly in (height+tree_h-2)..(height+tree_h+2) {
-                                    let radius = if ly > height+tree_h { 1 } else { 2 };
-                                    for dx in -radius..=radius { for dz in -radius..=radius {
-                                        if (dx*dx + dz*dz) > radius*radius+1 { continue; }
+                        } else if biome == "taiga" {
+                            if ground == BlockType::Grass && r < 0.02 {
+                                let h = 6 + (rng.next_f32() * 4.0) as i32;
+                                for i in 1..=h { self.set_block_world(BlockPos{x:wx, y:height+i, z:wz}, BlockType::SpruceWood); }
+                                let mut rad: i32 = 2;
+                                for ly in (height+3)..=(height+h) {
+                                    for dx in -rad..=rad { for dz in -rad..=rad {
+                                        if dx.abs() + dz.abs() > rad { continue; }
                                         let lp = BlockPos{x:wx+dx, y:ly, z:wz+dz};
-                                        if self.get_block(lp) == BlockType::Air { self.set_block_world(lp, BlockType::Leaves); }
+                                        if self.get_block(lp) == BlockType::Air { self.set_block_world(lp, BlockType::SpruceLeaves); }
                                     }}
+                                    if ly % 2 == 0 { rad = (rad - 1).max(0); }
                                 }
+                                self.set_block_world(BlockPos{x:wx, y:height+h+1, z:wz}, BlockType::SpruceLeaves);
                             }
-                        }
-                        // FLOWERS & TALL GRASS
-                        else if ground == BlockType::Grass {
-                            if r < 0.01 { self.set_block_world(above, BlockType::Rose); }
-                            else if r < 0.02 { self.set_block_world(above, BlockType::Dandelion); }
-                            else if r < 0.1 && biome == "plains" { self.set_block_world(above, BlockType::TallGrass); }
-                            else if r < 0.005 { self.set_block_world(above, BlockType::Pumpkin); }
+                        } else if biome == "desert" {
+                             if ground == BlockType::Sand {
+                                 if r < 0.01 {
+                                     let h = 1 + (rng.next_f32() * 3.0) as i32;
+                                     for i in 0..h { self.set_block_world(BlockPos{x:wx, y:height+1+i, z:wz}, BlockType::Cactus); }
+                                 } else if r < 0.02 { self.set_block_world(above, BlockType::DeadBush); }
+                             }
+                        } else if biome == "ice_plains" {
+                             if height == WATER_LEVEL { self.set_block_world(surface_pos, BlockType::Ice); }
+                        } else {
+                            if ground == BlockType::Grass {
+                                if biome == "forest" && r < 0.01 {
+                                    let tree_h = 4 + (rng.next_f32() * 2.0) as i32;
+                                    for i in 1..=tree_h { self.set_block_world(BlockPos{x:wx, y:height+i, z:wz}, BlockType::Wood); }
+                                    for ly in (height+tree_h-2)..(height+tree_h+2) {
+                                        let rad = if ly > height+tree_h { 1 } else { 2 };
+                                        for dx in -rad..=rad { for dz in -rad..=rad {
+                                            if (dx*dx + dz*dz) > rad*rad+1 { continue; }
+                                            let lp = BlockPos{x:wx+dx, y:ly, z:wz+dz};
+                                            if self.get_block(lp) == BlockType::Air { self.set_block_world(lp, BlockType::Leaves); }
+                                        }}
+                                    }
+                                }
+                                if r < 0.01 { self.set_block_world(above, BlockType::Rose); }
+                                else if r < 0.02 { self.set_block_world(above, BlockType::Dandelion); }
+                                else if r < 0.05 && biome == "plains" { self.set_block_world(above, BlockType::TallGrass); }
+                                else if r < 0.002 { self.set_block_world(above, BlockType::Pumpkin); }
+                            }
+                             if (ground == BlockType::Grass || ground == BlockType::Sand) && r < 0.05 {
+                                 let mut near_water = false;
+                                 for (dx, dz) in &[(1,0),(-1,0),(0,1),(0,-1)] {
+                                     if self.get_block(BlockPos{x:wx+dx, y:height, z:wz+dz}).is_water() { near_water = true; break; }
+                                 }
+                                 if near_water {
+                                     let h = 1 + (rng.next_f32() * 3.0) as i32;
+                                     for i in 0..h { self.set_block_world(BlockPos{x:wx, y:height+1+i, z:wz}, BlockType::Sugarcane); }
+                                 }
+                             }
                         }
                     }
                 }
@@ -346,6 +392,51 @@ fn generate_terrain(&mut self) {
             else { if t_max_y < t_max_z { y += step_y; t = t_max_y; t_max_y += t_delta_y; } else { z += step_z; t = t_max_z; t_max_z += t_delta_z; } }
         }
         None
+    }
+// --- PHYSICS & LOGIC ---
+pub fn update_block_physics(&mut self, pos: BlockPos) -> Vec<(i32, i32)> {
+        let mut affected = Vec::new();
+        let b = self.get_block(pos);
+        
+        // 1. Gravity (Sand/Gravel)
+        if matches!(b, BlockType::Sand | BlockType::Gravel) {
+            let below_pos = BlockPos { x: pos.x, y: pos.y - 1, z: pos.z };
+            let below = self.get_block(below_pos);
+            if below == BlockType::Air || below.is_water() || below == BlockType::Lava {
+                self.set_block_world(pos, BlockType::Air);
+                self.set_block_world(below_pos, b);
+                affected.extend(self.get_affected_chunks(pos));
+                affected.extend(self.get_affected_chunks(below_pos));
+                // Recursive update
+                affected.extend(self.update_block_physics(below_pos));
+                // Update neighbors of old pos
+                for (dx, dy, dz) in &[(0,1,0), (0,-1,0), (1,0,0), (-1,0,0), (0,0,1), (0,0,-1)] {
+                     affected.extend(self.update_block_physics(BlockPos{x:pos.x+dx, y:pos.y+dy, z:pos.z+dz}));
+                }
+            }
+        }
+
+        // 2. Fluid Interaction (Obsidian/Cobble Gen)
+        if b == BlockType::Lava {
+             for (dx, dy, dz) in &[(1,0,0), (-1,0,0), (0,0,1), (0,0,-1), (0,1,0)] {
+                 let n_pos = BlockPos{x:pos.x+dx, y:pos.y+dy, z:pos.z+dz};
+                 if self.get_block(n_pos).is_water() {
+                     self.set_block_world(pos, BlockType::Obsidian);
+                     affected.extend(self.get_affected_chunks(pos));
+                     break;
+                 }
+             }
+        } else if b.is_water() {
+             for (dx, dy, dz) in &[(1,0,0), (-1,0,0), (0,0,1), (0,0,-1), (0,1,0)] {
+                 let n_pos = BlockPos{x:pos.x+dx, y:pos.y+dy, z:pos.z+dz};
+                 if self.get_block(n_pos) == BlockType::Lava {
+                     self.set_block_world(n_pos, BlockType::Obsidian);
+                     affected.extend(self.get_affected_chunks(n_pos));
+                 }
+             }
+        }
+        affected.sort(); affected.dedup();
+        affected
     }
     pub fn get_affected_chunks(&self, pos: BlockPos) -> Vec<(i32, i32)> {
         let cx = pos.x.div_euclid(CHUNK_SIZE_X as i32);
@@ -451,6 +542,6 @@ self.set_block_world(pos, BlockType::Air);
             }
             retained.push(entity);
         }
-        self.entities = retained;
+self.entities = retained;
     }
 }

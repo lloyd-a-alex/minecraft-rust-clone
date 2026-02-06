@@ -185,19 +185,22 @@ fn add_cross_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, x
 fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32) {
         let aspect = self.config.width as f32 / self.config.height as f32;
         let mut x = start_x;
-        // FIXED: Convert to uppercase so "Grass" becomes "GRASS" and renders correctly
+        // Text Scaling for long names
+        let mut final_scale = scale;
+        if text.len() > 10 { final_scale *= 0.8; }
+        
         for c in text.to_uppercase().chars() {
-            if c == ' ' { x += scale; continue; }
+            if c == ' ' { x += final_scale; continue; }
             let idx = if c >= 'A' && c <= 'Z' { 200 + (c as u32 - 'A' as u32) } 
                       else if c >= '0' && c <= '9' { 200 + 26 + (c as u32 - '0' as u32) } 
                       else if c == '-' { 236 } 
                       else if c == '>' { 237 } 
-                      else { 200 }; // Default to 'A' if unknown
-            self.add_ui_quad(v, i, off, x, y, scale, scale*aspect, idx); 
-            x += scale;
-        }
+                      else { 200 }; 
+            self.add_ui_quad(v, i, off, x, y, final_scale, final_scale*aspect, idx); 
+x += final_scale;
     }
-
+}
+    
 pub fn render(&mut self, player: &Player, world: &World, is_paused: bool, cursor_pos: (f64, f64)) {
         let output = match self.surface.get_current_texture() { Ok(o) => o, Err(_) => return };
         let view = output.texture.create_view(&TextureViewDescriptor::default());
@@ -235,7 +238,30 @@ pub fn render(&mut self, player: &Player, world: &World, is_paused: bool, cursor
         let aspect = self.config.width as f32 / self.config.height as f32;
         
         if !player.inventory_open && !is_paused { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.015, -0.015*aspect, 0.03, 0.03*aspect, 10); }
+// --- DRAW AIR BUBBLES ---
+        if player.air < player.max_air {
+            let bubble_count = (player.air / player.max_air * 10.0).ceil() as i32;
+            let bx = 0.12; let by_bubbles = -0.75; // Position above hotbar/health
+            for i in 0..10 {
+                if i < bubble_count {
+                     // Blue bubble texture (using generic index 60 for Ice/Water look)
+                     self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bx + i as f32 * 0.04, by_bubbles, 0.03, 0.03*aspect, 60);
+                }
+            }
+        }
 
+// --- DRAW HUNGER BAR ---
+        let hunger_count = (player.hunger / 2.0).ceil() as i32;
+        let hx = 0.12 + (9.0 * 0.05); // Start on right side
+        for i in 0..10 {
+            // Draw background
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, hx - i as f32 * 0.04, -0.75, 0.03, 0.03*aspect, 12); 
+            // Draw meat if full
+            if i < hunger_count {
+                 // Use Porkchop texture (83) for hunger icon
+                 self.add_ui_quad(&mut uv, &mut ui, &mut uoff, hx - i as f32 * 0.04, -0.75, 0.03, 0.03*aspect, 83); 
+            }
+        }
         // --- DRAW HOTBAR (Visible in Inventory too!) ---
         let sw = 0.12; let sh = sw * aspect; let sx = -(sw * 9.0)/2.0; let by = -0.9;
         
@@ -322,6 +348,6 @@ pub fn render(&mut self, player: &Player, world: &World, is_paused: bool, cursor
             pass.set_pipeline(&self.ui_pipeline); pass.set_bind_group(0, &self.bind_group, &[]); pass.set_vertex_buffer(0, vb.slice(..)); pass.set_index_buffer(ib.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..ui.len() as u32, 0, 0..1);
         }
         self.queue.submit(std::iter::once(encoder.finish()));
-        output.present();
+output.present();
     }
 }

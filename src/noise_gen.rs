@@ -90,9 +90,25 @@ impl NoiseGenerator {
         val + self.get_noise3d(x as f64 * 0.03, 500.0, z as f64 * 0.03) * 0.1
     }
 
-    pub fn get_biome(&self, x: i32, z: i32, height: i32) -> &'static str {
-        let temp = self.get_noise3d(x as f64 * 0.002, 0.0, z as f64 * 0.002);
-        if height > 70 { return "snow"; }
-        if temp > 0.3 { "desert" } else { "forest" }
+pub fn get_biome(&self, x: i32, z: i32, height: i32) -> &'static str {
+        // Temperature: Low = Cold (Ice/Taiga), High = Hot (Desert)
+        let temp = self.get_noise3d(x as f64 * 0.001, 0.0, z as f64 * 0.001);
+        // Humidity: Low = Dry (Desert/Plains), High = Wet (Swamp/Jungle)
+        let humidity = self.get_noise3d(x as f64 * 0.001, 100.0, z as f64 * 0.001);
+
+        if height > 85 { return "mountain_peak"; } // Snow caps
+        
+        if temp < -0.3 {
+            return "ice_plains";
+        } else if temp < 0.0 {
+            if humidity > 0.0 { return "taiga"; } else { return "plains"; } // Cold plains
+        } else if temp > 0.3 {
+            if humidity < -0.2 { return "desert"; } else { return "jungle"; } // Hot
+        }
+        
+        // Moderate temp
+        if humidity > 0.3 { return "swamp"; }
+        if humidity < -0.2 { return "plains"; }
+        "forest"
     }
 }

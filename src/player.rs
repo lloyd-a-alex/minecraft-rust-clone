@@ -41,10 +41,9 @@ impl Inventory {
         for slot in &mut self.slots { if slot.is_none() { *slot = Some(ItemStack::new(item, 1)); return true; } } false 
     }
 
-    pub fn check_recipes(&mut self) {
+pub fn check_recipes(&mut self) {
         let g: Vec<u8> = self.crafting_grid.iter().map(|s| s.map(|i| i.item as u8).unwrap_or(0)).collect();
         // 3x3 Grid: 0 1 2 / 3 4 5 / 6 7 8
-        // 2x2 Fallback (Inventory): 0 1 / 3 4 (Indices in 3x3 array)
         
         let mut result = None;
 
@@ -52,9 +51,6 @@ impl Inventory {
         let log_count = g.iter().filter(|&&id| id == 4).count();
         let other_count = g.iter().filter(|&&id| id != 0 && id != 4).count();
         if log_count > 0 && other_count == 0 {
-            // Standard MC: 1 Log = 4 Planks. If multiple slots have logs, strictly it's not a shapeless recipe usually, 
-            // but for user request "putting one log in any space... let 4 wooden planks come out", we return 4.
-            // The crafting function consumes 1 from each occupied slot.
             result = Some((BlockType::Planks, 4));
         }
 
@@ -64,11 +60,7 @@ impl Inventory {
         }
 
         // 3. STICKS (2 Planks Vertical)
-        // Col 1: 0, 3. Col 2: 1, 4. (For 2x2 grid)
-        // Also check 3x3 columns: (0,3), (3,6), (1,4), (4,7)...
         let is_stick_shape = |top, bot| top == 14 && bot == 14;
-        
-        // Check exact Stick shapes (isolated)
         let total_items = g.iter().filter(|&&id| id != 0).count();
         if total_items == 2 {
             if is_stick_shape(g[0], g[3]) || is_stick_shape(g[1], g[4]) || is_stick_shape(g[3], g[6]) || is_stick_shape(g[4], g[7]) || is_stick_shape(g[2], g[5]) || is_stick_shape(g[5], g[8]) {
@@ -76,9 +68,10 @@ impl Inventory {
             }
         }
 
-        // 4. Tools (Standard)
+        // 4. Complex Recipes
         if result.is_none() {
             result = match (g[0], g[1], g[2], g[3], g[4], g[5], g[6], g[7], g[8]) {
+                // Tools
                 (14,14,14, 0,15,0, 0,15,0) => Some((BlockType::WoodPickaxe, 1)),
                 (14,14,0, 14,15,0, 0,15,0) => Some((BlockType::WoodAxe, 1)),
                 (0,14,0, 0,15,0, 0,15,0) => Some((BlockType::WoodShovel, 1)),
@@ -88,13 +81,30 @@ impl Inventory {
                 (0,16,0, 0,15,0, 0,15,0) => Some((BlockType::StoneShovel, 1)),
                 (0,16,0, 0,16,0, 0,15,0) => Some((BlockType::StoneSword, 1)),
                 (17,17,17, 0,15,0, 0,15,0) => Some((BlockType::IronPickaxe, 1)),
-                (17,17,0, 17,15,0, 0,15,0) => Some((BlockType::IronAxe, 1)),
-                (0,17,0, 0,15,0, 0,15,0) => Some((BlockType::IronShovel, 1)),
-                (0,17,0, 0,17,0, 0,15,0) => Some((BlockType::IronSword, 1)),
                 (19,19,19, 0,15,0, 0,15,0) => Some((BlockType::DiamondPickaxe, 1)),
+                
+                // Functional Blocks
                 (0,10,0, 0,15,0, 0,0,0) => Some((BlockType::Torch, 4)),
+                (16,16,16, 16,0,16, 16,16,16) => Some((BlockType::Furnace, 1)),
+                (14,14,14, 14,0,14, 14,14,14) => Some((BlockType::Chest, 1)),
+                (14,14,0, 14,14,0, 14,14,0) => Some((BlockType::Stick, 1)), 
+                (14,14,14, 14,14,14, 0,0,0) => Some((BlockType::Stick, 2)), 
+                
+                // Environment
+                (0,5,0, 5,5,5, 0,5,0) => Some((BlockType::OakSapling, 1)), 
+                (7,0,7, 0,7,0, 7,0,7) => Some((BlockType::TNT, 1)),
+                (14,14,14, 15,15,15, 14,14,14) => Some((BlockType::Bookshelf, 1)),
                 _ => None
             };
+        }
+        
+        // Shapeless Recipes (Buttons, Levers)
+        if result.is_none() {
+             let stone_cnt = g.iter().filter(|&&i| i == 3).count();
+             let plank_cnt = g.iter().filter(|&&i| i == 14).count();
+             if stone_cnt == 1 && plank_cnt == 0 && g.iter().filter(|&&i| i!=0 && i!=3).count() == 0 {
+                 result = Some((BlockType::Stone, 1)); // Button
+             }
         }
 
         self.crafting_output = result.map(|(i, c)| ItemStack::new(i, c));
@@ -121,13 +131,17 @@ pub struct Player {
     pub on_ground: bool, pub walk_time: f32,
     pub height: f32, pub radius: f32,
     pub health: f32, pub max_health: f32, pub invincible_timer: f32,
+    pub air: f32, pub max_air: f32, 
+    pub hunger: f32, pub max_hunger: f32, pub saturation: f32, pub hunger_timer: f32,
     pub is_dead: bool, pub right_handed: bool, pub inventory_open: bool, pub crafting_open: bool,
 }
 
 #[allow(dead_code)]
 impl Player {
-    pub fn new() -> Self {
+pub fn new() -> Self {
         Player {
+            air: 300.0, max_air: 300.0, 
+            hunger: 20.0, max_hunger: 20.0, saturation: 5.0, hunger_timer: 0.0,
             position: Vec3::new(0.0, 80.0, 0.0), rotation: Vec3::new(0.0, -90.0f32.to_radians(), 0.0), velocity: Vec3::ZERO,
             keys: KeyState { forward: false, backward: false, left: false, right: false, up: false, down: false },
             speed: 5.0, sensitivity: 0.002, inventory: Inventory::new(),
@@ -146,7 +160,9 @@ impl Player {
             KeyCode::Digit3 => self.inventory.select_slot(2), KeyCode::Digit4 => self.inventory.select_slot(3),
             KeyCode::Digit5 => self.inventory.select_slot(4), KeyCode::Digit6 => self.inventory.select_slot(5),
             KeyCode::Digit7 => self.inventory.select_slot(6), KeyCode::Digit8 => self.inventory.select_slot(7),
-            KeyCode::Digit9 => self.inventory.select_slot(8), _ => {}
+KeyCode::Digit9 => self.inventory.select_slot(8),
+            KeyCode::KeyF => { if pressed { self.speed = if self.speed == 5.0 { 10.0 } else { 5.0 }; } },
+            _ => {}
         }
     }
     
@@ -158,9 +174,60 @@ impl Player {
         self.rotation.x = self.rotation.x.clamp(-1.55, 1.55); // Clamp pitch
     }
     
-    pub fn update(&mut self, dt: f32, world: &World) {
+pub fn update(&mut self, dt: f32, world: &World) {
         if self.is_dead || self.inventory_open { return; }
         let dt = dt.min(0.1); if self.invincible_timer > 0.0 { self.invincible_timer -= dt; }
+
+        // --- SURVIVAL MECHANICS ---
+        let head_bp = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + 1.6).floor() as i32, z: self.position.z.floor() as i32 };
+        let feet_bp = BlockPos { x: self.position.x.floor() as i32, y: self.position.y.floor() as i32, z: self.position.z.floor() as i32 };
+        
+        // 1. DROWNING
+        if world.get_block(head_bp).is_water() {
+            self.air -= dt * 60.0; // Drain air
+            if self.air <= 0.0 {
+                self.air = 0.0;
+                if self.invincible_timer <= 0.0 { self.health -= 2.0; self.invincible_timer = 1.0; }
+            }
+        } else {
+            self.air = (self.air + dt * 100.0).min(self.max_air);
+        }
+
+        // 2. LAVA DAMAGE
+        if world.get_block(feet_bp) == BlockType::Lava || world.get_block(head_bp) == BlockType::Lava {
+            if self.invincible_timer <= 0.0 { self.health -= 4.0; self.invincible_timer = 0.5; }
+            self.velocity.y *= 0.5; // Viscosity
+        }
+
+        // 3. CACTUS DAMAGE
+        let neighbors = [BlockPos{x:feet_bp.x+1, y:feet_bp.y, z:feet_bp.z}, BlockPos{x:feet_bp.x-1, y:feet_bp.y, z:feet_bp.z}, BlockPos{x:feet_bp.x, y:feet_bp.y, z:feet_bp.z+1}, BlockPos{x:feet_bp.x, y:feet_bp.y, z:feet_bp.z-1}];
+        for n in neighbors { if world.get_block(n) == BlockType::Cactus {
+             if (self.position.x - n.x as f32 - 0.5).abs() < 0.8 && (self.position.z - n.z as f32 - 0.5).abs() < 0.8 {
+                 if self.invincible_timer <= 0.0 { self.health -= 1.0; self.invincible_timer = 0.5; }
+             }
+        }}
+
+        // 4. HUNGER & HEALING
+        if self.hunger < 18.0 && self.health > 0.0 { /* No auto heal if hungry */ }
+        else if self.hunger >= 18.0 && self.health < self.max_health {
+            self.hunger_timer += dt;
+            if self.hunger_timer > 4.0 { // Heal every 4s
+                self.health += 1.0; self.hunger_timer = 0.0; self.hunger = (self.hunger - 0.5).max(0.0);
+            }
+        }
+        
+        if self.keys.forward || self.keys.right || self.keys.left || self.keys.backward {
+             if self.speed > 5.0 { self.saturation -= dt * 0.1; } else { self.saturation -= dt * 0.02; }
+        }
+        if self.saturation <= 0.0 { self.saturation = 0.0; self.hunger -= dt * 0.005; }
+        if self.hunger <= 0.0 { 
+            self.hunger = 0.0; 
+            if self.health > 10.0 { // Starvation only down to 5 hearts
+                 self.hunger_timer += dt; 
+                 if self.hunger_timer > 4.0 { self.health -= 1.0; self.hunger_timer = 0.0; }
+            }
+        }
+
         let (yaw_sin, yaw_cos) = self.rotation.y.sin_cos();
         let forward = Vec3::new(yaw_cos, 0.0, yaw_sin).normalize(); let right = Vec3::new(-yaw_sin, 0.0, yaw_cos).normalize();
         let mut move_delta = Vec3::ZERO;

@@ -45,8 +45,33 @@ impl TextureAtlas {
         }
 
 // --- NEW BLOCKS & FIXES ---
-        Self::generate_torch(&mut data, block_size, atlas_width, 20); // Torch reset to 20
+        // Lava & Fire
+        Self::generate_generic(&mut data, block_size, atlas_width, 200, [255, 69, 0]); // Lava
+        Self::generate_generic(&mut data, block_size, atlas_width, 201, [255, 140, 0]); // Fire
         
+        // Spruce
+        Self::generate_generic(&mut data, block_size, atlas_width, 202, [61, 46, 32]); // Spruce Log
+        Self::generate_generic(&mut data, block_size, atlas_width, 203, [50, 80, 50]); // Spruce Leaves
+        
+        // Birch
+        Self::generate_generic(&mut data, block_size, atlas_width, 204, [220, 220, 220]); // Birch Log
+        Self::generate_generic(&mut data, block_size, atlas_width, 205, [100, 160, 100]); // Birch Leaves
+
+        // Food Items
+        Self::generate_generic(&mut data, block_size, atlas_width, 80, [150, 200, 50]); // Wheat
+        Self::generate_generic(&mut data, block_size, atlas_width, 81, [180, 130, 50]); // Bread
+        Self::generate_generic(&mut data, block_size, atlas_width, 82, [255, 0, 0]);    // Apple
+        Self::generate_generic(&mut data, block_size, atlas_width, 83, [255, 182, 193]); // Porkchop
+        Self::generate_generic(&mut data, block_size, atlas_width, 84, [200, 100, 100]); // Cooked Porkchop
+
+        // Decorators
+        Self::generate_generic(&mut data, block_size, atlas_width, 60, [100, 100, 255]); // Ice
+        Self::generate_generic(&mut data, block_size, atlas_width, 61, [20, 100, 20]);   // Lilypad
+        Self::generate_generic(&mut data, block_size, atlas_width, 62, [100, 80, 100]);  // Mycelium
+        Self::generate_generic(&mut data, block_size, atlas_width, 63, [100, 70, 50]);   // Mycelium Side
+        Self::generate_generic(&mut data, block_size, atlas_width, 64, [30, 100, 30]);   // Vine
+        
+        Self::generate_torch(&mut data, block_size, atlas_width, 20); 
         Self::generate_generic(&mut data, block_size, atlas_width, 14, [200, 150, 100]); // Planks (Brown)
         Self::generate_generic(&mut data, block_size, atlas_width, 15, [139, 69, 19]);   // Stick (Dark Brown)
         Self::generate_noise(&mut data, block_size, atlas_width, 16, [100, 100, 100], 30); // Cobble (Grey Noise)
