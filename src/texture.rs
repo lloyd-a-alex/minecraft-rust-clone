@@ -330,16 +330,19 @@ fn generate_grass_side(data: &mut [u8], size: u32, w: u32, idx: u32) {
         Self::place_texture(data, size, w, idx, &p);
     }
     
-    fn generate_birch_side(data: &mut [u8], size: u32, w: u32, idx: u32) {
+fn generate_birch_side(data: &mut [u8], size: u32, w: u32, idx: u32) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for y in 0..size {
             for x in 0..size {
                 let i = ((y * size + x) * 4) as usize;
-                // White base
-                p[i] = 220; p[i+1] = 220; p[i+2] = 220; p[i+3] = 255;
-                // Black spots
-                if (x % 5 == 0 && y % 7 == 0) || (x % 8 == 0 && y % 4 == 0) {
-                     p[i] = 50; p[i+1] = 50; p[i+2] = 50;
+                let noise = ((x * 7 + y * 13) % 20) as i32 - 10;
+                p[i] = (235 + noise).clamp(0,255) as u8; 
+                p[i+1] = (230 + noise).clamp(0,255) as u8; 
+                p[i+2] = (225 + noise).clamp(0,255) as u8; 
+                p[i+3] = 255;
+                // Horizontal dark knots (Natural Birch look)
+                if (y % 6 == 0 && (x > 2 && x < 10)) || (y % 11 == 0 && x > 8) {
+                    p[i]=60; p[i+1]=55; p[i+2]=50;
                 }
             }
         }
@@ -608,7 +611,19 @@ fn generate_obsidian(data: &mut [u8], size: u32, w: u32, idx: u32) {
     fn generate_tnt_side(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [200, 50, 50]); }
     fn generate_tnt_top(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [200, 200, 200]); }
     fn generate_pumpkin_face(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [255, 140, 0]); }
-    fn generate_melon_side(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [100, 200, 50]); }
+fn generate_melon_side(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y*size+x)*4) as usize;
+                let stripe = (x + y/2) % 6 < 2;
+                if stripe { p[i]=50; p[i+1]=120; p[i+2]=30; }
+                else { p[i]=80; p[i+1]=180; p[i+2]=60; }
+                p[i+3]=255;
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
     fn generate_mossy(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [100, 120, 100]); }
     fn generate_stick(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [100, 50, 0]); }
     fn generate_ingot(data: &mut [u8], size: u32, w: u32, idx: u32, c: [u8; 3]) { Self::generate_generic(data, size, w, idx, c); }

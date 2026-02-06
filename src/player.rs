@@ -218,15 +218,15 @@ let feet_bp = BlockPos { x: self.position.x.floor() as i32, y: self.position.y.f
         let eye_bp = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + self.height * 0.4).floor() as i32, z: self.position.z.floor() as i32 };
         let head_bp = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + self.height * 0.9).floor() as i32, z: self.position.z.floor() as i32 };
         
-        // 1. DROWNING
+// 1. DROWNING (Approx 10 seconds total air)
         if world.get_block(eye_bp).is_water() {
-            self.air -= dt * 60.0; // Drain air
+            self.air -= dt * 1.0; 
             if self.air <= 0.0 {
                 self.air = 0.0;
                 if self.invincible_timer <= 0.0 { self.health -= 2.0; self.invincible_timer = 1.0; }
             }
         } else {
-            self.air = (self.air + dt * 100.0).min(self.max_air);
+            self.air = (self.air + dt * 2.0).min(self.max_air);
         }
 
         // 2. LAVA DAMAGE
@@ -258,22 +258,24 @@ let chest_bp = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y
         let in_leaves = matches!(current_block, BlockType::Leaves);
 
 if in_water {
-            move_delta *= 0.75;
-            if !self.keys.down && self.velocity.y < 1.2 { self.velocity.y = (self.velocity.y + 8.0 * dt).min(1.2); }
-            if self.keys.up { self.velocity.y = self.velocity.y.max(4.2); }
-            else if self.keys.down { self.velocity.y = self.velocity.y.min(-3.2); }
-            else { self.velocity.y += (-self.velocity.y) * (6.0 * dt).min(1.0); }
+            move_delta *= 0.6; // Slower in water
+            if self.keys.up { 
+                self.velocity.y = (self.velocity.y + 12.0 * dt).min(4.5); // Stronger float up
+            } else if self.keys.down { 
+                self.velocity.y = (self.velocity.y - 12.0 * dt).max(-5.0); 
+            } else {
+                // Natural slow sink
+                self.velocity.y = (self.velocity.y - 2.0 * dt).max(-1.5);
+            }
             self.on_ground = false;
         } else if in_leaves {
-            move_delta *= 0.85; 
-            self.velocity.y *= 0.9; 
-            if self.velocity.y < -5.0 { self.velocity.y = -5.0; }
-            if self.keys.up { self.velocity.y = 2.0; }
-            if self.keys.up && self.on_ground { self.velocity.y = 8.0; self.on_ground = false; }
+            move_delta *= 0.7; // Movement penalty in leaves
+            self.velocity.y = (self.velocity.y - 10.0 * dt).max(-2.0); // Fall slowly through leaves
+            if self.keys.up { self.velocity.y = 3.5; } // Can "climb" leaves slowly
+            self.on_ground = false;
         } else {
-            self.velocity.y -= 30.0 * dt; 
-            // FIX: LOWER JUMP HEIGHT (Was 12.0)
-            if self.on_ground && self.keys.up { self.velocity.y = 9.0; self.on_ground = false; } 
+            self.velocity.y -= 28.0 * dt; 
+            if self.on_ground && self.keys.up { self.velocity.y = 8.5; self.on_ground = false; } 
         }
 
         if move_delta.length_squared() > 0.0 {

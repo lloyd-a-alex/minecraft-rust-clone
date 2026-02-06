@@ -96,13 +96,17 @@ match self {
 pub fn get_display_name(&self) -> &str {
         match self {
             BlockType::Air => "Air", BlockType::Grass => "Grass", BlockType::Dirt => "Dirt",
-            BlockType::Stone => "Stone", BlockType::Wood => "Log", BlockType::Leaves => "Leaves",
+            BlockType::Stone => "Stone", BlockType::Wood => "Oak Log", BlockType::Leaves => "Oak Leaves",
+            BlockType::SpruceWood => "Spruce Log", BlockType::SpruceLeaves => "Spruce Leaves",
+            BlockType::BirchWood => "Birch Log", BlockType::BirchLeaves => "Birch Leaves",
             BlockType::Snow => "Snow", BlockType::Sand => "Sand", BlockType::Bedrock => "Bedrock",
             BlockType::Water => "Water", BlockType::CoalOre => "Coal Ore", BlockType::IronOre => "Iron Ore",
             BlockType::GoldOre => "Gold Ore", BlockType::DiamondOre => "Diamond Ore",
             BlockType::Planks => "Planks", BlockType::Stick => "Stick", BlockType::Cobblestone => "Cobblestone",
             BlockType::IronIngot => "Iron Ingot", BlockType::GoldIngot => "Gold Ingot", BlockType::Diamond => "Diamond",
             BlockType::Torch => "Torch", BlockType::CraftingTable => "Crafting Table", BlockType::Furnace => "Furnace",
+            BlockType::Melon => "Melon", BlockType::Pumpkin => "Pumpkin",
+            BlockType::Rose => "Rose", BlockType::Dandelion => "Dandelion",
             t if t.is_tool() => "Tool", 
             _ => "Unknown"
         }
@@ -113,8 +117,10 @@ pub fn get_display_name(&self) -> &str {
             BlockType::Bedrock | BlockType::Water | BlockType::Air => -1.0,
             BlockType::Leaves => 0.2, BlockType::Sand | BlockType::Dirt | BlockType::Grass => 0.5,
             BlockType::Wood | BlockType::Planks | BlockType::CraftingTable => 2.0,
-            BlockType::Stone | BlockType::Cobblestone | BlockType::CoalOre => 3.0,
+BlockType::Stone | BlockType::Cobblestone | BlockType::CoalOre => 3.0,
             BlockType::IronOre | BlockType::GoldOre | BlockType::DiamondOre => 4.5,
+            BlockType::Melon | BlockType::Pumpkin => 1.0,
+            BlockType::Rose | BlockType::Dandelion | BlockType::TallGrass | BlockType::DeadBush | BlockType::OakSapling | BlockType::Sugarcane => 0.0,
             _ => 1.0,
         }
     }
@@ -122,8 +128,8 @@ pub fn get_display_name(&self) -> &str {
     pub fn get_best_tool_type(&self) -> &'static str {
         match self {
             BlockType::Stone | BlockType::Cobblestone | BlockType::CoalOre | BlockType::IronOre | BlockType::GoldOre | BlockType::DiamondOre | BlockType::Furnace => "pickaxe",
-            BlockType::Dirt | BlockType::Grass | BlockType::Sand | BlockType::Snow => "shovel",
-            BlockType::Wood | BlockType::Planks | BlockType::CraftingTable | BlockType::Leaves => "axe",
+            BlockType::Dirt | BlockType::Grass | BlockType::Sand | BlockType::Snow | BlockType::Gravel | BlockType::Clay => "shovel",
+            BlockType::Wood | BlockType::Planks | BlockType::CraftingTable | BlockType::Leaves | BlockType::SpruceWood | BlockType::BirchWood | BlockType::Melon | BlockType::Pumpkin => "axe",
             _ => "none",
         }
     }

@@ -253,9 +253,12 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
                                 let p_min = player.position - glam::Vec3::new(player.radius, 0.0, player.radius);
                                 let p_max = player.position + glam::Vec3::new(player.radius, player.height, player.radius);
                                 let b_min = glam::Vec3::new(place.x as f32, place.y as f32, place.z as f32);
-                                let b_max = b_min + glam::Vec3::ONE;
-                                let intersect = !(p_min.x < b_max.x && p_max.x > b_min.x && p_min.y < b_max.y && p_max.y > b_min.y && p_min.z < b_max.z && p_max.z > b_min.z);
-                                if intersect {
+let b_max = b_min + glam::Vec3::ONE;
+                                // Expand player check slightly to be safe (0.1 padding)
+                                let intersect = p_min.x < b_max.x - 0.05 && p_max.x > b_min.x + 0.05 && 
+                                                p_min.y < b_max.y - 0.05 && p_max.y > b_min.y + 0.05 && 
+                                                p_min.z < b_max.z - 0.05 && p_max.z > b_min.z + 0.05;
+                                if !intersect {
                                     if let Some(blk) = player.inventory.get_selected_item() {
                                         if !blk.is_tool() && !blk.is_item() {
                                             let c = world.place_block(place, blk); 
