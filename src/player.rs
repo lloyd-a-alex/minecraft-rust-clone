@@ -131,14 +131,24 @@ pub struct Player {
     pub height: f32,
     pub radius: f32,
     pub on_ground: bool,
-    pub is_flying: bool,     // Added
-    pub is_sprinting: bool,  // Added
+    pub inventory: Inventory,
+    pub keys: PlayerKeys,
+    pub hotbar: crate::Hotbar, // Fixed import from crate root
+
+    // Added missing fields
+    pub is_flying: bool,
+    pub is_sprinting: bool,
+    pub health: f32,
+    pub max_health: f32,
+    pub air: f32,
+    pub max_air: f32,
+    pub invincible_timer: f32,
+    pub speed: f32,
+    pub walk_time: f32,
+    pub sensitivity: f32,
     pub inventory_open: bool,
     pub crafting_open: bool,
-    pub hotbar: crate::main::Hotbar,
-    pub inventory: crate::player::Inventory,
-    pub keys: PlayerKeys,
-    pub is_dead: bool,       // Added
+    pub is_dead: bool,
 }
 
 #[derive(Default)] 
@@ -150,21 +160,30 @@ pub struct PlayerKeys {
 impl Player {
 pub fn new() -> Self {
 Player {
-            position: pos,
-            rotation: Vec3::new(0.0, 0.0, 0.0),
-            velocity: Vec3::ZERO,
-            height: 1.8,
-            radius: 0.3,
-            on_ground: false,
-            is_flying: false,
-            is_sprinting: false,
-            inventory_open: false,
-            crafting_open: false,
-            hotbar: crate::main::Hotbar::new(),
-            inventory: Inventory::new(),
-            keys: PlayerKeys::default(),
-            is_dead: false,
-        }
+        position: Vec3::new(0.0, 100.0, 0.0), // Fixed 'pos' error
+        rotation: Vec3::ZERO,
+        velocity: Vec3::ZERO,
+        height: 1.8,
+        radius: 0.3,
+        on_ground: false,
+        inventory: Inventory::new(),
+        keys: PlayerKeys::default(),
+        hotbar: crate::Hotbar::new(), // Fixed import
+
+        is_flying: false,
+        is_sprinting: false,
+        health: 20.0,
+        max_health: 20.0,
+        air: 10.0,
+        max_air: 10.0,
+        invincible_timer: 0.0,
+        speed: 5.0,
+        walk_time: 0.0,
+        sensitivity: 0.005,
+        inventory_open: false,
+        crafting_open: false,
+        is_dead: false,
+    }
     }
     pub fn respawn(&mut self) { self.position = Vec3::new(0.0, 80.0, 0.0); self.velocity = Vec3::ZERO; self.health = self.max_health; self.is_dead = false; self.invincible_timer = 3.0; }
     

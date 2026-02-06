@@ -51,7 +51,8 @@ fn main() {
     let window = Arc::new(WindowBuilder::new().with_title("Minecraft Rust Clone").with_maximized(true).build(&event_loop).unwrap());
     
     // Initialize Renderer immediately (No Pollster block needed if we map async correctly, but keeping simple)
-    let mut renderer = pollster::block_on(Renderer::new(&window));
+    let window_arc = window.clone(); // Clone ARC for renderer
+let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     let mut world = World::new(master_seed); // Temp world for menu background
     
     // --- GAME STATE ---
@@ -429,7 +430,7 @@ fn main() {
                     }
                     renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.0 };
                     renderer.update_camera(&player, win_size.0 as f32 / win_size.1 as f32);
-                    match renderer.render(&world, &player, is_paused, win_size.0, win_size.1) {
+                    match renderer.render(&world, &player, is_paused, cursor_pos, win_size.0, win_size.1) {
                         Ok(_) => {}
                         Err(wgpu::SurfaceError::Lost) => renderer.resize(win_size.0, win_size.1),
                         Err(wgpu::SurfaceError::OutOfMemory) => elwt.exit(),

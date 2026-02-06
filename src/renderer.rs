@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use crate::world::{World, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z, BlockPos, BlockType};
 use crate::player::Player;
 use crate::texture::TextureAtlas;
-use crate::{UIElement, Hotbar, MainMenu};
+use crate::{UIElement, Hotbar, MainMenu, Rect}; // Added Rect
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -216,7 +216,7 @@ pub fn render_main_menu(&mut self, menu: &MainMenu, width: u32, height: u32) -> 
     let mut idx_offset = 0;
 
     // Helper to add a quad
-    let mut add_quad = |rect: &crate::main::Rect, tex_id: u32| {
+    let mut add_quad = |rect: &crate::Rect, tex_id: u32| {
         let z = 0.0;
         // Menu coords are -1 to 1 (NDC). Texture coords 0 to 1.
         let u_min = (tex_id % 16) as f32 / 16.0; let v_min = (tex_id / 16) as f32 / 16.0;
@@ -234,7 +234,7 @@ pub fn render_main_menu(&mut self, menu: &MainMenu, width: u32, height: u32) -> 
 
     // 1. Background (Tile Dirt)
     for y in -4..4 { for x in -4..4 {
-        add_quad(&crate::main::Rect{x: x as f32 * 0.5, y: y as f32 * 0.5, w: 0.5, h: 0.5}, 2);
+       add_quad(&crate::Rect{x: x as f32 * 0.5, y: y as f32 * 0.5, w: 0.5, h: 0.5}, 2);
     }}
 // 1.5 Draw Title (Big Text)
         // Positioned at top (y=0.6), Scale 6.0 (Huge)
@@ -273,7 +273,7 @@ pub fn render_main_menu(&mut self, menu: &MainMenu, width: u32, height: u32) -> 
         rpass.set_pipeline(&self.ui_pipeline);
         // NOTE: Assuming your struct has 'diffuse_bind_group' based on typical naming. 
         // If error persists, change to 'bind_group' or 'texture_bind_group'.
-        rpass.set_bind_group(0, &self.diffuse_bind_group, &[]); 
+        rpass.set_bind_group(0, &self.texture_bind_group, &[]);
         rpass.set_bind_group(1, &self.camera_bind_group, &[]); // UI shader might expect this bind group layout even if unused
         rpass.set_bind_group(2, &self.time_bind_group, &[]);
         rpass.set_vertex_buffer(0, vb.slice(..));
@@ -285,8 +285,8 @@ pub fn render_main_menu(&mut self, menu: &MainMenu, width: u32, height: u32) -> 
     output.present();
     Ok(())
 }
-pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, width: u32, height: u32) -> Result<(), wgpu::SurfaceError> {
-        let output = match self.surface.get_current_texture() { Ok(o) => o, Err(_) => return };
+pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor_pos: (f64, f64), width: u32, height: u32) -> Result<(), wgpu::SurfaceError> {
+        let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&TextureViewDescriptor::default());
         let view_proj = player.build_view_projection_matrix(self.config.width as f32 / self.config.height as f32);
         self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[view_proj]));
@@ -422,5 +422,6 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, width:
         }
         self.queue.submit(std::iter::once(encoder.finish()));
 output.present();
-    }
+Ok(())
+}
 }

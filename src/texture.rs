@@ -724,9 +724,9 @@ fn generate_font(data: &mut [u8], size: u32, w: u32, start_idx: u32) {
                     }
                 }
             }
-            Self::place_texture(data, size, w, start_idx + i as u32, &p);
-        }
+Self::place_texture(data, size, w, start_idx + i as u32, &p);
     }
+    // Brace removed here so the following functions stay inside the impl
 
     // --- 9. UI BUTTONS ---
     fn generate_button(data: &mut [u8], size: u32, w: u32, idx: u32, hovered: bool) {
