@@ -413,7 +413,7 @@ cursor.count -= transfer;
                     }
                     world.update_entities(dt, &mut player);
                 }
-                window_clone.request_redraw();
+window_clone.request_redraw();
             },
             _ => {}
         }

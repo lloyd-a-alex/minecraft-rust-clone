@@ -61,6 +61,7 @@ pub fn is_solid(&self) -> bool {
 }
 
 pub fn is_tool(&self) -> bool { (*self as u8) >= 21 && (*self as u8) <= 40 }
+    pub fn is_item(&self) -> bool { matches!(self, BlockType::Coal | BlockType::Stick | BlockType::IronIngot | BlockType::GoldIngot | BlockType::Diamond | BlockType::Wheat | BlockType::Bread | BlockType::Apple | BlockType::Porkchop | BlockType::CookedPorkchop) }
     
 pub fn get_texture_indices(&self) -> (u32, u32, u32) {
 match self {
