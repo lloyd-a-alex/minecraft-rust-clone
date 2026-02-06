@@ -403,7 +403,8 @@ fn generate_terrain(&mut self) {
         None
     }
 // --- PHYSICS & LOGIC ---
-pub fn update_block_physics(&mut self, pos: BlockPos) -> Vec<(i32, i32)> {
+#[allow(dead_code)]
+    pub fn update_block_physics(&mut self, pos: BlockPos) -> Vec<(i32, i32)> {
         let mut affected = Vec::new();
         let b = self.get_block(pos);
         

@@ -286,8 +286,8 @@ cursor.count -= transfer;
                              if let Some(stack) = player.inventory.drop_item(drop_all) {
                                  let base_dir = glam::Vec3::new(player.rotation.y.cos() * player.rotation.x.cos(), player.rotation.x.sin(), player.rotation.y.sin() * player.rotation.x.cos()).normalize();
                                  
-                                 // "Spew" logic: Drop items individually if shift is held
-                                 let loop_count = stack.count;
+                                 // "Spew" logic: If Shift is held, loop through the stack count and drop individually
+                                 let loop_count = if drop_all { stack.count } else { 1 };
                                  
                                  for i in 0..loop_count {
                                      // Cheap pseudo-randomness for spread
@@ -300,16 +300,16 @@ cursor.count -= transfer;
                                          position: player.position + glam::Vec3::new(0.0, 1.5, 0.0), 
                                          velocity: (base_dir + jitter).normalize() * 10.0, 
                                          item_type: stack.item, 
-                                         count: 1, // Individual items
+                                         count: 1, // Drop as 1s so they scatter
                                          pickup_delay: 1.5, 
                                          lifetime: 300.0, 
                                          rotation: 0.0, 
                                          bob_offset: i as f32 * 0.5 
                                      };
-world.entities.push(ent);
+                                     world.entities.push(ent);
                                  }
                              }
-                        } // <--- Added missing closing brace for KeyQ block
+                        }
 
                         if !pressed { player.handle_input(key, false); }
                         else if !is_paused && !player.inventory_open { player.handle_input(key, true); }

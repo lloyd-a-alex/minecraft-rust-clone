@@ -215,13 +215,13 @@ fn generate_noise(data: &mut [u8], size: u32, w: u32, idx: u32, base_col: [u8; 3
         }
         Self::place_texture(data, size, w, idx, &p);
     }
-    fn generate_grass_side(data: &mut [u8], size: u32, w: u32, idx: u32) {
+fn generate_grass_side(data: &mut [u8], size: u32, w: u32, idx: u32) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for y in 0..size {
             for x in 0..size {
                 let i = ((y * size + x) * 4) as usize;
                 // Dirt base
-                let d_var = (x + y) % 20 - 10;
+                let d_var = ((x + y) % 20) as i32 - 10;
                 p[i] = (139 + d_var).clamp(0,255) as u8;
                 p[i+1] = (69 + d_var).clamp(0,255) as u8;
                 p[i+2] = (19 + d_var).clamp(0,255) as u8;
@@ -230,7 +230,7 @@ fn generate_noise(data: &mut [u8], size: u32, w: u32, idx: u32, base_col: [u8; 3
                 // Grass overlay (Top 3 pixels + random drips)
                 let grass_depth = 3 + (x % 3 == 0) as u32 + (x % 7 == 0) as u32;
                 if y < grass_depth {
-                    let g_var = (x * y) % 20 - 10;
+                    let g_var = ((x * y) % 20) as i32 - 10;
                     p[i] = (100 + g_var).clamp(0,255) as u8;
                     p[i+1] = (170 + g_var).clamp(0,255) as u8;
                     p[i+2] = (80 + g_var).clamp(0,255) as u8;
@@ -344,27 +344,27 @@ fn generate_planks(data: &mut [u8], size: u32, w: u32, idx: u32, col: [u8; 3]) {
         Self::place_texture(data, size, w, idx, &p);
     }
 
-    fn generate_bedrock(data: &mut [u8], size: u32, w: u32, idx: u32) {
+fn generate_bedrock(data: &mut [u8], size: u32, w: u32, idx: u32) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for i in 0..size*size {
             let val = if i % 3 == 0 || i % 7 == 0 { 20 } else { 100 };
-            let base = (i * 4) as usize;
+            let base = (i as usize) * 4;
             p[base] = val; p[base+1] = val; p[base+2] = val; p[base+3] = 255;
         }
         Self::place_texture(data, size, w, idx, &p);
     }
-
-    fn generate_ore(data: &mut [u8], size: u32, w: u32, idx: u32, ore_col: [u8; 3]) {
+fn generate_ore(data: &mut [u8], size: u32, w: u32, idx: u32, ore_col: [u8; 3]) {
         // Base Stone
         let mut p = vec![0u8; (size * size * 4) as usize];
         for i in 0..size*size {
-            let val = 125 + (i % 5 * 10) as u8 - 20;
-            p[(i*4)] = val; p[(i*4)+1] = val; p[(i*4)+2] = val; p[(i*4)+3] = 255;
+            let val = (125 + (i % 5 * 10) as i32 - 20) as u8;
+            let base = (i as usize) * 4;
+            p[base] = val; p[base+1] = val; p[base+2] = val; p[base+3] = 255;
         }
         // Clusters
         for i in 0..size*size {
             if (i % 7 == 0 && i % 3 != 0) || i % 19 == 0 {
-                 let base = (i*4) as usize;
+                 let base = (i as usize) * 4;
                  p[base] = ore_col[0]; p[base+1] = ore_col[1]; p[base+2] = ore_col[2];
             }
         }
