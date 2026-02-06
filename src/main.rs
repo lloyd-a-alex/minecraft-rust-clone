@@ -281,14 +281,34 @@ cursor.count -= transfer;
                             player.crafting_open = false; 
                             if player.inventory_open { let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined); window_clone.set_cursor_visible(true); }
                             else { let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); window_clone.set_cursor_visible(false); }
-                        } else if key == winit::keyboard::KeyCode::KeyQ && pressed && !is_paused && !player.inventory_open {
+} else if key == winit::keyboard::KeyCode::KeyQ && pressed && !is_paused && !player.inventory_open {
                              let drop_all = modifiers.shift_key(); 
                              if let Some(stack) = player.inventory.drop_item(drop_all) {
-                                 let dir = glam::Vec3::new(player.rotation.y.cos() * player.rotation.x.cos(), player.rotation.x.sin(), player.rotation.y.sin() * player.rotation.x.cos()).normalize();
-                                 let ent = world::ItemEntity { position: player.position + glam::Vec3::new(0.0, 1.5, 0.0), velocity: dir * 10.0, item_type: stack.item, count: stack.count, pickup_delay: 1.5, lifetime: 300.0, rotation: 0.0, bob_offset: 0.0 };
-                                 world.entities.push(ent);
+                                 let base_dir = glam::Vec3::new(player.rotation.y.cos() * player.rotation.x.cos(), player.rotation.x.sin(), player.rotation.y.sin() * player.rotation.x.cos()).normalize();
+                                 
+                                 // "Spew" logic: Drop items individually if shift is held
+                                 let loop_count = stack.count;
+                                 
+                                 for i in 0..loop_count {
+                                     // Cheap pseudo-randomness for spread
+                                     let r_x = ((i * 13 + (player.position.x * 100.0) as u8) % 10) as f32 / 20.0 - 0.25;
+                                     let r_y = ((i * 7 + (player.position.y * 100.0) as u8) % 10) as f32 / 20.0 - 0.25;
+                                     let r_z = ((i * 19 + (player.position.z * 100.0) as u8) % 10) as f32 / 20.0 - 0.25;
+                                     let jitter = glam::Vec3::new(r_x, r_y, r_z);
+                                     
+                                     let ent = world::ItemEntity { 
+                                         position: player.position + glam::Vec3::new(0.0, 1.5, 0.0), 
+                                         velocity: (base_dir + jitter).normalize() * 10.0, 
+                                         item_type: stack.item, 
+                                         count: 1, // Individual items
+                                         pickup_delay: 1.5, 
+                                         lifetime: 300.0, 
+                                         rotation: 0.0, 
+                                         bob_offset: i as f32 * 0.5 
+                                     };
+                                     world.entities.push(ent);
+                                 }
                              }
-                     }
                     if !pressed { player.handle_input(key, false); }
                     else if !is_paused && !player.inventory_open { player.handle_input(key, true); }
                     }

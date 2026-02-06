@@ -199,7 +199,7 @@ impl TextureAtlas {
 
     // --- PROCEDURAL TEXTURES ---
 
-    fn generate_noise(data: &mut [u8], size: u32, w: u32, idx: u32, base_col: [u8; 3], variance: i32) {
+fn generate_noise(data: &mut [u8], size: u32, w: u32, idx: u32, base_col: [u8; 3], variance: i32) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for i in 0..size * size {
             // Pseudo-random based on index
@@ -207,14 +207,14 @@ impl TextureAtlas {
             let g_offset = (i % 5 * 17 % (variance as u32 * 2 + 1)) as i32 - variance;
             let b_offset = (i % 3 * 19 % (variance as u32 * 2 + 1)) as i32 - variance;
             
-            p[(i*4)] = (base_col[0] as i32 + r_offset).clamp(0,255) as u8;
-            p[(i*4)+1] = (base_col[1] as i32 + g_offset).clamp(0,255) as u8;
-            p[(i*4)+2] = (base_col[2] as i32 + b_offset).clamp(0,255) as u8;
-            p[(i*4)+3] = 255;
+            let base = (i as usize) * 4;
+            p[base] = (base_col[0] as i32 + r_offset).clamp(0,255) as u8;
+            p[base+1] = (base_col[1] as i32 + g_offset).clamp(0,255) as u8;
+            p[base+2] = (base_col[2] as i32 + b_offset).clamp(0,255) as u8;
+            p[base+3] = 255;
         }
         Self::place_texture(data, size, w, idx, &p);
     }
-
     fn generate_grass_side(data: &mut [u8], size: u32, w: u32, idx: u32) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for y in 0..size {
@@ -291,7 +291,7 @@ impl TextureAtlas {
         Self::place_texture(data, size, w, idx, &p);
     }
 
-    fn generate_planks(data: &mut [u8], size: u32, w: u32, idx: u32, col: [u8; 3]) {
+fn generate_planks(data: &mut [u8], size: u32, w: u32, idx: u32, col: [u8; 3]) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for y in 0..size {
             for x in 0..size {
@@ -299,7 +299,7 @@ impl TextureAtlas {
                 let plank_h = size / 4;
                 let is_gap = y % plank_h == 0;
                 if is_gap {
-                    p[i] = (col[0]/2); p[i+1] = (col[1]/2); p[i+2] = (col[2]/2); p[i+3] = 255;
+                    p[i] = col[0]/2; p[i+1] = col[1]/2; p[i+2] = col[2]/2; p[i+3] = 255;
                 } else {
                     let grain = (x % 7) as i32 * 5;
                     p[i] = (col[0] as i32 + grain).clamp(0,255) as u8;
@@ -371,11 +371,11 @@ impl TextureAtlas {
         Self::place_texture(data, size, w, idx, &p);
     }
     
-    fn generate_obsidian(data: &mut [u8], size: u32, w: u32, idx: u32) {
+fn generate_obsidian(data: &mut [u8], size: u32, w: u32, idx: u32) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for i in 0..size*size {
             let val = 20 + (i % 5 * 5) as u8;
-            let base = (i*4) as usize;
+            let base = (i as usize) * 4;
             p[base] = val; p[base+1] = 0; p[base+2] = val + 20; p[base+3] = 255;
         }
         Self::place_texture(data, size, w, idx, &p);

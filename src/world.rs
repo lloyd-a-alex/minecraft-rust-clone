@@ -537,7 +537,7 @@ pub fn update_entities(&mut self, dt: f32, player: &mut Player) {
         entity.velocity.y -= 25.0 * dt;
 
         // Physics
-        let mut next_pos = entity.position + entity.velocity * dt;
+        let next_pos = entity.position + entity.velocity * dt;
 
         // Helper to check solids
         let solid_at = |x: f32, y: f32, z: f32| -> bool { 
