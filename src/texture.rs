@@ -134,18 +134,56 @@ impl TextureAtlas {
         for i in 60..65 { Self::generate_tool(&mut data, block_size, atlas_width, i, [100, 100, 100]); }
         for i in 70..75 { Self::generate_tool(&mut data, block_size, atlas_width, i, [200, 200, 200]); }
 
-        // --- UI ---
-        Self::generate_hotbar_slot(&mut data, block_size, atlas_width, 10);
-        Self::generate_selection(&mut data, block_size, atlas_width, 11);
-        Self::generate_heart(&mut data, block_size, atlas_width, 12);
-        Self::generate_skin(&mut data, block_size, atlas_width, 13);
+// --- UI (dedicated indices; do NOT overlap blocks/ores/font) ---
+        const UI_HOTBAR_SLOT: u32 = 240;
+        const UI_SELECTION: u32 = 241;
+        const UI_HEART: u32 = 242;
+        const UI_BUBBLE: u32 = 243;
+        const UI_BAR: u32 = 244;
+
+        // Clear then draw, so transparent pixels don't leak old tile contents.
+        Self::clear_tile(&mut data, block_size, atlas_width, UI_HOTBAR_SLOT);
+        Self::generate_hotbar_slot(&mut data, block_size, atlas_width, UI_HOTBAR_SLOT);
+
+        Self::clear_tile(&mut data, block_size, atlas_width, UI_SELECTION);
+        Self::generate_selection(&mut data, block_size, atlas_width, UI_SELECTION);
+
+        Self::clear_tile(&mut data, block_size, atlas_width, UI_HEART);
+        Self::generate_heart(&mut data, block_size, atlas_width, UI_HEART);
+
+        // Bubble + bar textures
+        Self::clear_tile(&mut data, block_size, atlas_width, UI_BUBBLE);
+        Self::generate_bubble_data(&mut data, block_size, atlas_width, UI_BUBBLE);
+
+        Self::clear_tile(&mut data, block_size, atlas_width, UI_BAR);
+        Self::generate_ui_bar_data(&mut data, block_size, atlas_width, UI_BAR);
 
         // --- FONT ---
         Self::generate_font(&mut data, block_size, atlas_width, 200);
 
         TextureAtlas { data, size: block_size, grid_size: grid_width_in_blocks }
-    }
 
+fn clear_tile(data: &mut [u8], blocksize: u32, atlaswidth: u32, grididx: u32) {
+    let blocks_per_row = atlaswidth / blocksize;
+    let gridx = grididx % blocks_per_row;
+    let gridy = grididx / blocks_per_row;
+    let basex = gridx * blocksize;
+    let basey = gridy * blocksize;
+    for y in 0..blocksize {
+        for x in 0..blocksize {
+            let dstx = basex + x;
+            let dsty = basey + y;
+            let dstidx = ((dsty * atlaswidth + dstx) * 4) as usize;
+            if dstidx + 3 < data.len() {
+                data[dstidx + 0] = 0;
+                data[dstidx + 1] = 0;
+                data[dstidx + 2] = 0;
+                data[dstidx + 3] = 0;
+            }
+        }
+    }
+}
+    }
     fn place_texture(data: &mut [u8], block_size: u32, atlas_width: u32, grid_idx: u32, pixels: &[u8]) {
         let blocks_per_row = atlas_width / block_size;
         let grid_x = grid_idx % blocks_per_row;
@@ -426,6 +464,38 @@ fn generate_furnace_front(data: &mut [u8], size: u32, w: u32, idx: u32, _active:
         }
         Self::place_texture(data, size, w, idx, &p);
     }
+
+fn generate_bubble_data(data: &mut [u8], size: u32, w: u32, idx: u32) {
+    let mut p = vec![0u8; (size * size * 4) as usize];
+    let cx = (size as i32) / 2;
+    let cy = (size as i32) / 2;
+    for y in 0..(size as i32) {
+        for x in 0..(size as i32) {
+            let dx = x - cx;
+            let dy = y - cy;
+            let r2 = dx * dx + dy * dy;
+            let ring_outer = r2 >= 20 && r2 <= 28;
+            let ring_inner = r2 >= 10 && r2 <= 14;
+            if ring_outer || ring_inner {
+                let i = ((y as u32 * size + x as u32) * 4) as usize;
+                let bright = if dx + dy < 0 { 255 } else { 220 };
+                p[i + 0] = bright; p[i + 1] = bright; p[i + 2] = 255; p[i + 3] = 220;
+            }
+        }
+    }
+    Self::place_texture(data, size, w, idx, &p);
+}
+
+fn generate_ui_bar_data(data: &mut [u8], size: u32, w: u32, idx: u32) {
+    let mut p = vec![0u8; (size * size * 4) as usize];
+    for y in 0..size {
+        for x in 0..size {
+            let i = ((y * size + x) * 4) as usize;
+            p[i + 0] = 220; p[i + 1] = 220; p[i + 2] = 220; p[i + 3] = 255;
+        }
+    }
+    Self::place_texture(data, size, w, idx, &p);
+}
 
 fn generate_skin(data: &mut [u8], size: u32, w: u32, idx: u32) {
         let mut p = vec![0u8; (size * size * 4) as usize];

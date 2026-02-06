@@ -162,7 +162,6 @@ impl World {
         world.generate_terrain();
         world
     }
-
 fn generate_terrain(&mut self) {
         let noise_gen = NoiseGenerator::new(self.seed);
         let render_distance = 6; 
@@ -175,8 +174,16 @@ fn generate_terrain(&mut self) {
                 let chunk_z_world = cz * (CHUNK_SIZE_Z as i32);
                 for lx in 0..CHUNK_SIZE_X {
                     for lz in 0..CHUNK_SIZE_Z {
-                        let wx = chunk_x_world + lx as i32; let wz = chunk_z_world + lz as i32;
+                        let wx = chunk_x_world + lx as i32;
+                        let wz = chunk_z_world + lz as i32;
+                        
                         let mut height = noise_gen.get_height(wx, wz);
+                        let m = noise_gen.get_noise3d(wx as f64 * 0.008, 0.0, wz as f64 * 0.008);
+                        let c = noise_gen.get_noise3d(wx as f64 * 0.02,  0.0, wz as f64 * 0.02);
+                        let mountain = ((m.max(0.0)).powf(2.2) * 35.0) as i32;
+                        let cliff = ((c.abs()).powf(3.0) * 18.0) as i32;
+                        height = (height + mountain + cliff).clamp(1, (CHUNK_SIZE_Y as i32) - 2);
+                        
                         let river_val = noise_gen.get_river_noise(wx, wz);
                         let mut is_river = false;
                         
@@ -197,21 +204,19 @@ fn generate_terrain(&mut self) {
                                            + noise_gen.get_noise3d(wx as f64 * 0.02, y as f64 * 0.02, wz as f64 * 0.02) * 0.5;
                             let is_cave = y_i32 < height && y_i32 > 5 && cave_noise > 0.6;
                             
-                            if is_cave && y_i32 < WATER_LEVEL { 
-                                // Underwater caves -> Water 
-                                // (Logic handled by default Air, check later for fill)
-                            } else if is_cave {
-                                continue; // Leave as Air
+                            if is_cave {
+                                if y_i32 <= WATER_LEVEL { chunk.set_block(lx, y, lz, BlockType::Water); }
+                                continue;
                             }
 
                             let mut block = BlockType::Air;
                             if y_i32 <= height {
-                                if y_i32 == 0 { block = BlockType::Bedrock; }
-                                else if y_i32 < 5 { 
+                                if y_i32 == 0 { 
+                                    block = BlockType::Bedrock; 
+                                } else if y_i32 < 5 { 
                                     let mut rng = SimpleRng::new((wx^y_i32^wz) as u64);
                                     block = if rng.next_f32() < 0.5 { BlockType::Bedrock } else { BlockType::Stone }; 
-                                }
-                                else if y_i32 < height - 3 {
+                                } else if y_i32 < height - 3 {
                                     // ORE GENERATION
                                     let mut rng = SimpleRng::new((wx as u64).wrapping_mul(73856093) ^ (wz as u64).wrapping_mul(19349663) ^ (y_i32 as u64));
                                     let r = rng.next_f32();
@@ -224,25 +229,25 @@ fn generate_terrain(&mut self) {
                                     else if r < 0.001 && y_i32 < 12 { block = BlockType::DiamondOre; }
                                     else if r < 0.04 && y_i32 < 40 { block = BlockType::Gravel; }
                                     else if r < 0.04 && y_i32 < 40 { block = BlockType::Dirt; }
-                                } 
-                                else if y_i32 < height { 
+                                } else if y_i32 < height { 
                                     block = if is_river { BlockType::Sand } 
                                     else if biome == "desert" { BlockType::Sand } 
                                     else { BlockType::Dirt }; 
-                                }
-                                else { 
+                                } else { 
                                     // Top Soil
-                                    block = if is_river { 
-                                        if height < WATER_LEVEL { BlockType::Dirt } else { BlockType::Sand }
+                                    if height > 72 && biome != "desert" { 
+                                        block = BlockType::Stone;
+                                    } else if is_river { 
+                                        if height < WATER_LEVEL { block = BlockType::Dirt; } else { block = BlockType::Sand; }
                                     } else if height >= 85 { 
-                                        BlockType::Snow 
+                                        block = BlockType::Snow; 
                                     } else if biome == "desert" { 
-                                        BlockType::Sand 
+                                        block = BlockType::Sand; 
                                     } else if height <= WATER_LEVEL + 1 { 
-                                        BlockType::Sand // Beaches
+                                        block = BlockType::Sand; // Beaches
                                     } else { 
-                                        BlockType::Grass 
-                                    }; 
+                                        block = BlockType::Grass; 
+                                    }
                                 }
                             } else if y_i32 <= WATER_LEVEL { 
                                 block = BlockType::Water; 
@@ -250,8 +255,7 @@ fn generate_terrain(&mut self) {
                             
                             // Lava Pools Deep Down
                             if y_i32 < 10 && block == BlockType::Air && !is_river {
-                                block = BlockType::Water; // Actually should be lava, using Water texture for now or Obsidian? No, user asked for Obsidian. Let's make Lava pools Obsidian for now until fluid logic expands.
-                                // Actually, let's leave it air for safety or water.
+                                block = BlockType::Water; // Safety placeholder
                             }
 
                             if block != BlockType::Air { chunk.set_block(lx, y, lz, block); }
@@ -263,14 +267,16 @@ fn generate_terrain(&mut self) {
         }
         
         // 2. Diabolical Decorators (Biome Specifics)
-// 2. Diabolical Decorators (Biome Specifics)
         for cx in -render_distance..=render_distance {
             for cz in -render_distance..=render_distance {
-                let chunk_x_world = cx * (CHUNK_SIZE_X as i32); let chunk_z_world = cz * (CHUNK_SIZE_Z as i32);
+                let chunk_x_world = cx * (CHUNK_SIZE_X as i32); 
+                let chunk_z_world = cz * (CHUNK_SIZE_Z as i32);
                 for lx in 0..CHUNK_SIZE_X {
                     for lz in 0..CHUNK_SIZE_Z {
-                        let wx = chunk_x_world + lx as i32; let wz = chunk_z_world + lz as i32;
+                        let wx = chunk_x_world + lx as i32; 
+                        let wz = chunk_z_world + lz as i32;
                         let height = noise_gen.get_height(wx, wz);
+                        
                         // Skip rivers for most decoration
                         if noise_gen.get_river_noise(wx, wz).abs() < 0.15 { 
                             if height < WATER_LEVEL - 1 {
@@ -279,6 +285,7 @@ fn generate_terrain(&mut self) {
                             }
                             continue; 
                         }
+                        
                         let biome = noise_gen.get_biome(wx, wz, height);
                         let mut rng = SimpleRng::new((wx as u64).wrapping_mul(self.seed as u64) ^ (wz as u64));
                         let r = rng.next_f32();
@@ -349,6 +356,7 @@ fn generate_terrain(&mut self) {
                                 else if r < 0.02 { self.set_block_world(above, BlockType::Dandelion); }
                                 else if r < 0.05 && biome == "plains" { self.set_block_world(above, BlockType::TallGrass); }
                                 else if r < 0.002 { self.set_block_world(above, BlockType::Pumpkin); }
+                                else if r > 0.998 { self.set_block_world(above, BlockType::Melon); }
                             }
                              if (ground == BlockType::Grass || ground == BlockType::Sand) && r < 0.05 {
                                  let mut near_water = false;
@@ -518,31 +526,55 @@ self.set_block_world(pos, BlockType::Air);
         }
         updates.sort(); updates.dedup(); updates
     }
-    pub fn update_entities(&mut self, dt: f32, player: &mut Player) {
-        let entities = std::mem::take(&mut self.entities);
-        let mut retained = Vec::new();
-        for mut entity in entities {
-            entity.lifetime -= dt; if entity.lifetime <= 0.0 { continue; }
-            if entity.pickup_delay > 0.0 { entity.pickup_delay -= dt; }
-            entity.velocity.y -= 25.0 * dt;
-            let next_pos = entity.position + entity.velocity * dt;
-            let block_below = self.get_block(BlockPos { x: next_pos.x.floor() as i32, y: next_pos.y.floor() as i32, z: next_pos.z.floor() as i32 });
-            if block_below.is_solid() {
-                entity.velocity.y = 0.0; entity.velocity.x *= 0.85; entity.velocity.z *= 0.85;
-                entity.position.y = (next_pos.y.floor() as f32 + 1.0).max(next_pos.y); entity.position.x = next_pos.x; entity.position.z = next_pos.z;
-            } else { entity.position = next_pos; }
-            let dist_sq = entity.position.distance_squared(player.position);
-            if dist_sq < 9.0 && entity.pickup_delay <= 0.0 {
-                let dir = (player.position - entity.position).normalize(); entity.position += dir * 10.0 * dt;
-                if dist_sq < 2.25 { 
-                    if player.inventory.add_item(entity.item_type) { 
-                        log::info!("🎁 Picked up {:?}", entity.item_type);
-                        continue; 
-                    } 
-                }
-            }
-            retained.push(entity);
+pub fn update_entities(&mut self, dt: f32, player: &mut Player) {
+    let entities = std::mem::take(&mut self.entities);
+    let mut retained = Vec::new();
+    for mut entity in entities {
+        entity.lifetime -= dt; if entity.lifetime <= 0.0 { continue; }
+        if entity.pickup_delay > 0.0 { entity.pickup_delay -= dt; }
+
+        // Gravity
+        entity.velocity.y -= 25.0 * dt;
+
+        // Physics
+        let mut next_pos = entity.position + entity.velocity * dt;
+
+        // Helper to check solids
+        let solid_at = |x: f32, y: f32, z: f32| -> bool { 
+            self.get_block(BlockPos { x: x.floor() as i32, y: y.floor() as i32, z: z.floor() as i32 }).is_solid() 
+        };
+
+        // X Collision
+        let try_x = Vec3::new(next_pos.x, entity.position.y, entity.position.z);
+        if !solid_at(try_x.x, try_x.y, try_x.z) { entity.position.x = try_x.x; }
+
+        // Z Collision
+        let try_z = Vec3::new(entity.position.x, entity.position.y, next_pos.z);
+        if !solid_at(try_z.x, try_z.y, try_z.z) { entity.position.z = try_z.z; }
+
+        // Y Collision (Ground Snap)
+        let try_y = Vec3::new(entity.position.x, next_pos.y, entity.position.z);
+        let feet_y = try_y.y - 0.1;
+        if entity.velocity.y <= 0.0 && solid_at(try_y.x, feet_y, try_y.z) {
+            entity.velocity.y = 0.0; entity.velocity.x *= 0.85; entity.velocity.z *= 0.85;
+            entity.position.y = feet_y.floor() + 1.1; // Snap up
+        } else if !solid_at(try_y.x, try_y.y, try_y.z) {
+            entity.position.y = try_y.y;
         }
-self.entities = retained;
+
+        // Pickup Logic
+        let dist_sq = entity.position.distance_squared(player.position);
+        if dist_sq < 9.0 && entity.pickup_delay <= 0.0 {
+            let dir = (player.position - entity.position).normalize(); entity.position += dir * 10.0 * dt;
+            if dist_sq < 2.25 { 
+                if player.inventory.add_item(entity.item_type) { 
+                    log::info!("🎁 Picked up {:?}", entity.item_type);
+                    continue; 
+                } 
+            }
+        }
+        retained.push(entity);
     }
+    self.entities = retained;
+}
 }

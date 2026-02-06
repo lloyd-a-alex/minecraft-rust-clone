@@ -27,7 +27,7 @@ fn main() {
     println!("1. SINGLEPLAYER (LAN Mode)");
     println!("2. HOST ONLINE (Auto: Ngrok -> SSH -> LAN)");
     println!("3. JOIN GAME");
-println!("4. STRESS TEST (Multi-Client)");
+    println!("4. STRESS TEST (Multi-Client)");
     println!(""); 
     println!("> Enter option (1-4) and press ENTER:"); 
     
@@ -35,7 +35,7 @@ println!("4. STRESS TEST (Multi-Client)");
     if std::io::stdin().read_line(&mut input).is_err() { input = "1".to_string(); }
     let choice = input.trim();
 
-if choice == "4" {
+    if choice == "4" {
         print!("How many clients? > "); io::stdout().flush().unwrap();
         let mut n_str = String::new(); std::io::stdin().read_line(&mut n_str).unwrap();
         let n: usize = n_str.trim().parse().unwrap_or(1);
@@ -53,7 +53,7 @@ if choice == "4" {
         run_game(NetworkManager::join(ip.trim().to_string()), "CLIENT");
     } else {
         run_game(NetworkManager::host("7878".to_string(), master_seed), "Minecraft Clone (Singleplayer)");
-    };
+    }
 }
 
 fn run_game(network: NetworkManager, title: &str) {
@@ -221,38 +221,43 @@ cursor.count -= transfer;
                         }
                     } else if button == MouseButton::Left {
                         left_click = pressed; 
-                    } else if button == MouseButton::Right && pressed && !player.inventory_open {
-                        // Place Block
-                        let (sin, cos) = player.rotation.x.sin_cos(); let (ysin, ycos) = player.rotation.y.sin_cos();
-                        let dir = glam::Vec3::new(ycos * cos, sin, ysin * cos).normalize();
-                        if let Some((_, place)) = world.raycast(player.position + glam::Vec3::new(0.0, player.height*0.4, 0.0), dir, 5.0) {
-                            let p_min = player.position - glam::Vec3::new(player.radius, 0.0, player.radius);
-                            let p_max = player.position + glam::Vec3::new(player.radius, player.height, player.radius);
-                            let b_min = glam::Vec3::new(place.x as f32, place.y as f32, place.z as f32);
-                            let b_max = b_min + glam::Vec3::ONE;
-                            
-                            let intersect_x = p_min.x < b_max.x && p_max.x > b_min.x;
-                            let intersect_y = p_min.y < b_max.y && p_max.y > b_min.y;
-                            let intersect_z = p_min.z < b_max.z && p_max.z > b_min.z;
-                            
-                            if !(intersect_x && intersect_y && intersect_z) {
-                                if let Some(blk) = player.inventory.get_selected_item() {
-                                    if !blk.is_tool() && !blk.is_item() {
-                                        let c = world.place_block(place, blk); 
-                                        player.inventory.remove_one_from_hand(); 
-                                        network.send_packet(Packet::BlockUpdate { pos: place, block: blk });
-                                        for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
-                                    } else if blk == BlockType::CraftingTable {
-                                        if world.get_block(place) == BlockType::CraftingTable {
-                                            player.inventory_open = true; player.crafting_open = true;
-                                            let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined); window_clone.set_cursor_visible(true);
-                                        }
-                                    }
+} else if button == MouseButton::Right && pressed && !player.inventory_open {
+                    // Place Block
+                    let (sin, cos) = player.rotation.x.sin_cos(); let (ysin, ycos) = player.rotation.y.sin_cos();
+                    let dir = glam::Vec3::new(ycos * cos, sin, ysin * cos).normalize();
+
+                    // RAYCAST
+                    if let Some((hit, place)) = world.raycast(player.position + glam::Vec3::new(0.0, player.height*0.4, 0.0), dir, 5.0) {
+                        // INTERACT: Crafting Table
+                        if world.get_block(hit) == BlockType::CraftingTable {
+                            player.inventory_open = true; player.crafting_open = true;
+                            let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined); window_clone.set_cursor_visible(true);
+                            return;
+                        }
+
+                        // PLACEMENT CHECKS
+                        let p_min = player.position - glam::Vec3::new(player.radius, 0.0, player.radius);
+                        let p_max = player.position + glam::Vec3::new(player.radius, player.height, player.radius);
+                        let b_min = glam::Vec3::new(place.x as f32, place.y as f32, place.z as f32);
+                        let b_max = b_min + glam::Vec3::ONE;
+
+                        let intersect_x = p_min.x < b_max.x && p_max.x > b_min.x;
+                        let intersect_y = p_min.y < b_max.y && p_max.y > b_min.y;
+                        let intersect_z = p_min.z < b_max.z && p_max.z > b_min.z;
+
+                        if !(intersect_x && intersect_y && intersect_z) {
+                            if let Some(blk) = player.inventory.get_selected_item() {
+                                if !blk.is_tool() && !blk.is_item() {
+                                    let c = world.place_block(place, blk); 
+                                    player.inventory.remove_one_from_hand(); 
+                                    network.send_packet(Packet::BlockUpdate { pos: place, block: blk });
+                                    for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
                                 }
                             }
                         }
                     }
-                },
+                }
+            },
                 WindowEvent::KeyboardInput { event, .. } => {
                     if let PhysicalKey::Code(key) = event.physical_key {
                         let pressed = event.state == ElementState::Pressed;
@@ -268,6 +273,11 @@ cursor.count -= transfer;
                             }
                         } else if key == winit::keyboard::KeyCode::KeyE && pressed && !is_paused {
                             player.inventory_open = !player.inventory_open;
+                            if player.inventory_open {
+                            player.keys.forward = false; player.keys.backward = false;
+                            player.keys.left = false; player.keys.right = false;
+                            player.keys.up = false; player.keys.down = false;
+                        }
                             player.crafting_open = false; 
                             if player.inventory_open { let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined); window_clone.set_cursor_visible(true); }
                             else { let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); window_clone.set_cursor_visible(false); }
@@ -278,7 +288,9 @@ cursor.count -= transfer;
                                  let ent = world::ItemEntity { position: player.position + glam::Vec3::new(0.0, 1.5, 0.0), velocity: dir * 10.0, item_type: stack.item, count: stack.count, pickup_delay: 1.5, lifetime: 300.0, rotation: 0.0, bob_offset: 0.0 };
                                  world.entities.push(ent);
                              }
-                        } else if !is_paused { player.handle_input(key, pressed); }
+                     }
+                    if !pressed { player.handle_input(key, false); }
+                    else if !is_paused && !player.inventory_open { player.handle_input(key, true); }
                     }
                 },
                 WindowEvent::RedrawRequested => {

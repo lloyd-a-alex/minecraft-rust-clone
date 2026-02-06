@@ -132,7 +132,6 @@ pub struct Player {
     pub height: f32, pub radius: f32,
     pub health: f32, pub max_health: f32, pub invincible_timer: f32,
     pub air: f32, pub max_air: f32, 
-    pub hunger: f32, pub max_hunger: f32, pub saturation: f32, pub hunger_timer: f32,
     pub is_dead: bool, pub right_handed: bool, pub inventory_open: bool, pub crafting_open: bool,
 }
 
@@ -141,7 +140,6 @@ impl Player {
 pub fn new() -> Self {
         Player {
             air: 300.0, max_air: 300.0, 
-            hunger: 20.0, max_hunger: 20.0, saturation: 5.0, hunger_timer: 0.0,
             position: Vec3::new(0.0, 80.0, 0.0), rotation: Vec3::new(0.0, -90.0f32.to_radians(), 0.0), velocity: Vec3::ZERO,
             keys: KeyState { forward: false, backward: false, left: false, right: false, up: false, down: false },
             speed: 5.0, sensitivity: 0.002, inventory: Inventory::new(),
@@ -161,7 +159,6 @@ pub fn new() -> Self {
             KeyCode::Digit5 => self.inventory.select_slot(4), KeyCode::Digit6 => self.inventory.select_slot(5),
             KeyCode::Digit7 => self.inventory.select_slot(6), KeyCode::Digit8 => self.inventory.select_slot(7),
 KeyCode::Digit9 => self.inventory.select_slot(8),
-            KeyCode::KeyF => { if pressed { self.speed = if self.speed == 5.0 { 10.0 } else { 5.0 }; } },
             _ => {}
         }
     }
@@ -179,11 +176,12 @@ pub fn update(&mut self, dt: f32, world: &World) {
         let dt = dt.min(0.1); if self.invincible_timer > 0.0 { self.invincible_timer -= dt; }
 
         // --- SURVIVAL MECHANICS ---
-        let head_bp = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + 1.6).floor() as i32, z: self.position.z.floor() as i32 };
-        let feet_bp = BlockPos { x: self.position.x.floor() as i32, y: self.position.y.floor() as i32, z: self.position.z.floor() as i32 };
+let feet_bp = BlockPos { x: self.position.x.floor() as i32, y: self.position.y.floor() as i32, z: self.position.z.floor() as i32 };
+        let eye_bp = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + self.height * 0.4).floor() as i32, z: self.position.z.floor() as i32 };
+        let head_bp = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + self.height * 0.9).floor() as i32, z: self.position.z.floor() as i32 };
         
         // 1. DROWNING
-        if world.get_block(head_bp).is_water() {
+        if world.get_block(eye_bp).is_water() {
             self.air -= dt * 60.0; // Drain air
             if self.air <= 0.0 {
                 self.air = 0.0;
@@ -207,27 +205,6 @@ pub fn update(&mut self, dt: f32, world: &World) {
              }
         }}
 
-        // 4. HUNGER & HEALING
-        if self.hunger < 18.0 && self.health > 0.0 { /* No auto heal if hungry */ }
-        else if self.hunger >= 18.0 && self.health < self.max_health {
-            self.hunger_timer += dt;
-            if self.hunger_timer > 4.0 { // Heal every 4s
-                self.health += 1.0; self.hunger_timer = 0.0; self.hunger = (self.hunger - 0.5).max(0.0);
-            }
-        }
-        
-        if self.keys.forward || self.keys.right || self.keys.left || self.keys.backward {
-             if self.speed > 5.0 { self.saturation -= dt * 0.1; } else { self.saturation -= dt * 0.02; }
-        }
-        if self.saturation <= 0.0 { self.saturation = 0.0; self.hunger -= dt * 0.005; }
-        if self.hunger <= 0.0 { 
-            self.hunger = 0.0; 
-            if self.health > 10.0 { // Starvation only down to 5 hearts
-                 self.hunger_timer += dt; 
-                 if self.hunger_timer > 4.0 { self.health -= 1.0; self.hunger_timer = 0.0; }
-            }
-        }
-
         let (yaw_sin, yaw_cos) = self.rotation.y.sin_cos();
         let forward = Vec3::new(yaw_cos, 0.0, yaw_sin).normalize(); let right = Vec3::new(-yaw_sin, 0.0, yaw_cos).normalize();
         let mut move_delta = Vec3::ZERO;
@@ -236,14 +213,18 @@ pub fn update(&mut self, dt: f32, world: &World) {
         if move_delta.length_squared() > 0.0 { move_delta = move_delta.normalize() * self.speed * dt; }
         
         // Physics & Block Modifiers
-        let head_bp = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + 0.5).floor() as i32, z: self.position.z.floor() as i32 };
+let chest_bp = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + self.height * 0.3).floor() as i32, z: self.position.z.floor() as i32 };
+        let eye_bp = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + self.height * 0.4).floor() as i32, z: self.position.z.floor() as i32 };
+        let in_water = world.get_block(chest_bp).is_water() || world.get_block(eye_bp).is_water();
         let current_block = world.get_block(head_bp);
-        let in_water = current_block.is_water();
         let in_leaves = matches!(current_block, BlockType::Leaves);
 
-        if in_water {
-            move_delta *= 0.7; 
-            if self.keys.up { self.velocity.y = 3.0; } else if self.keys.down { self.velocity.y = -3.0; } else { self.velocity.y += (-0.5 - self.velocity.y) * (5.0 * dt).min(1.0); }
+if in_water {
+            move_delta *= 0.75;
+            if !self.keys.down && self.velocity.y < 1.2 { self.velocity.y = (self.velocity.y + 8.0 * dt).min(1.2); }
+            if self.keys.up { self.velocity.y = self.velocity.y.max(4.2); }
+            else if self.keys.down { self.velocity.y = self.velocity.y.min(-3.2); }
+            else { self.velocity.y += (-self.velocity.y) * (6.0 * dt).min(1.0); }
             self.on_ground = false;
         } else if in_leaves {
             move_delta *= 0.85; 
@@ -262,25 +243,13 @@ pub fn update(&mut self, dt: f32, world: &World) {
              // X Movement
              if !self.check_collision_horizontal(world, Vec3::new(next_x, self.position.y, self.position.z)) { 
                  self.position.x = next_x; 
-             } else if self.on_ground {
-                 // SAFE STEP ASSIST (Check full body at target)
-                 let target = Vec3::new(next_x, self.position.y + 1.1, self.position.z);
-                 if !self.check_full_collision(world, target) {
-                     self.position = target; // Step up
-                 }
              }
              
              let next_z = self.position.z + move_delta.z;
              // Z Movement
              if !self.check_collision_horizontal(world, Vec3::new(self.position.x, self.position.y, next_z)) { 
                  self.position.z = next_z; 
-             } else if self.on_ground {
-                 // SAFE STEP ASSIST
-                 let target = Vec3::new(self.position.x, self.position.y + 1.1, next_z);
-                 if !self.check_full_collision(world, target) {
-                     self.position = target;
-                 }
-             }
+             } 
              self.walk_time += dt * 10.0;
         }
         
