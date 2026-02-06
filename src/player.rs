@@ -359,7 +359,7 @@ fn check_ground(&self, world: &World, pos: Vec3) -> Option<f32> {
     
     pub fn build_view_projection_matrix(&self, aspect: f32) -> [[f32; 4]; 4] {
         let (pitch_sin, pitch_cos) = self.rotation.x.sin_cos(); let (yaw_sin, yaw_cos) = self.rotation.y.sin_cos();
-        let mut eye_pos = self.position + Vec3::new(0.0, self.height * 0.9, 0.0);
+        let mut eye_pos = self.position + Vec3::new(0.0, self.height * 0.4, 0.0);
         // Toned down bobbing (0.02 instead of 0.05)
         if self.on_ground && (self.keys.forward || self.keys.backward || self.keys.left || self.keys.right) { eye_pos.y += (self.walk_time * 2.0).sin() * 0.02; }
         let forward = Vec3::new(yaw_cos * pitch_cos, pitch_sin, yaw_sin * pitch_cos).normalize();

@@ -225,7 +225,7 @@ cursor.count -= transfer;
                         // Place Block
                         let (sin, cos) = player.rotation.x.sin_cos(); let (ysin, ycos) = player.rotation.y.sin_cos();
                         let dir = glam::Vec3::new(ycos * cos, sin, ysin * cos).normalize();
-                        if let Some((_, place)) = world.raycast(player.position + glam::Vec3::new(0.0, player.height*0.9, 0.0), dir, 5.0) {
+                        if let Some((_, place)) = world.raycast(player.position + glam::Vec3::new(0.0, player.height*0.4, 0.0), dir, 5.0) {
                             let p_min = player.position - glam::Vec3::new(player.radius, 0.0, player.radius);
                             let p_max = player.position + glam::Vec3::new(player.radius, player.height, player.radius);
                             let b_min = glam::Vec3::new(place.x as f32, place.y as f32, place.z as f32);
@@ -374,7 +374,7 @@ cursor.count -= transfer;
                         // TARGETING & BREAKING (Grace Period Logic)
                         let (sin, cos) = player.rotation.x.sin_cos(); let (ysin, ycos) = player.rotation.y.sin_cos();
                         let dir = glam::Vec3::new(ycos * cos, sin, ysin * cos).normalize();
-                        let ray_res = world.raycast(player.position + glam::Vec3::new(0.0, player.height*0.9, 0.0), dir, 5.0);
+                        let ray_res = world.raycast(player.position + glam::Vec3::new(0.0, player.height*0.4, 0.0), dir, 5.0);
                         
                         let current_target = ray_res.map(|(h, _)| h);
                         
