@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use crate::world::{World, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z, BlockPos, BlockType};
 use crate::player::Player;
 use crate::texture::TextureAtlas;
+use crate::main::{UIElement, Hotbar, MainMenu};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -200,7 +201,67 @@ fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Ve
         x += final_scale;
     }
 }
-    
+pub fn render_main_menu(&mut self, menu: &MainMenu, window_width: u32, window_height: u32) -> Result<(), wgpu::SurfaceError> {
+        let output = self.surface.get_current_texture()?;
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Menu Encoder") });
+
+        // 1. Draw background (A simple dark dirt-like tiled background)
+        {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Menu Background Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &view, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.1, g: 0.1, b: 0.1, a: 1.0 }), store: wgpu::StoreOp::Store, }, })],
+                depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
+            });
+            rpass.set_pipeline(&self.ui_pipeline);
+            rpass.set_bind_group(0, &self.texture_bind_group, &[]);
+            // Tile dirt texture (idx 2) across the screen
+            for y in -4..4 { for x in -4..4 {
+                self.draw_ui_element(&mut rpass, glam::Vec2::new(x as f32 * 0.5, y as f32 * 0.5), glam::Vec2::new(0.5, 0.5), 2);
+            }}
+        }
+
+        // 2. Draw Buttons
+        {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Menu Button Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &view, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store, }, })],
+                depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
+            });
+            rpass.set_pipeline(&self.ui_pipeline);
+            rpass.set_bind_group(0, &self.texture_bind_group, &[]);
+
+            for button in &menu.buttons {
+                let tex_idx = if button.hovered { 251 } else { 250 };
+                // Convert Normalized Device Coordinates (-1 to 1) back to UI scaling used by draw_ui_element
+                let pos = glam::Vec2::new(button.rect.x, button.rect.y);
+                let size = glam::Vec2::new(button.rect.w, button.rect.h);
+                self.draw_ui_element(&mut rpass, pos, size, tex_idx);
+            }
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+
+        // 3. Draw Button Text (Separate pass for text glyphs)
+        let aspect = window_width as f32 / window_height as f32;
+        for button in &menu.buttons {
+            // Center text on button. Convert NDC to pixels.
+            let center_x_ndc = button.rect.x;
+            let center_y_ndc = button.rect.y;
+            let pixel_x = (center_x_ndc + 1.0) * 0.5 * window_width as f32;
+            let pixel_y = (1.0 - center_y_ndc) * 0.5 * window_height as f32;
+
+            // Simple centering estimation based on character count
+            let char_width_approx = 20.0; 
+            let text_width = button.text.len() as f32 * char_width_approx;
+            let text_pos = glam::Vec2::new(pixel_x - text_width / 2.0, pixel_y - 15.0);
+
+            self.draw_text(&button.text, text_pos, 2.0, &view, aspect, window_width, window_height);
+        }
+
+        output.present();
+        Ok(())
+    }
 pub fn render(&mut self, player: &Player, world: &World, is_paused: bool, cursor_pos: (f64, f64)) {
         let output = match self.surface.get_current_texture() { Ok(o) => o, Err(_) => return };
         let view = output.texture.create_view(&TextureViewDescriptor::default());
