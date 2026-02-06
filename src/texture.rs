@@ -154,8 +154,11 @@ impl TextureAtlas {
 // --- 9. UI BUTTONS ---
         Self::generate_button(&mut data, block_size, atlas_width, 250, false); // Normal
         Self::generate_button(&mut data, block_size, atlas_width, 251, true);  // Hovered
-        TextureAtlas { data, size: block_size, grid_size: grid_width_in_blocks }
-fn generate_button(data: &mut [u8], size: u32, w: u32, idx: u32, hovered: bool) {
+TextureAtlas { data, size: block_size, grid_size: grid_width_in_blocks }
+    } // <--- This closes the 'new' function properly
+
+    // --- 9. UI BUTTONS (Helper) ---
+    fn generate_button(data: &mut [u8], size: u32, w: u32, idx: u32, hovered: bool) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         let base_color = if hovered { [120, 120, 160] } else { [60, 60, 60] };
         let border_light = if hovered { [160, 160, 200] } else { [100, 100, 100] };

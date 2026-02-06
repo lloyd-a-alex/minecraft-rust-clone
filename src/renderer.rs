@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use crate::world::{World, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z, BlockPos, BlockType};
 use crate::player::Player;
 use crate::texture::TextureAtlas;
-use crate::main::{UIElement, Hotbar, MainMenu};
+use crate::{UIElement, Hotbar, MainMenu};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -34,6 +34,10 @@ pub struct Renderer<'a> {
 }
 
 impl<'a> Renderer<'a> {
+    pub fn update_camera(&mut self, player: &Player, aspect: f32) {
+    let view_proj = player.build_view_projection_matrix(aspect);
+    self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[view_proj]));
+}
     pub async fn new(window: &'a Window) -> Self {
         // --- KEY FIX: Use empty flags for compatibility ---
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -201,68 +205,79 @@ fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Ve
         x += final_scale;
     }
 }
-pub fn render_main_menu(&mut self, menu: &MainMenu, window_width: u32, window_height: u32) -> Result<(), wgpu::SurfaceError> {
-        let output = self.surface.get_current_texture()?;
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Menu Encoder") });
+pub fn render_main_menu(&mut self, menu: &MainMenu, width: u32, height: u32) -> Result<(), wgpu::SurfaceError> {
+    let output = self.surface.get_current_texture()?;
+    let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Menu") });
 
-        // 1. Draw background (A simple dark dirt-like tiled background)
-        {
-            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Menu Background Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &view, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.1, g: 0.1, b: 0.1, a: 1.0 }), store: wgpu::StoreOp::Store, }, })],
-                depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
-            });
-            rpass.set_pipeline(&self.ui_pipeline);
-            rpass.set_bind_group(0, &self.texture_bind_group, &[]);
-            // Tile dirt texture (idx 2) across the screen
-            for y in -4..4 { for x in -4..4 {
-                self.draw_ui_element(&mut rpass, glam::Vec2::new(x as f32 * 0.5, y as f32 * 0.5), glam::Vec2::new(0.5, 0.5), 2);
-            }}
-        }
+    // Build UI Geometry manually
+    let mut vertices: Vec<Vertex> = Vec::new();
+    let mut indices: Vec<u32> = Vec::new();
+    let mut idx_offset = 0;
 
-        // 2. Draw Buttons
-        {
-            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Menu Button Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &view, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store, }, })],
-                depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
-            });
-            rpass.set_pipeline(&self.ui_pipeline);
-            rpass.set_bind_group(0, &self.texture_bind_group, &[]);
+    // Helper to add a quad
+    let mut add_quad = |rect: &crate::main::Rect, tex_id: u32| {
+        let z = 0.0;
+        // Menu coords are -1 to 1 (NDC). Texture coords 0 to 1.
+        let u_min = (tex_id % 16) as f32 / 16.0; let v_min = (tex_id / 16) as f32 / 16.0;
+        let u_max = u_min + 1.0/16.0; let v_max = v_min + 1.0/16.0;
 
-            for button in &menu.buttons {
-                let tex_idx = if button.hovered { 251 } else { 250 };
-                // Convert Normalized Device Coordinates (-1 to 1) back to UI scaling used by draw_ui_element
-                let pos = glam::Vec2::new(button.rect.x, button.rect.y);
-                let size = glam::Vec2::new(button.rect.w, button.rect.h);
-                self.draw_ui_element(&mut rpass, pos, size, tex_idx);
-            }
-        }
+        // BL, BR, TR, TL
+        vertices.push(Vertex { position: [rect.x - rect.w/2.0, rect.y - rect.h/2.0, z], tex_coords: [u_min, v_max], ao: 1.0, tex_index: 0 });
+        vertices.push(Vertex { position: [rect.x + rect.w/2.0, rect.y - rect.h/2.0, z], tex_coords: [u_max, v_max], ao: 1.0, tex_index: 0 });
+        vertices.push(Vertex { position: [rect.x + rect.w/2.0, rect.y + rect.h/2.0, z], tex_coords: [u_max, v_min], ao: 1.0, tex_index: 0 });
+        vertices.push(Vertex { position: [rect.x - rect.w/2.0, rect.y + rect.h/2.0, z], tex_coords: [u_min, v_min], ao: 1.0, tex_index: 0 });
 
-        self.queue.submit(std::iter::once(encoder.finish()));
+        indices.extend_from_slice(&[idx_offset, idx_offset+1, idx_offset+2, idx_offset, idx_offset+2, idx_offset+3]);
+        idx_offset += 4;
+    };
 
-        // 3. Draw Button Text (Separate pass for text glyphs)
-        let aspect = window_width as f32 / window_height as f32;
-        for button in &menu.buttons {
-            // Center text on button. Convert NDC to pixels.
-            let center_x_ndc = button.rect.x;
-            let center_y_ndc = button.rect.y;
-            let pixel_x = (center_x_ndc + 1.0) * 0.5 * window_width as f32;
-            let pixel_y = (1.0 - center_y_ndc) * 0.5 * window_height as f32;
+    // 1. Background (Tile Dirt)
+    for y in -4..4 { for x in -4..4 {
+        add_quad(&crate::main::Rect{x: x as f32 * 0.5, y: y as f32 * 0.5, w: 0.5, h: 0.5}, 2);
+    }}
 
-            // Simple centering estimation based on character count
-            let char_width_approx = 20.0; 
-            let text_width = button.text.len() as f32 * char_width_approx;
-            let text_pos = glam::Vec2::new(pixel_x - text_width / 2.0, pixel_y - 15.0);
+    // 2. Buttons & Text
+    for btn in &menu.buttons {
+        add_quad(&btn.rect, if btn.hovered { 251 } else { 250 });
 
-            self.draw_text(&button.text, text_pos, 2.0, &view, aspect, window_width, window_height);
-        }
-
-        output.present();
-        Ok(())
+        // Draw Text
+        let aspect = width as f32 / height as f32;
+        let px = (btn.rect.x + 1.0) * 0.5 * width as f32;
+        let py = (1.0 - btn.rect.y) * 0.5 * height as f32;
+        let text_w = btn.text.len() as f32 * 14.0; 
+        // Use existing draw_text logic
+        self.draw_text(&btn.text, (px - text_w/2.0) / width as f32 * 2.0 - 1.0, 
+                       1.0 - (py - 10.0) / height as f32 * 2.0, 
+                       0.003, &mut vertices, &mut indices, &mut idx_offset);
     }
-pub fn render(&mut self, player: &Player, world: &World, is_paused: bool, cursor_pos: (f64, f64)) {
+
+    // Render Pass
+    let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Menu VB"), contents: bytemuck::cast_slice(&vertices), usage: wgpu::BufferUsages::VERTEX });
+    let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Menu IB"), contents: bytemuck::cast_slice(&indices), usage: wgpu::BufferUsages::INDEX });
+
+    {
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Menu Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &view, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } })],
+            depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
+        });
+        rpass.set_pipeline(&self.ui_pipeline);
+        // NOTE: Assuming your struct has 'diffuse_bind_group' based on typical naming. 
+        // If error persists, change to 'bind_group' or 'texture_bind_group'.
+        rpass.set_bind_group(0, &self.diffuse_bind_group, &[]); 
+        rpass.set_bind_group(1, &self.camera_bind_group, &[]); // UI shader might expect this bind group layout even if unused
+        rpass.set_bind_group(2, &self.time_bind_group, &[]);
+        rpass.set_vertex_buffer(0, vb.slice(..));
+        rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+        rpass.draw_indexed(0..indices.len() as u32, 0, 0..1);
+    }
+
+    self.queue.submit(std::iter::once(encoder.finish()));
+    output.present();
+    Ok(())
+}
+pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, width: u32, height: u32) -> Result<(), wgpu::SurfaceError> {
         let output = match self.surface.get_current_texture() { Ok(o) => o, Err(_) => return };
         let view = output.texture.create_view(&TextureViewDescriptor::default());
         let view_proj = player.build_view_projection_matrix(self.config.width as f32 / self.config.height as f32);

@@ -125,26 +125,45 @@ pub struct KeyState { pub forward: bool, pub backward: bool, pub left: bool, pub
 
 #[allow(dead_code)]
 pub struct Player {
-    pub position: Vec3, pub rotation: Vec3, pub velocity: Vec3,
-    pub keys: KeyState, pub speed: f32, pub sensitivity: f32,
-    pub inventory: Inventory, 
-    pub on_ground: bool, pub walk_time: f32,
-    pub height: f32, pub radius: f32,
-    pub health: f32, pub max_health: f32, pub invincible_timer: f32,
-    pub air: f32, pub max_air: f32, 
-    pub is_dead: bool, pub right_handed: bool, pub inventory_open: bool, pub crafting_open: bool,
+    pub position: Vec3,
+    pub rotation: Vec3,
+    pub velocity: Vec3,
+    pub height: f32,
+    pub radius: f32,
+    pub on_ground: bool,
+    pub is_flying: bool,     // Added
+    pub is_sprinting: bool,  // Added
+    pub inventory_open: bool,
+    pub crafting_open: bool,
+    pub hotbar: crate::main::Hotbar,
+    pub inventory: crate::player::Inventory,
+    pub keys: PlayerKeys,
+    pub is_dead: bool,       // Added
+}
+
+#[derive(Default)] 
+pub struct PlayerKeys { 
+    pub forward: bool, pub backward: bool, pub left: bool, pub right: bool, pub up: bool, pub down: bool 
 }
 
 #[allow(dead_code)]
 impl Player {
 pub fn new() -> Self {
-        Player {
-            air: 300.0, max_air: 300.0, 
-            position: Vec3::new(0.0, 80.0, 0.0), rotation: Vec3::new(0.0, -90.0f32.to_radians(), 0.0), velocity: Vec3::ZERO,
-            keys: KeyState { forward: false, backward: false, left: false, right: false, up: false, down: false },
-            speed: 5.0, sensitivity: 0.002, inventory: Inventory::new(),
-            on_ground: false, walk_time: 0.0, height: 1.8, radius: 0.25,
-            health: 20.0, max_health: 20.0, invincible_timer: 10.0, is_dead: false, right_handed: true, inventory_open: false, crafting_open: false,
+Player {
+            position: pos,
+            rotation: Vec3::new(0.0, 0.0, 0.0),
+            velocity: Vec3::ZERO,
+            height: 1.8,
+            radius: 0.3,
+            on_ground: false,
+            is_flying: false,
+            is_sprinting: false,
+            inventory_open: false,
+            crafting_open: false,
+            hotbar: crate::main::Hotbar::new(),
+            inventory: Inventory::new(),
+            keys: PlayerKeys::default(),
+            is_dead: false,
         }
     }
     pub fn respawn(&mut self) { self.position = Vec3::new(0.0, 80.0, 0.0); self.velocity = Vec3::ZERO; self.health = self.max_health; self.is_dead = false; self.invincible_timer = 3.0; }
