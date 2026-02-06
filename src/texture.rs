@@ -176,8 +176,7 @@ TextureAtlas { data, size: block_size, grid_size: grid_width_in_blocks }
         }
         Self::place_texture(data, size, w, idx, &p);
     }
-    }
-
+    
     // --- GENERATION HELPERS ---
 
     fn clear_tile(data: &mut [u8], blocksize: u32, atlaswidth: u32, grididx: u32) {

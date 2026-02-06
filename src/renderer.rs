@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use crate::world::{World, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z, BlockPos, BlockType};
 use crate::player::Player;
 use crate::texture::TextureAtlas;
-use crate::{UIElement, Hotbar, MainMenu, Rect}; // Added Rect
+use crate::MainMenu; // Added Rect
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -273,7 +273,7 @@ pub fn render_main_menu(&mut self, menu: &MainMenu, width: u32, height: u32) -> 
         rpass.set_pipeline(&self.ui_pipeline);
         // NOTE: Assuming your struct has 'diffuse_bind_group' based on typical naming. 
         // If error persists, change to 'bind_group' or 'texture_bind_group'.
-        rpass.set_bind_group(0, &self.texture_bind_group, &[]);
+        rpass.set_bind_group(0, &self.bind_group, &[]);
         rpass.set_bind_group(1, &self.camera_bind_group, &[]); // UI shader might expect this bind group layout even if unused
         rpass.set_bind_group(2, &self.time_bind_group, &[]);
         rpass.set_vertex_buffer(0, vb.slice(..));
@@ -285,7 +285,7 @@ pub fn render_main_menu(&mut self, menu: &MainMenu, width: u32, height: u32) -> 
     output.present();
     Ok(())
 }
-pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor_pos: (f64, f64), width: u32, height: u32) -> Result<(), wgpu::SurfaceError> {
+pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor_pos: (f64, f64), _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&TextureViewDescriptor::default());
         let view_proj = player.build_view_projection_matrix(self.config.width as f32 / self.config.height as f32);
