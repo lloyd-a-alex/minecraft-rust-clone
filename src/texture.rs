@@ -727,4 +727,3 @@ for (i, _) in chars.iter().enumerate() {
             Self::place_texture(data, size, w, start_idx + i as u32, &p);
         }
     }
-}
