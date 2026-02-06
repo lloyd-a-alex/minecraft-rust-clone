@@ -210,53 +210,47 @@ pub fn render_main_menu(&mut self, menu: &MainMenu, width: u32, height: u32) -> 
     let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
     let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Menu") });
 
-    // Build UI Geometry manually
     let mut vertices: Vec<Vertex> = Vec::new();
     let mut indices: Vec<u32> = Vec::new();
     let mut idx_offset = 0;
 
-    // Helper to add a quad
-    let mut add_quad = |rect: &crate::Rect, tex_id: u32| {
-        let z = 0.0;
-        // Menu coords are -1 to 1 (NDC). Texture coords 0 to 1.
-        let u_min = (tex_id % 16) as f32 / 16.0; let v_min = (tex_id / 16) as f32 / 16.0;
-        let u_max = u_min + 1.0/16.0; let v_max = v_min + 1.0/16.0;
-
-        // BL, BR, TR, TL
-        vertices.push(Vertex { position: [rect.x - rect.w/2.0, rect.y - rect.h/2.0, z], tex_coords: [u_min, v_max], ao: 1.0, tex_index: 0 });
-        vertices.push(Vertex { position: [rect.x + rect.w/2.0, rect.y - rect.h/2.0, z], tex_coords: [u_max, v_max], ao: 1.0, tex_index: 0 });
-        vertices.push(Vertex { position: [rect.x + rect.w/2.0, rect.y + rect.h/2.0, z], tex_coords: [u_max, v_min], ao: 1.0, tex_index: 0 });
-        vertices.push(Vertex { position: [rect.x - rect.w/2.0, rect.y + rect.h/2.0, z], tex_coords: [u_min, v_min], ao: 1.0, tex_index: 0 });
-
-        indices.extend_from_slice(&[idx_offset, idx_offset+1, idx_offset+2, idx_offset, idx_offset+2, idx_offset+3]);
-        idx_offset += 4;
-    };
-
     // 1. Background (Tile Dirt)
-    for y in -4..4 { for x in -4..4 {
-       add_quad(&crate::Rect{x: x as f32 * 0.5, y: y as f32 * 0.5, w: 0.5, h: 0.5}, 2);
-    }}
-// 1.5 Draw Title (Big Text)
-        // Positioned at top (y=0.6), Scale 6.0 (Huge)
-        let title_text = "MINECRAFT";
-        let aspect_ratio = width as f32 / height as f32;
-        let title_scale = 5.0;
-        let title_w = title_text.len() as f32 * 7.0 * title_scale; // Approx width calc
-        let title_x_ndc = -(title_w / width as f32); // Rough centering
-        
-        self.draw_text(title_text, -0.35, 0.6, 0.008, &mut vertices, &mut indices, &mut idx_offset);
+    for y in -4..4 {
+        for x in -4..4 {
+            let rect = crate::Rect { x: x as f32 * 0.5, y: y as f32 * 0.5, w: 0.5, h: 0.5 };
+            let tex_id = 2u32;
+            let u_min = (tex_id % 16) as f32 / 16.0; let v_min = (tex_id / 16) as f32 / 16.0;
+            let u_max = u_min + 1.0 / 16.0; let v_max = v_min + 1.0 / 16.0;
+            vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [u_min, v_max], ao: 1.0, tex_index: 0 });
+            vertices.push(Vertex { position: [rect.x + rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [u_max, v_max], ao: 1.0, tex_index: 0 });
+            vertices.push(Vertex { position: [rect.x + rect.w / 2.0, rect.y + rect.h / 2.0, 0.0], tex_coords: [u_max, v_min], ao: 1.0, tex_index: 0 });
+            vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y + rect.h / 2.0, 0.0], tex_coords: [u_min, v_min], ao: 1.0, tex_index: 0 });
+            indices.extend_from_slice(&[idx_offset, idx_offset + 1, idx_offset + 2, idx_offset, idx_offset + 2, idx_offset + 3]);
+            idx_offset += 4;
+        }
+    }
+
+    // 1.5 Draw Title
+    self.draw_text("MINECRAFT", -0.35, 0.6, 0.008, &mut vertices, &mut indices, &mut idx_offset);
+
     // 2. Buttons & Text
     for btn in &menu.buttons {
-        add_quad(&btn.rect, if btn.hovered { 251 } else { 250 });
+        let tex_id = if btn.hovered { 251 } else { 250 };
+        let u_min = (tex_id % 16) as f32 / 16.0; let v_min = (tex_id / 16) as f32 / 16.0;
+        let u_max = u_min + 1.0 / 16.0; let v_max = v_min + 1.0 / 16.0;
+        let rect = &btn.rect;
+        vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [u_min, v_max], ao: 1.0, tex_index: 0 });
+        vertices.push(Vertex { position: [rect.x + rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [u_max, v_max], ao: 1.0, tex_index: 0 });
+        vertices.push(Vertex { position: [rect.x + rect.w / 2.0, rect.y + rect.h / 2.0, 0.0], tex_coords: [u_max, v_min], ao: 1.0, tex_index: 0 });
+        vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y + rect.h / 2.0, 0.0], tex_coords: [u_min, v_min], ao: 1.0, tex_index: 0 });
+        indices.extend_from_slice(&[idx_offset, idx_offset + 1, idx_offset + 2, idx_offset, idx_offset + 2, idx_offset + 3]);
+        idx_offset += 4;
 
-        // Draw Text
-        let aspect = width as f32 / height as f32;
         let px = (btn.rect.x + 1.0) * 0.5 * width as f32;
         let py = (1.0 - btn.rect.y) * 0.5 * height as f32;
-        let text_w = btn.text.len() as f32 * 14.0; 
-        // Use existing draw_text logic
-        self.draw_text(&btn.text, (px - text_w/2.0) / width as f32 * 2.0 - 1.0, 
-                       1.0 - (py - 10.0) / height as f32 * 2.0, 
+        let text_w = btn.text.len() as f32 * 14.0;
+        self.draw_text(&btn.text, (px - text_w / 2.0) / width as f32 * 2.0 - 1.0,
+                       1.0 - (py - 10.0) / height as f32 * 2.0,
                        0.003, &mut vertices, &mut indices, &mut idx_offset);
     }
 
