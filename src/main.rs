@@ -65,11 +65,18 @@ pub fn play(&self, sound_type: &str, in_cave: bool) {
             let freq = freq_start + (freq_end - freq_start) * (i as f32 / samples as f32);
             let mut sample = (f32::sin(t * freq * 2.0 * std::f32::consts::PI) * 8000.0) as i16;
             
-            if reverb {
-                let echo_idx = i as usize % history.len();
-                let echo = history[echo_idx];
-                sample = sample.saturating_add((echo as f32 * 0.4) as i16);
-                history[echo_idx] = sample;
+if reverb {
+                // Diabolical Multi-Tap Reverb
+                let delay_samples = [1102, 2205, 4410]; // 25ms, 50ms, 100ms
+                for &delay in &delay_samples {
+                    if i as usize >= delay {
+                        let echo_idx = (i as usize - delay) % history.len();
+                        let echo = history[echo_idx];
+                        sample = sample.saturating_add((echo as f32 * 0.25) as i16);
+                    }
+                }
+                let history_idx = i as usize % history.len();
+                history[history_idx] = sample;
             }
             
             writer.write_sample(sample).unwrap();
@@ -667,7 +674,8 @@ let b_type = world.get_block(hit);
                                             };
 let head_p = BlockPos { x: player.position.x as i32, y: (player.position.y + 1.5) as i32, z: player.position.z as i32 };
                                             let is_submerged = world.get_block(head_p).is_water();
-                                            audio.play(s_type, is_submerged);
+                                            let is_cave = world.get_light_world(head_p) < 6;
+                                            audio.play(s_type, is_submerged || is_cave);
                                             let c = world.break_block(hit);
                                             if let Some(net) = &network_mgr { net.send_packet(Packet::BlockUpdate { pos: hit, block: BlockType::Air }); }
                                             for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }

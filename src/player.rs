@@ -333,7 +333,7 @@ let next_y = self.position.y + self.velocity.y * dt;
 if !was_on_ground {
                     let eye_p = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + self.height * 0.4).floor() as i32, z: self.position.z.floor() as i32 };
                     let is_submerged = world.get_block(eye_p).is_water();
-                    audio.play("land", is_submerged);
+                    audio.play("land", is_submerged || in_cave);
                 }
                 self.position.y = ground_y;
                 if !in_water && self.velocity.y < -14.0 && self.invincible_timer <= 0.0 { 

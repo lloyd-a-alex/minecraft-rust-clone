@@ -364,8 +364,8 @@ let time = self.start_time.elapsed().as_secs_f32();
         let eye_bp = BlockPos { x: player.position.x.floor() as i32, y: (player.position.y + player.height * 0.4).floor() as i32, z: player.position.z.floor() as i32 };
 let is_underwater = if world.get_block(eye_bp).is_water() { 1.0f32 } else { 0.0f32 };
         
-        // BIOME FOG LOGIC
-        let noise_gen = crate::noise_gen::NoiseGenerator::new(0); // Using 0 as temp seed for biome check
+// BIOME FOG LOGIC
+        let noise_gen = crate::noise_gen::NoiseGenerator::new(world.seed); 
         let height = noise_gen.get_height(eye_bp.x, eye_bp.z);
         let biome = noise_gen.get_biome(eye_bp.x, eye_bp.z, height);
         let fog_color = match biome {

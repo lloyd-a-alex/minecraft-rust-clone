@@ -54,33 +54,33 @@ impl NoiseGenerator {
     }
 
     // --- BETA TERRAIN LOGIC ---
-    pub fn get_height(&self, x: i32, z: i32) -> i32 {
+pub fn get_height(&self, x: i32, z: i32) -> i32 {
         let xf = x as f64;
         let zf = z as f64;
 
-        // 1. Continental Noise (Large scale, defines Oceans vs Mountains)
-        let continental = self.get_noise3d(xf * 0.002, 0.0, zf * 0.002);
-        
-        // 2. Erosion/Roughness (Medium scale)
-        let erosion = self.get_noise3d(xf * 0.015, 10.0, zf * 0.015);
-        
-        // 3. Detail (Small scale bumps)
-        let detail = self.get_noise3d(xf * 0.05, 20.0, zf * 0.05) * 2.0;
+        // DIABOLICAL BETA GENERATION: Layered Octaves
+        // Octave 1: Continental scale (Big shapes)
+        let c = self.get_noise3d(xf * 0.001, 0.0, zf * 0.001);
+        // Octave 2: Erosion (Valleys and hills)
+        let e = self.get_noise3d(xf * 0.01, 100.0, zf * 0.01);
+        // Octave 3: Detail (Surface bumps)
+        let d = self.get_noise3d(xf * 0.04, 200.0, zf * 0.04);
 
-        let mut height = 30.0; // Base sea level approx
-
-        if continental > 0.3 {
-            // MOUNTAIN BIOME: High peaks, erratic
-            height += 40.0 * continental + (erosion * 15.0) + detail;
-        } else if continental < -0.2 {
-            // OCEAN BIOME: Deep and smooth
-            height -= 15.0 + (erosion * 5.0);
+        // Beta Logic: Combinatorial terrain
+        let mut h = 64.0; // Beta sea level
+        
+        if c > 0.1 {
+            // Mountainous: c increases height exponentially
+            h += (c * 50.0) + (e * 20.0) + (d * 4.0);
+        } else if c < -0.1 {
+            // Oceans: deep floors
+            h += (c * 30.0) + (e * 5.0);
         } else {
-            // PLAINS/HILLS: Rolling
-            height += 8.0 * erosion + detail;
+            // Rolling Plains: smooth transition
+            h += (e * 12.0) + (d * 2.0);
         }
 
-        height as i32
+        h.clamp(5.0, 125.0) as i32
     }
 
     pub fn get_river_noise(&self, x: i32, z: i32) -> f64 {
