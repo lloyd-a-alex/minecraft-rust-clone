@@ -309,7 +309,7 @@ fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator
             }
         }
 
-        // --- PHASE 2: DIABOLICAL DECORATORS (ANTI-STACK LOGIC) ---
+// --- PHASE 2: DIABOLICAL DECORATORS (ANTI-STACK LOGIC) ---
         for lx in 0..CHUNK_SIZE_X {
             for lz in 0..CHUNK_SIZE_Z {
                 let wx = chunk_x_world + lx as i32;
@@ -318,34 +318,54 @@ fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator
                 let humid = noise_gen.get_noise_octaves(wx as f64 * 0.01, 123.0, wz as f64 * 0.01, 3) as f32;
                 let h = self.get_height_at_in_chunk(&chunk, lx, lz);
                 
-                if h <= WATER_LEVEL || h > 100 { continue; }
+                // DIABOLICAL FIX: Stop trees from spawning on top of each other! 
+                // We verify the block we're standing on is actual soil, not leaves, wood, or stone.
+                if h <= WATER_LEVEL || h > 115 { continue; }
+                let ground_block = chunk.get_block(lx, h as usize, lz);
+                let is_soil = matches!(ground_block, BlockType::Grass | BlockType::Dirt | BlockType::Sand | BlockType::Mycelium | BlockType::Snow);
+                if !is_soil { continue; }
+
                 let biome = noise_gen.get_biome(cont, eros, temp, humid, h);
                 let r = rng.next_f32();
 
-                // 1. CLEARANCE CHECK: Ensure block above is Air AND there is clear sky (Not a cave)
-                let block_above = chunk.get_block(lx, (h+1) as usize, lz);
-                let sky_clear = noise_gen.get_density(wx, h + 5, wz, cont, eros, weird) < 0.0;
+                // 1. SKY CLEARANCE & CAVE CHECK: Prevent trees in caves or under massive overhangs!
+                let mut sky_clear = true;
+                for dy in 1..15 {
+                    let cy = h + dy;
+                    if cy >= 127 { break; }
+                    // Check if there is already a block in the chunk OR if noise says it's solid (overhangs)
+                    if chunk.get_block(lx, cy as usize, lz) != BlockType::Air || noise_gen.get_density(wx, cy, wz, cont, eros, weird) > 0.0 {
+                        sky_clear = false; break;
+                    }
+                }
                 
-                if block_above == BlockType::Air && sky_clear {
-                    // 2. PROXIMITY CHECK: Look at 3x3 area to prevent overlapping trees
+                if sky_clear && chunk.get_block(lx, (h+1) as usize, lz) == BlockType::Air {
+                    // 2. PROXIMITY BUFFER: Prevent clustered/overlapping structures in a 7x7 area
                     let mut too_close = false;
                     for nx in (lx as i32 - 3)..=(lx as i32 + 3) {
                         for nz in (lz as i32 - 3)..=(lz as i32 + 3) {
                             if nx >= 0 && nx < 16 && nz >= 0 && nz < 16 {
-                                let b = chunk.get_block(nx as usize, (h+1) as usize, nz as usize);
-                                if b == BlockType::Wood || b == BlockType::SpruceWood || b == BlockType::Leaves {
-                                    too_close = true; break;
+                                // Scan vertical column to see if we are already inside a tree trunk/canopy
+                                for dy in 1..10 {
+                                    let cy = h + dy;
+                                    if cy >= 127 { break; }
+                                    let b = chunk.get_block(nx as usize, cy as usize, nz as usize);
+                                    if matches!(b, BlockType::Wood | BlockType::SpruceWood | BlockType::BirchWood | BlockType::Leaves | BlockType::SpruceLeaves | BlockType::BirchLeaves) {
+                                        too_close = true; break;
+                                    }
                                 }
+                                if too_close { break; }
                             }
                         }
                     }
                     if too_close { continue; }
 
-                    // 3. SPAWN LOGIC
-                    if (biome == "forest" || biome == "jungle") && r < 0.06 {
+                    // 3. SPAWN LOGIC: Finally place the trees and plants safely
+                    if (biome == "forest" || biome == "jungle") && r < 0.05 {
                         let tree_h = 5 + (rng.next_f32() * 3.0) as i32;
                         for i in 1..=tree_h { if h+i < 127 { chunk.set_block(lx, (h+i) as usize, lz, BlockType::Wood); } }
                         for ly in (h + tree_h - 2)..=(h + tree_h + 1) {
+                            if ly >= 127 { continue; }
                             let rad = if (ly as i32) > h + tree_h { 1 } else { 2 };
                             for dx in -rad..=rad {
                                 for dz in -rad..=rad {
@@ -362,11 +382,12 @@ fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator
                     } else if biome == "taiga" && r < 0.04 {
                         let tree_h = 8 + (rng.next_f32() * 5.0) as i32;
                         for i in 1..=tree_h { if h+i < 127 { chunk.set_block(lx, (h+i) as usize, lz, BlockType::SpruceWood); } }
-                        let mut rad = 3;
+                        let mut leaf_rad: i32 = 3;
                         for ly in (h + 3)..=(h + tree_h + 1) {
-                            for dx in -rad..=rad {
-                                for dz in -rad..=rad {
-                                    if dx.abs() + dz.abs() > rad { continue; }
+                            if ly >= 127 { continue; }
+                            for dx in -leaf_rad..=leaf_rad {
+                                for dz in -leaf_rad..=leaf_rad {
+                                    if (dx as i32).abs() + (dz as i32).abs() > leaf_rad { continue; }
                                     let (ox, oz) = (lx as i32 + dx, lz as i32 + dz);
                                     if ox >= 0 && ox < 16 && oz >= 0 && oz < 16 {
                                         if chunk.get_block(ox as usize, ly as usize, oz as usize) == BlockType::Air {
@@ -375,7 +396,7 @@ fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator
                                     }
                                 }
                             }
-                            if ly % 2 == 0 { rad = (rad - 1).max(1); }
+                            if ly % 2 == 0 { leaf_rad = (leaf_rad - 1).max(1); }
                         }
                     } else if r < 0.02 {
                         let plant = if biome == "desert" { BlockType::DeadBush } else if biome == "swamp" { BlockType::TallGrass } else { BlockType::Rose };

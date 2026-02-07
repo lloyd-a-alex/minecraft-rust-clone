@@ -389,7 +389,7 @@ let is_underwater = if world.get_block(eye_bp).is_water() { 1.0f32 } else { 0.0f
         
 // BIOME FOG LOGIC
         let noise_gen = crate::noise_gen::NoiseGenerator::new(world.seed); 
-        let (cont, eros, weird, temp) = noise_gen.get_height_params(eye_bp.x, eye_bp.z);
+        let (cont, eros, _weird, temp) = noise_gen.get_height_params(eye_bp.x, eye_bp.z);
         let humid = noise_gen.get_noise_octaves(eye_bp.x as f64 * 0.01, 44.0, eye_bp.z as f64 * 0.01, 3) as f32;
         let biome = noise_gen.get_biome(cont, eros, temp, humid, eye_bp.y);
         let fog_color = match biome {
