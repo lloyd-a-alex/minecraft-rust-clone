@@ -26,7 +26,8 @@ pub struct BlockPos { pub x: i32, pub y: i32, pub z: i32 }
 pub enum BlockType {
     Air = 0, Grass = 1, Dirt = 2, Stone = 3, Wood = 4, Leaves = 5, Snow = 6, Sand = 7, Bedrock = 8, Water = 9,
     CoalOre = 10, IronOre = 11, GoldOre = 12, DiamondOre = 13, RedstoneOre = 125, LapisOre = 126,
-    Planks = 14, Stick = 15, Cobblestone = 16, IronIngot = 17, GoldIngot = 18, Diamond = 19, Torch = 20,
+Planks = 14, Stick = 15, Cobblestone = 16, IronIngot = 17, GoldIngot = 18, Diamond = 19, Torch = 20,
+    SprucePlanks = 170, BirchPlanks = 171,
     WoodPickaxe = 21, StonePickaxe = 22, IronPickaxe = 23, GoldPickaxe = 24, DiamondPickaxe = 25,
     WoodAxe = 26, StoneAxe = 27, IronAxe = 28, GoldAxe = 29, DiamondAxe = 30,
     WoodShovel = 31, StoneShovel = 32, IronShovel = 33, GoldShovel = 34, DiamondShovel = 35,
@@ -59,8 +60,9 @@ pub fn is_transparent(&self) -> bool {
     }
 
 
-    pub fn is_cross_model(&self) -> bool {
-        matches!(self, BlockType::Rose | BlockType::Dandelion | BlockType::DeadBush | BlockType::TallGrass | BlockType::OakSapling | BlockType::Sugarcane)
+pub fn is_cross_model(&self) -> bool {
+        // Roses and Dandelions removed from here to make them 3D models
+        matches!(self, BlockType::DeadBush | BlockType::TallGrass | BlockType::OakSapling | BlockType::Sugarcane)
     }
 pub fn is_water(&self) -> bool { matches!(self, BlockType::Water) }
 
@@ -411,9 +413,10 @@ let mut height = noise_gen.get_height(wx, wz);
                              if height == WATER_LEVEL { self.set_block_world(surface_pos, BlockType::Ice); }
                         } else {
                             if ground == BlockType::Grass {
-                                if biome == "forest" && r < 0.01 {
+if biome == "forest" && r < 0.01 {
                                     let tree_h = 4 + (rng.next_f32() * 2.0) as i32;
                                     for i in 1..=tree_h { self.set_block_world(BlockPos{x:wx, y:height+i, z:wz}, BlockType::Wood); }
+                                    // DIABOLICAL FIX: Offset flower check so it doesn't spawn on the same LX/LZ as the trunk
                                     for ly in (height+tree_h-2)..(height+tree_h+2) {
                                         let rad = if ly > height+tree_h { 1 } else { 2 };
                                         for dx in -rad..=rad { for dz in -rad..=rad {

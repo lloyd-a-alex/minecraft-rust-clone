@@ -19,6 +19,10 @@ pub fn new() -> Self {
 // --- 1. BASIC TERRAIN (Mellowed Colors) ---
         Self::generate_noise(&mut data, block_size, atlas_width, 0, [115, 155, 105], 10); // Grass Top
         Self::generate_grass_side(&mut data, block_size, atlas_width, 1);                 // Grass Side
+        // --- NEW PLANKS ---
+        Self::generate_planks(&mut data, block_size, atlas_width, 14, [180, 130, 80]);    // Oak Planks
+        Self::generate_planks(&mut data, block_size, atlas_width, 170, [61, 46, 32]);     // Spruce Planks
+        Self::generate_planks(&mut data, block_size, atlas_width, 171, [230, 225, 220]);   // Birch Planks
         Self::generate_dirt(&mut data, block_size, atlas_width, 2);                      // Dirt
         Self::generate_noise(&mut data, block_size, atlas_width, 3, [140, 140, 140], 12); // Stone
         Self::generate_wood_side(&mut data, block_size, atlas_width, 4, [120, 100, 80]); // Wood Side
@@ -207,12 +211,15 @@ TextureAtlas { data, size: block_size, grid_size: grid_width_in_blocks }
         }
     }
 
-    fn place_texture(data: &mut [u8], block_size: u32, atlas_width: u32, grid_idx: u32, pixels: &[u8]) {
+fn place_texture(data: &mut [u8], block_size: u32, atlas_width: u32, grid_idx: u32, pixels: &[u8]) {
         let blocks_per_row = atlas_width / block_size;
         let grid_x = grid_idx % blocks_per_row;
         let grid_y = grid_idx / blocks_per_row;
         let base_x = grid_x * block_size;
         let base_y = grid_y * block_size;
+
+        // DIABOLICAL FIX: Always wipe the destination first so we don't get "stickers" from previous indices
+        Self::clear_tile(data, block_size, atlas_width, grid_idx);
 
         for y in 0..block_size {
             for x in 0..block_size {
@@ -876,12 +883,21 @@ fn generate_deadbush(data: &mut [u8], size: u32, w: u32, idx: u32) {
         Self::place_texture(data, size, w, idx, &p);
     }
 
-    fn generate_bubble_data(data: &mut [u8], size: u32, w: u32, idx: u32) {
+fn generate_bubble_data(data: &mut [u8], size: u32, w: u32, idx: u32) {
         let mut p = vec![0u8; (size * size * 4) as usize];
-        for y in 4..12 { for x in 4..12 {
-            let i = ((y*size+x)*4) as usize;
-            p[i]=200; p[i+1]=200; p[i+2]=255; p[i+3]=200;
-        }}
+        let c = size as f32 / 2.0;
+        for y in 0..size {
+            for x in 0..size {
+                let dx = x as f32 - c; let dy = y as f32 - c;
+                let dist = (dx*dx + dy*dy).sqrt();
+                let i = ((y * size + x) * 4) as usize;
+                if dist > 3.0 && dist < 6.0 { // Sexy Blue Rings
+                    p[i] = 80; p[i+1] = 160; p[i+2] = 255; p[i+3] = 255;
+                } else if dist <= 3.0 { // Translucent center
+                    p[i] = 150; p[i+1] = 200; p[i+2] = 255; p[i+3] = 100;
+                }
+            }
+        }
         Self::place_texture(data, size, w, idx, &p);
     }
 

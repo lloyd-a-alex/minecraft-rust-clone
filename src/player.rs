@@ -55,13 +55,18 @@ pub fn check_recipes(&mut self) {
         
         let mut result = None;
 
-// 1. LOG -> 4 PLANKS (EXACTLY one log)
-        let log_count = g.iter().filter(|&&id| id == 4).count();
-        let other_count = g.iter().filter(|&&id| id != 0 && id != 4).count();
-        if log_count == 1 && other_count == 0 {
+// 1. OAK LOG -> 4 OAK PLANKS
+        if g.iter().filter(|&&id| id == 4).count() == 1 && g.iter().filter(|&&id| id != 0 && id != 4).count() == 0 {
             result = Some((BlockType::Planks, 4));
         }
-
+        // 2. SPRUCE LOG -> 4 SPRUCE PLANKS
+        if g.iter().filter(|&&id| id == 72).count() == 1 && g.iter().filter(|&&id| id != 0 && id != 72).count() == 0 {
+            result = Some((BlockType::SprucePlanks, 4));
+        }
+        // 3. BIRCH LOG -> 4 BIRCH PLANKS
+        if g.iter().filter(|&&id| id == 74).count() == 1 && g.iter().filter(|&&id| id != 0 && id != 74).count() == 0 {
+            result = Some((BlockType::BirchPlanks, 4));
+        }
         // 2. 2x2 PLANKS -> CRAFTING TABLE
         if g[0] == 14 && g[1] == 14 && g[3] == 14 && g[4] == 14 && g[2]==0 && g[5]==0 && g[6]==0 && g[7]==0 && g[8]==0 {
             result = Some((BlockType::CraftingTable, 1));

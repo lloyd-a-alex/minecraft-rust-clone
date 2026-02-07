@@ -60,8 +60,15 @@ var s_diffuse: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let base_color = textureSample(t_diffuse, s_diffuse, in.tex_coords);
+    var base_color = textureSample(t_diffuse, s_diffuse, in.tex_coords);
     if (base_color.a < 0.1) { discard; }
+    
+    // DIABOLICAL TRANSLUCENCY: If it's water, force alpha to 0.6
+    // Assuming water is using tex_index 9 from your texture.rs
+    // Check vs_main's out.light to pass tex_index if needed, or use a color check
+    if (base_color.r < 0.4 && base_color.g < 0.6 && base_color.b > 0.6) {
+        base_color.a = 0.6;
+    }
     
 // --- VOXEL LIGHTING ---
     let brightness = in.light; 
