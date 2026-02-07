@@ -145,6 +145,8 @@ let mut player = Player::new();
                                 let exe = std::env::current_exe().unwrap();
                                 for _ in 0..5 { std::process::Command::new(&exe).arg("--join-localhost").spawn().unwrap(); }
                                 network_mgr = Some(NetworkManager::host("7878".to_string(), master_seed));
+                                world = World::new(master_seed);
+                                renderer.rebuild_all_chunks(&world);
                                 game_state = GameState::Playing;
                                 spawn_found = false;
                             },
@@ -186,7 +188,7 @@ let mut player = Player::new();
                         let (mx, my) = cursor_pos; 
                         let (w, h) = (win_size.0 as f32, win_size.1 as f32);
                         let ndc_x = (mx as f32 / w) * 2.0 - 1.0; 
-                        let ndc_y = -((my as f32 / h) * 2.0 - 1.0);
+                        let ndc_y = -((my as f32 / h) * 2.0 - 1.
                         let sw = 0.12; 
                         let sh = sw * (w / h); 
                         let sx = -(9.0 * sw) / 2.0; 
