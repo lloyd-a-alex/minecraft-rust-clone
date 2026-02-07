@@ -331,8 +331,8 @@ let next_y = self.position.y + self.velocity.y * dt;
         if self.velocity.y <= 0.0 {
             if let Some(ground_y) = self.check_ground(world, Vec3::new(self.position.x, next_y, self.position.z)) {
 if !was_on_ground {
-                    let head_p = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + self.height * 0.4).floor() as i32, z: self.position.z.floor() as i32 };
-                    let is_submerged = world.get_block(head_p).is_water();
+                    let eye_p = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + self.height * 0.4).floor() as i32, z: self.position.z.floor() as i32 };
+                    let is_submerged = world.get_block(eye_p).is_water();
                     audio.play("land", is_submerged);
                 }
                 self.position.y = ground_y;

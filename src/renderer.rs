@@ -295,8 +295,8 @@ let tex_id = 2u32; // Dirt
         rpass.set_pipeline(&self.ui_pipeline);
         // NOTE: Assuming your struct has 'diffuse_bind_group' based on typical naming. 
         // If error persists, change to 'bind_group' or 'texture_bind_group'.
-        rpass.set_bind_group(0, &self.bind_group, &[]);
-        rpass.set_bind_group(1, &self.camera_bind_group, &[]); // UI shader might expect this bind group layout even if unused
+rpass.set_bind_group(0, &self.bind_group, &[]);
+        rpass.set_bind_group(1, &self.camera_bind_group, &[]); 
         rpass.set_bind_group(2, &self.time_bind_group, &[]);
         rpass.set_vertex_buffer(0, vb.slice(..));
         rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);

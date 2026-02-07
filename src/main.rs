@@ -33,7 +33,7 @@ pub fn play(&self, sound_type: &str, in_cave: bool) {
         dur *= reverb_factor;
 
 // Underwater Muffle: Shift frequencies down significantly
-        let muffle = sound_type != "click" && sound_type != "pickup" && in_cave; // Reusing in_cave logic for underwater check
+        let muffle = sound_type != "click" && sound_type != "pickup" && in_cave;
         let freq_mult = if muffle { 0.3 } else { 1.0 };
 
         let data = match sound_type {
@@ -80,7 +80,7 @@ pub fn play(&self, sound_type: &str, in_cave: bool) {
 }
 
 mod renderer; mod world; mod texture; mod player; mod logger; mod noise_gen; mod network; mod ngrok_utils;
-use renderer::Renderer; use world::{World, BlockType}; use player::Player; use network::{NetworkManager, Packet};
+use renderer::Renderer; use world::{World, BlockType, BlockPos}; use player::Player; use network::{NetworkManager, Packet};
 
 // --- MENU SYSTEM ---
 #[derive(PartialEq)] enum GameState { Menu, Playing }
