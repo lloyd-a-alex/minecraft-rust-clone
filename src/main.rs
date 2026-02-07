@@ -706,8 +706,8 @@ Event::AboutToWait => {
 if game_state == GameState::Playing && !is_paused && !player.inventory_open {
                     let p_cx = (player.position.x / 16.0).floor() as i32;
                     let p_cz = (player.position.z / 16.0).floor() as i32;
-                    let newly_generated = world.generate_terrain_around(p_cx, p_cz, 6);
-                    for (cx, cz) in newly_generated {
+                    // AMORTIZED OPTIMIZATION: Generate exactly ONE chunk per frame to maintain 60 FPS
+                    if let Some((cx, cz)) = world.generate_one_chunk_around(p_cx, p_cz, 8) {
                         renderer.update_chunk(cx, cz, &world);
                     }
 

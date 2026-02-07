@@ -244,18 +244,38 @@ pub fn new(seed: u32) -> Self {
         world
     }
 
-    pub fn generate_terrain_around(&mut self, center_x: i32, center_z: i32, radius: i32) -> Vec<(i32, i32)> {
-        let mut new_chunks = Vec::new();
+pub fn generate_one_chunk_around(&mut self, cx: i32, cz: i32, radius: i32) -> Option<(i32, i32)> {
         let noise_gen = NoiseGenerator::new(self.seed);
-        for cx in (center_x - radius)..=(center_x + radius) {
-            for cz in (center_z - radius)..=(center_z + radius) {
-                if !self.chunks.contains_key(&(cx, cz)) {
-                    self.generate_single_chunk(cx, cz, &noise_gen);
-                    new_chunks.push((cx, cz));
+        // Spiral-out search for the first missing chunk
+        for r in 0..=radius {
+            for x in -r..=r {
+                for z in -r..=r {
+                    let tcx = cx + x;
+                    let tcz = cz + z;
+                    if !self.chunks.contains_key(&(tcx, tcz)) {
+                        self.generate_single_chunk(tcx, tcz, &noise_gen);
+                        return Some((tcx, tcz));
+                    }
                 }
             }
         }
-        new_chunks
+        None
+    }
+
+    pub fn generate_terrain_around(&mut self, cx: i32, cz: i32, radius: i32) -> Vec<(i32, i32)> {
+        // Kept for backward compatibility but should be avoided in main loop
+        let mut newly_generated = Vec::new();
+        let noise_gen = NoiseGenerator::new(self.seed);
+        for x in -radius..=radius {
+            for z in -radius..=radius {
+                let (tcx, tcz) = (cx + x, cz + z);
+                if !self.chunks.contains_key(&(tcx, tcz)) {
+                    self.generate_single_chunk(tcx, tcz, &noise_gen);
+                    newly_generated.push((tcx, tcz));
+                }
+            }
+        }
+        newly_generated
     }
 
 fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator) {
@@ -263,8 +283,8 @@ fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator
         let chunk_x_world = cx * 16;
         let chunk_z_world = cz * 16;
         let mut rng = SimpleRng::new((cx as u64).wrapping_mul(self.seed as u64) ^ (cz as u64));
+        let mut tree_map: HashSet<(i32, i32)> = HashSet::with_capacity(32);
 
-        // --- PHASE 1: TERRAIN & CAVES ---
         for lx in 0..CHUNK_SIZE_X {
             for lz in 0..CHUNK_SIZE_Z {
                 let wx = chunk_x_world + lx as i32;
@@ -277,18 +297,13 @@ fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator
                     let mut block = BlockType::Air;
 
                     if density > 0.0 {
-                        // SPAGHETTI CAVES (3D Perlin Intersections)
                         let n1 = noise_gen.get_noise3d(wx as f64 * 0.06, y as f64 * 0.06, wz as f64 * 0.06);
                         let n2 = noise_gen.get_noise3d(wx as f64 * 0.06, y as f64 * 0.06 + 100.0, wz as f64 * 0.06);
-                        let is_cave = n1.abs() < 0.05 && n2.abs() < 0.05;
-
-                        if is_cave && y > 6 { 
+                        if n1.abs() < 0.05 && n2.abs() < 0.05 && y > 6 { 
                             block = if (y as i32) <= WATER_LEVEL { BlockType::Water } else { BlockType::Air };
                         } else {
-                            let above_density = noise_gen.get_density(wx, (y + 1) as i32, wz, cont, eros, weird);
-                            if above_density <= 0.0 {
-                                let biome = noise_gen.get_biome(cont, eros, temp, humid, y as i32);
-                                block = match biome {
+                            if noise_gen.get_density(wx, (y + 1) as i32, wz, cont, eros, weird) <= 0.0 {
+                                block = match noise_gen.get_biome(cont, eros, temp, humid, y as i32) {
                                     "desert" => BlockType::Sand,
                                     "ice_plains" | "ice_ocean" => BlockType::Snow,
                                     "ocean" | "badlands" => BlockType::Sand,
@@ -296,111 +311,57 @@ fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator
                                     _ => BlockType::Grass,
                                 };
                             } else {
-                                block = if y < 5 { BlockType::Bedrock } 
-                                        else if (y as i32) < (62 + (cont * 12.0) as i32) { BlockType::Stone } 
-                                        else { BlockType::Dirt };
+                                block = if y < 5 { BlockType::Bedrock } else if (y as i32) < (62 + (cont * 12.0) as i32) { BlockType::Stone } else { BlockType::Dirt };
                             }
                         }
-                    } else if (y as i32) <= WATER_LEVEL {
-                        block = BlockType::Water;
-                    }
+                    } else if (y as i32) <= WATER_LEVEL { block = BlockType::Water; }
                     if block != BlockType::Air { chunk.set_block(lx, y, lz, block); }
                 }
-            }
-        }
 
-// --- PHASE 2: DIABOLICAL DECORATORS (ANTI-STACK LOGIC) ---
-        for lx in 0..CHUNK_SIZE_X {
-            for lz in 0..CHUNK_SIZE_Z {
-                let wx = chunk_x_world + lx as i32;
-                let wz = chunk_z_world + lz as i32;
-                let (cont, eros, weird, temp) = noise_gen.get_height_params(wx, wz);
-                let humid = noise_gen.get_noise_octaves(wx as f64 * 0.01, 123.0, wz as f64 * 0.01, 3) as f32;
+                // DIABOLICAL TREE OPTIMIZATION: Using coordinate map instead of scanning 490 blocks!
                 let h = self.get_height_at_in_chunk(&chunk, lx, lz);
-                
-                // DIABOLICAL FIX: Stop trees from spawning on top of each other! 
-                // We verify the block we're standing on is actual soil, not leaves, wood, or stone.
-                if h <= WATER_LEVEL || h > 115 { continue; }
-                let ground_block = chunk.get_block(lx, h as usize, lz);
-                let is_soil = matches!(ground_block, BlockType::Grass | BlockType::Dirt | BlockType::Sand | BlockType::Mycelium | BlockType::Snow);
-                if !is_soil { continue; }
+                if h > WATER_LEVEL && h < 110 {
+                    let biome = noise_gen.get_biome(cont, eros, temp, humid, h);
+                    let r = rng.next_f32();
+                    let ground_block = chunk.get_block(lx, h as usize, lz);
+                    if matches!(ground_block, BlockType::Grass | BlockType::Dirt | BlockType::Sand | BlockType::Snow) {
+                        // Sparse Sky Check: Only 2 samples instead of 15!
+                        if noise_gen.get_density(wx, h + 5, wz, cont, eros, weird) < 0.0 && noise_gen.get_density(wx, h + 12, wz, cont, eros, weird) < 0.0 {
+                            let mut too_close = false;
+                            for dx in -4..=4 { for dz in -4..=4 { if tree_map.contains(&(lx as i32 + dx, lz as i32 + dz)) { too_close = true; break; } } if too_close { break; } }
+                            if too_close { continue; }
 
-                let biome = noise_gen.get_biome(cont, eros, temp, humid, h);
-                let r = rng.next_f32();
-
-                // 1. SKY CLEARANCE & CAVE CHECK: Prevent trees in caves or under massive overhangs!
-                let mut sky_clear = true;
-                for dy in 1..15 {
-                    let cy = h + dy;
-                    if cy >= 127 { break; }
-                    // Check if there is already a block in the chunk OR if noise says it's solid (overhangs)
-                    if chunk.get_block(lx, cy as usize, lz) != BlockType::Air || noise_gen.get_density(wx, cy, wz, cont, eros, weird) > 0.0 {
-                        sky_clear = false; break;
-                    }
-                }
-                
-                if sky_clear && chunk.get_block(lx, (h+1) as usize, lz) == BlockType::Air {
-                    // 2. PROXIMITY BUFFER: Prevent clustered/overlapping structures in a 7x7 area
-                    let mut too_close = false;
-                    for nx in (lx as i32 - 3)..=(lx as i32 + 3) {
-                        for nz in (lz as i32 - 3)..=(lz as i32 + 3) {
-                            if nx >= 0 && nx < 16 && nz >= 0 && nz < 16 {
-                                // Scan vertical column to see if we are already inside a tree trunk/canopy
-                                for dy in 1..10 {
-                                    let cy = h + dy;
-                                    if cy >= 127 { break; }
-                                    let b = chunk.get_block(nx as usize, cy as usize, nz as usize);
-                                    if matches!(b, BlockType::Wood | BlockType::SpruceWood | BlockType::BirchWood | BlockType::Leaves | BlockType::SpruceLeaves | BlockType::BirchLeaves) {
-                                        too_close = true; break;
-                                    }
+                            if (biome == "forest" || biome == "jungle") && r < 0.05 {
+                                tree_map.insert((lx as i32, lz as i32));
+                                let tree_h = 5 + (rng.next_f32() * 3.0) as i32;
+                                for i in 1..=tree_h { if h+i < 127 { chunk.set_block(lx, (h+i) as usize, lz, BlockType::Wood); } }
+                                for ly in (h + tree_h - 2)..=(h + tree_h + 1) {
+                                    if ly >= 127 { continue; }
+                                    let rad = if (ly as i32) > h + tree_h { 1 } else { 2 };
+                                    for dx in -rad..=rad { for dz in -rad..=rad {
+                                        if (dx*dx + dz*dz) > rad*rad + 1 { continue; }
+                                        let (ox, oz) = (lx as i32 + dx, lz as i32 + dz);
+                                        if ox >= 0 && ox < 16 && oz >= 0 && oz < 16 { if chunk.get_block(ox as usize, ly as usize, oz as usize) == BlockType::Air { chunk.set_block(ox as usize, ly as usize, oz as usize, BlockType::Leaves); } }
+                                    }}
                                 }
-                                if too_close { break; }
+                            } else if biome == "taiga" && r < 0.04 {
+                                tree_map.insert((lx as i32, lz as i32));
+                                let tree_h = 8 + (rng.next_f32() * 5.0) as i32;
+                                for i in 1..=tree_h { if h+i < 127 { chunk.set_block(lx, (h+i) as usize, lz, BlockType::SpruceWood); } }
+                                let mut lrad = 3;
+                                for ly in (h + 3)..=(h + tree_h + 1) {
+                                    if ly >= 127 { continue; }
+                                    for dx in -lrad..=lrad { for dz in -lrad..=lrad {
+                                        if (dx as i32).abs() + (dz as i32).abs() > lrad { continue; }
+                                        let (ox, oz) = (lx as i32 + dx, lz as i32 + dz);
+                                        if ox >= 0 && ox < 16 && oz >= 0 && oz < 16 { if chunk.get_block(ox as usize, ly as usize, oz as usize) == BlockType::Air { chunk.set_block(ox as usize, ly as usize, oz as usize, BlockType::SpruceLeaves); } }
+                                    }}
+                                    if ly % 2 == 0 { lrad = (lrad - 1).max(1); }
+                                }
+                            } else if r < 0.02 {
+                                chunk.set_block(lx, (h+1) as usize, lz, if biome == "desert" { BlockType::DeadBush } else if biome == "swamp" { BlockType::TallGrass } else { BlockType::Rose });
                             }
                         }
-                    }
-                    if too_close { continue; }
-
-                    // 3. SPAWN LOGIC: Finally place the trees and plants safely
-                    if (biome == "forest" || biome == "jungle") && r < 0.05 {
-                        let tree_h = 5 + (rng.next_f32() * 3.0) as i32;
-                        for i in 1..=tree_h { if h+i < 127 { chunk.set_block(lx, (h+i) as usize, lz, BlockType::Wood); } }
-                        for ly in (h + tree_h - 2)..=(h + tree_h + 1) {
-                            if ly >= 127 { continue; }
-                            let rad = if (ly as i32) > h + tree_h { 1 } else { 2 };
-                            for dx in -rad..=rad {
-                                for dz in -rad..=rad {
-                                    if (dx*dx + dz*dz) > rad*rad + 1 { continue; }
-                                    let (ox, oz) = (lx as i32 + dx, lz as i32 + dz);
-                                    if ox >= 0 && ox < 16 && oz >= 0 && oz < 16 {
-                                        if chunk.get_block(ox as usize, ly as usize, oz as usize) == BlockType::Air {
-                                            chunk.set_block(ox as usize, ly as usize, oz as usize, BlockType::Leaves);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } else if biome == "taiga" && r < 0.04 {
-                        let tree_h = 8 + (rng.next_f32() * 5.0) as i32;
-                        for i in 1..=tree_h { if h+i < 127 { chunk.set_block(lx, (h+i) as usize, lz, BlockType::SpruceWood); } }
-                        let mut leaf_rad: i32 = 3;
-                        for ly in (h + 3)..=(h + tree_h + 1) {
-                            if ly >= 127 { continue; }
-                            for dx in -leaf_rad..=leaf_rad {
-                                for dz in -leaf_rad..=leaf_rad {
-                                    if (dx as i32).abs() + (dz as i32).abs() > leaf_rad { continue; }
-                                    let (ox, oz) = (lx as i32 + dx, lz as i32 + dz);
-                                    if ox >= 0 && ox < 16 && oz >= 0 && oz < 16 {
-                                        if chunk.get_block(ox as usize, ly as usize, oz as usize) == BlockType::Air {
-                                            chunk.set_block(ox as usize, ly as usize, oz as usize, BlockType::SpruceLeaves);
-                                        }
-                                    }
-                                }
-                            }
-                            if ly % 2 == 0 { leaf_rad = (leaf_rad - 1).max(1); }
-                        }
-                    } else if r < 0.02 {
-                        let plant = if biome == "desert" { BlockType::DeadBush } else if biome == "swamp" { BlockType::TallGrass } else { BlockType::Rose };
-                        chunk.set_block(lx, (h+1) as usize, lz, plant);
                     }
                 }
             }

@@ -54,17 +54,17 @@ impl NoiseGenerator {
     }
 
 pub fn get_noise_octaves(&self, x: f64, y: f64, z: f64, octaves: u32) -> f64 {
-        let mut total = 0.0;
-        let mut frequency = 1.0;
-        let mut amplitude = 1.0;
-        let mut max_value = 0.0;
-        for _ in 0..octaves {
-            total += self.get_noise3d(x * frequency, y * frequency, z * frequency) * amplitude;
-            max_value += amplitude;
-            amplitude *= 0.5;
-            frequency *= 2.0;
+        match octaves {
+            1 => self.get_noise3d(x, y, z),
+            2 => (self.get_noise3d(x, y, z) + self.get_noise3d(x * 2.0, y * 2.0, z * 2.0) * 0.5) / 1.5,
+            3 => (self.get_noise3d(x, y, z) + self.get_noise3d(x * 2.0, y * 2.0, z * 2.0) * 0.5 + self.get_noise3d(x * 4.0, y * 4.0, z * 4.0) * 0.25) / 1.75,
+            4 => (self.get_noise3d(x, y, z) + self.get_noise3d(x * 2.0, y * 2.0, z * 2.0) * 0.5 + self.get_noise3d(x * 4.0, y * 4.0, z * 4.0) * 0.25 + self.get_noise3d(x * 8.0, y * 8.0, z * 8.0) * 0.125) / 1.875,
+            _ => {
+                let mut total = 0.0; let mut frequency = 1.0; let mut amplitude = 1.0; let mut max_val = 0.0;
+                for _ in 0..octaves { total += self.get_noise3d(x * frequency, y * frequency, z * frequency) * amplitude; max_val += amplitude; amplitude *= 0.5; frequency *= 2.0; }
+                total / max_val
+            }
         }
-        total / max_value
     }
 
 pub fn get_height_params(&self, x: i32, z: i32) -> (f32, f32, f32, f32) {
