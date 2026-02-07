@@ -466,8 +466,9 @@ if game_state == GameState::Playing {
                                             }
                                         }}
                                     }
-                                    if !spawn_found { player.position = glam::Vec3::new(0.0, 80.0, 0.0); player.velocity = glam::Vec3::ZERO; }
-                                },
+if !spawn_found { player.position = glam::Vec3::new(0.0, 80.0, 0.0); player.velocity = glam::Vec3::ZERO; }
+                                }
+                            },
                                 Packet::PlayerMove { id, x, y, z, ry } => {
                                     if let Some(p) = world.remote_players.iter_mut().find(|p| p.id == id) { p.position = glam::Vec3::new(x,y,z); p.rotation = ry; } 
                                     else { world.remote_players.push(world::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); }
@@ -497,9 +498,10 @@ if game_state == GameState::Playing {
                                                 spawn_found = true; death_timer = 0.0; break 'respawn;
                                             }
                                         }
-                                    }}
+}}
                                 }
                                 if !spawn_found { player.respawn(); player.position = glam::Vec3::new(0.0, 80.0, 0.0); death_timer = 0.0; }
+                            }
                             }
                         } else {
                             player.update(dt, &world);

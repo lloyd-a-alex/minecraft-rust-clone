@@ -626,6 +626,20 @@ fn generate_obsidian(data: &mut [u8], size: u32, w: u32, idx: u32) {
         Self::place_texture(data, size, w, idx, &p);
     }
 
+    fn generate_melon_side(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y * size + x) * 4) as usize;
+                let is_stripe = x % 4 == 0;
+                if is_stripe { p[i]=40; p[i+1]=150; p[i+2]=40; }
+                else { p[i]=60; p[i+1]=180; p[i+2]=60; }
+                p[i+3]=255;
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
     fn generate_generic(data: &mut [u8], size: u32, w: u32, idx: u32, color: [u8; 3]) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for i in 0..size * size {

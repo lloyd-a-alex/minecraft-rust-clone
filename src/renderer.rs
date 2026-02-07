@@ -34,12 +34,12 @@ pub struct ChunkMesh { vertex_buffer: Buffer, index_buffer: Buffer, index_count:
 
 pub struct Renderer<'a> {
     pub particles: Vec<Particle>,
-    surface: Surface<'a>, device: Device, queue: Queue, pub config: SurfaceConfiguration,
+surface: Surface<'a>, device: Device, queue: Queue, pub config: SurfaceConfiguration,
     pipeline: RenderPipeline, ui_pipeline: RenderPipeline,
     depth_texture: TextureView, bind_group: BindGroup,
     camera_buffer: Buffer, camera_bind_group: BindGroup,
     time_buffer: Buffer, time_bind_group: BindGroup,
-    start_time: Instant, chunk_meshes: HashMap<(i32, i32), ChunkMesh>,
+    pub start_time: Instant, chunk_meshes: HashMap<(i32, i32), ChunkMesh>,
     entity_vertex_buffer: Buffer, entity_index_buffer: Buffer,
     pub break_progress: f32,
 }
@@ -95,7 +95,7 @@ impl<'a> Renderer<'a> {
         let entity_vertex_buffer = device.create_buffer(&BufferDescriptor { label: Some("Entity VB"), size: 1024, usage: BufferUsages::VERTEX | BufferUsages::COPY_DST, mapped_at_creation: false });
         let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("Entity IB"), size: 1024, usage: BufferUsages::INDEX | BufferUsages::COPY_DST, mapped_at_creation: false });
 
-        Self { surface, device, queue, config, pipeline, ui_pipeline, depth_texture, bind_group, camera_bind_group, camera_buffer, time_bind_group, time_buffer, start_time: Instant::now(), chunk_meshes: HashMap::new(), entity_vertex_buffer, entity_index_buffer, break_progress: 0.0 }
+        Self { particles: Vec::new(), surface, device, queue, config, pipeline, ui_pipeline, depth_texture, bind_group, camera_bind_group, camera_buffer, time_bind_group, time_buffer, start_time: Instant::now(), chunk_meshes: HashMap::new(), entity_vertex_buffer, entity_index_buffer, break_progress: 0.0 }
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -356,8 +356,8 @@ for m in self.chunk_meshes.values() { pass.set_vertex_buffer(0, m.vertex_buffer.
             if !ent_v.is_empty() { pass.set_vertex_buffer(0, self.entity_vertex_buffer.slice(..)); pass.set_index_buffer(self.entity_index_buffer.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..ent_i.len() as u32, 0, 0..1); }
             
             // --- BREAKING CRACKS OVERLAY ---
-            if self.break_progress > 0.0 {
-                let mut crack_v = Vec::new(); let mut crack_i = Vec::new(); let mut crack_off = 0;
+if self.break_progress > 0.0 {
+                let mut crack_v: Vec<Vertex> = Vec::new(); let mut crack_i: Vec<u32> = Vec::new(); let mut crack_off = 0;
                 let crack_idx = (self.break_progress * 9.0) as u32 + 210;
                 // We need the targeted face from the raycast (this logic should move or be passed)
                 // For now, draw cracks on all sides of the breaking block slightly offset

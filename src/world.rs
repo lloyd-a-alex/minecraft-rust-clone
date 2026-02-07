@@ -25,7 +25,7 @@ pub struct BlockPos { pub x: i32, pub y: i32, pub z: i32 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BlockType {
     Air = 0, Grass = 1, Dirt = 2, Stone = 3, Wood = 4, Leaves = 5, Snow = 6, Sand = 7, Bedrock = 8, Water = 9,
-    CoalOre = 10, IronOre = 11, GoldOre = 12, DiamondOre = 13, RedstoneOre = 105, LapisOre = 106,
+    CoalOre = 10, IronOre = 11, GoldOre = 12, DiamondOre = 13, RedstoneOre = 125, LapisOre = 126,
     Planks = 14, Stick = 15, Cobblestone = 16, IronIngot = 17, GoldIngot = 18, Diamond = 19, Torch = 20,
     WoodPickaxe = 21, StonePickaxe = 22, IronPickaxe = 23, GoldPickaxe = 24, DiamondPickaxe = 25,
     WoodAxe = 26, StoneAxe = 27, IronAxe = 28, GoldAxe = 29, DiamondAxe = 30,
