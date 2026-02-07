@@ -250,31 +250,94 @@ pub fn new(seed: u32) -> Self {
         new_chunks
     }
 
-    fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator) {
+fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator) {
         let mut chunk = Chunk::new();
         let chunk_x_world = cx * 16;
         let chunk_z_world = cz * 16;
+        let mut rng = SimpleRng::new((cx as u64).wrapping_mul(self.seed as u64) ^ (cz as u64));
+
         for lx in 0..CHUNK_SIZE_X {
             for lz in 0..CHUNK_SIZE_Z {
                 let wx = chunk_x_world + lx as i32;
                 let wz = chunk_z_world + lz as i32;
-                let height = noise_gen.get_height(wx, wz);
+                let (cont, eros, weird, temp) = noise_gen.get_height_params(wx, wz);
+                let humid = noise_gen.get_noise_octaves(wx as f64 * 0.01, 123.0, wz as f64 * 0.01, 3) as f32;
+                
                 for y in 0..CHUNK_SIZE_Y {
-                    let y_i32 = y as i32;
+                    let density = noise_gen.get_density(wx, y as i32, wz, cont, eros, weird);
                     let mut block = BlockType::Air;
-                    if y_i32 <= height {
-                        if y_i32 == 0 { block = BlockType::Bedrock; }
-                        else if y_i32 == height { block = BlockType::Grass; }
-                        else if y_i32 > height - 3 { block = BlockType::Dirt; }
-                        else { block = BlockType::Stone; }
-                    } else if y_i32 <= WATER_LEVEL {
+
+                    if density > 0.0 {
+                        // --- SPAGHETTI CAVES (Seamless across borders) ---
+                        let n1 = noise_gen.get_noise3d(wx as f64 * 0.05, y as f64 * 0.05, wz as f64 * 0.05);
+                        let n2 = noise_gen.get_noise3d(wx as f64 * 0.05, y as f64 * 0.05 + 1000.0, wz as f64 * 0.05);
+                        let is_cave = (n1.abs() < 0.06) && (n2.abs() < 0.06);
+
+                        if is_cave && y > 5 { 
+                            block = if y as i32 <= WATER_LEVEL { BlockType::Water } else { BlockType::Air };
+                        } else {
+                            let above_density = noise_gen.get_density(wx, (y + 1) as i32, wz, cont, eros, weird);
+                            if above_density <= 0.0 {
+                                let biome = noise_gen.get_biome(cont, eros, temp, humid, y as i32);
+                                block = match biome {
+                                    "desert" => BlockType::Sand,
+                                    "ice_plains" | "ice_ocean" => BlockType::Snow,
+                                    "ocean" | "badlands" => BlockType::Sand,
+                                    "peaks" => BlockType::Stone,
+                                    _ => BlockType::Grass,
+                                };
+                            } else {
+                                block = if y < 5 { BlockType::Bedrock } 
+                                        else if (y as i32) < (62 + (cont * 12.0) as i32) { BlockType::Stone } 
+                                        else { BlockType::Dirt };
+                            }
+                        }
+                    } else if y as i32 <= WATER_LEVEL {
                         block = BlockType::Water;
                     }
+
                     if block != BlockType::Air { chunk.set_block(lx, y, lz, block); }
+                }
+
+                // --- VARIETY DECORATORS (Trees with LEAVES) ---
+                let h = self.get_height_at_in_chunk(&chunk, lx, lz);
+                if h > WATER_LEVEL && h < 100 {
+                    let biome = noise_gen.get_biome(cont, eros, temp, humid, h);
+                    let r = rng.next_f32();
+                    
+                    if biome == "forest" && r < 0.05 {
+                        let tree_h = 5 + (rng.next_f32() * 3.0) as i32;
+                        // Trunk
+                        for i in 1..=tree_h { if h+i < 127 { chunk.set_block(lx, (h+i) as usize, lz, BlockType::Wood); } }
+                        // Leaves (Diabolically hyper-thorough canopy)
+                        for ly in (h + tree_h - 2)..=(h + tree_h + 1) {
+                            let rad = if (ly as i32) > h + tree_h { 1 } else { 2 };
+                            for dx in -rad..=rad {
+                                for dz in -rad..=rad {
+                                    if (dx*dx + dz*dz) > rad*rad + 1 { continue; }
+                                    let (ox, oz) = (lx as i32 + dx, lz as i32 + dz);
+                                    if ox >= 0 && ox < 16 && oz >= 0 && oz < 16 {
+                                        if chunk.get_block(ox as usize, ly as usize, oz as usize) == BlockType::Air {
+                                            chunk.set_block(ox as usize, ly as usize, oz as usize, BlockType::Leaves);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else if r < 0.02 {
+                        chunk.set_block(lx, (h+1) as usize, lz, if biome == "desert" { BlockType::DeadBush } else { BlockType::Rose });
+                    }
                 }
             }
         }
         self.chunks.insert((cx, cz), chunk);
+    }
+
+    fn get_height_at_in_chunk(&self, chunk: &Chunk, lx: usize, lz: usize) -> i32 {
+        for y in (0..CHUNK_SIZE_Y as i32).rev() {
+            if chunk.get_block(lx, y as usize, lz).is_solid() { return y; }
+        }
+        0
     }
 fn generate_terrain(&mut self) {
         let noise_gen = NoiseGenerator::new(self.seed);
@@ -295,16 +358,16 @@ let mut height = noise_gen.get_height(wx, wz);
                         let river_val = noise_gen.get_river_noise(wx, wz);
                         let mut is_river = false;
                         
-                        // Shallow, natural rivers
-                        if river_val < 0.04 {
+                        // DIABOLICAL FJORD LOGIC: Rivers cut deep through mountains
+                        if river_val < 0.08 {
                             is_river = true;
-                            let river_depth = ((0.04 - river_val) / 0.04) * 6.0; 
-                            height = (height as f32 - river_depth as f32) as i32;
-                            // Ensure riverbed isn't too high
+                            let depth_factor = if height > 80 { 18.0 } else { 8.0 }; 
+                            let river_depth = ((0.08 - river_val) / 0.08) as f32 * depth_factor; 
+                            height = (height as f32 - river_depth) as i32;
                             if height > WATER_LEVEL - 1 { height = WATER_LEVEL - 1; }
                         }
                         
-                        let biome = noise_gen.get_biome(wx, wz, height);
+                        let biome = noise_gen.get_biome_at(wx, wz, height);
                         
                         for y in 0..CHUNK_SIZE_Y {
                             let y_i32 = y as i32;
@@ -380,10 +443,10 @@ let mut height = noise_gen.get_height(wx, wz);
                     for lz in 0..CHUNK_SIZE_Z {
                         let wx = chunk_x_world + lx as i32; 
                         let wz = chunk_z_world + lz as i32;
-                        let height = noise_gen.get_height(wx, wz);
+let height = noise_gen.get_height(wx, wz);
                         
                         // Skip rivers for most decoration
-                        if noise_gen.get_river_noise(wx, wz).abs() < 0.15 { 
+                        if noise_gen.get_river_noise(wx, wz) < 0.1 { 
                             if height < WATER_LEVEL - 1 {
                                 let mut rng = SimpleRng::new((wx as u64).wrapping_mul(self.seed as u64).wrapping_add(wz as u64));
                                 if rng.next_f32() < 0.2 { self.set_block_world(BlockPos{x:wx, y:height, z:wz}, BlockType::Clay); }
@@ -391,7 +454,7 @@ let mut height = noise_gen.get_height(wx, wz);
                             continue; 
                         }
                         
-                        let biome = noise_gen.get_biome(wx, wz, height);
+                        let biome = noise_gen.get_biome_at(wx, wz, height);
                         let mut rng = SimpleRng::new((wx as u64).wrapping_mul(self.seed as u64) ^ (wz as u64));
                         let r = rng.next_f32();
 

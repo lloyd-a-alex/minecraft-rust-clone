@@ -320,8 +320,7 @@ let tex_id = 1u32;
         // NOTE: Assuming your struct has 'diffuse_bind_group' based on typical naming. 
         // If error persists, change to 'bind_group' or 'texture_bind_group'.
 rpass.set_bind_group(0, &self.bind_group, &[]);
-        rpass.set_bind_group(1, &self.camera_bind_group, &[]); 
-        rpass.set_bind_group(2, &self.time_bind_group, &[]);
+        // REMOVED camera and time bind groups as UI pipeline doesn't use them in this version
         rpass.set_vertex_buffer(0, vb.slice(..));
         rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
         rpass.draw_indexed(0..indices.len() as u32, 0, 0..1);
@@ -391,7 +390,7 @@ let is_underwater = if world.get_block(eye_bp).is_water() { 1.0f32 } else { 0.0f
 // BIOME FOG LOGIC
         let noise_gen = crate::noise_gen::NoiseGenerator::new(world.seed); 
         let height = noise_gen.get_height(eye_bp.x, eye_bp.z);
-        let biome = noise_gen.get_biome(eye_bp.x, eye_bp.z, height);
+        let biome = noise_gen.get_biome_at(eye_bp.x, eye_bp.z, height);
         let fog_color = match biome {
             "swamp" => [0.3, 0.4, 0.2, 1.0],
             "desert" => [0.8, 0.7, 0.5, 1.0],
