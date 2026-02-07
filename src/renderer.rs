@@ -108,33 +108,45 @@ impl<'a> Renderer<'a> {
 
     pub fn rebuild_all_chunks(&mut self, world: &World) { self.chunk_meshes.clear(); for (key, _) in &world.chunks { self.update_chunk(key.0, key.1, world); } }
 
-    pub fn update_chunk(&mut self, cx: i32, cz: i32, world: &World) {
+pub fn update_chunk(&mut self, cx: i32, cz: i32, world: &World) {
         self.chunk_meshes.remove(&(cx, cz));
         if let Some(chunk) = world.chunks.get(&(cx, cz)) {
-            let mut vertices = Vec::new(); let mut indices = Vec::new(); let mut index_offset = 0;
-            let chunk_x = cx * CHUNK_SIZE_X as i32; let chunk_z = cz * CHUNK_SIZE_Z as i32;
-            for x in 0..CHUNK_SIZE_X { for y in 0..CHUNK_SIZE_Y { for z in 0..CHUNK_SIZE_Z {
-                let block = chunk.get_block(x, y, z);
-                if block == BlockType::Air { continue; }
-                let (tex_top, tex_bot, tex_side) = block.get_texture_indices();
-                let wx = chunk_x + x as i32; let wy = y as i32; let wz = chunk_z + z as i32;
-                let h = if block.is_water() { if block.get_water_level() == 8 { 1.0 } else { block.get_water_level() as f32 / 9.0 + 0.1 } } else { 1.0 };
-        let light = world.get_light_world(BlockPos { x: wx, y: wy, z: wz }) as f32 / 15.0;
-                
-                let check = |dx, dy, dz| { let n = world.get_block(BlockPos { x: wx+dx, y: wy+dy, z: wz+dz }); n == BlockType::Air || (n.is_transparent() && n != block) };
-                if check(0, 1, 0) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 0, tex_top, h); }
-                if check(0, -1, 0) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 1, tex_bot, h); }
-                if check(1, 0, 0) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 3, tex_side, h); }
-                if check(-1, 0, 0) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 2, tex_side, h); }
-                if check(0, 0, 1) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 4, tex_side, h); }
-if check(0, 0, -1) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 5, tex_side, h); }
-                
-                // CROSS MODEL RENDERING (Flowers, Saplings, etc.)
-                if block.is_cross_model() {
-                     let (t, _, _) = block.get_texture_indices();
-                     self.add_cross_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, t);
+            let mut vertices = Vec::new(); 
+            let mut indices = Vec::new(); 
+            let mut index_offset = 0;
+            let chunk_x = cx * CHUNK_SIZE_X as i32; 
+            let chunk_z = cz * CHUNK_SIZE_Z as i32;
+            for x in 0..CHUNK_SIZE_X { 
+                for y in 0..CHUNK_SIZE_Y { 
+                    for z in 0..CHUNK_SIZE_Z {
+                        let block = chunk.get_block(x, y, z);
+                        if block == BlockType::Air { continue; }
+                        let (tex_top, tex_bot, tex_side) = block.get_texture_indices();
+                        let wx = chunk_x + x as i32; 
+                        let wy = y as i32; 
+                        let wz = chunk_z + z as i32;
+                        let h = if block.is_water() { if block.get_water_level() == 8 { 1.0 } else { block.get_water_level() as f32 / 9.0 + 0.1 } } else { 1.0 };
+                        let light = world.get_light_world(BlockPos { x: wx, y: wy, z: wz }) as f32 / 15.0;
+                        
+                        let check = |dx, dy, dz| { 
+                            let n = world.get_block(BlockPos { x: wx+dx, y: wy+dy, z: wz+dz }); 
+                            n == BlockType::Air || (n.is_transparent() && n != block) 
+                        };
+                        
+                        if check(0, 1, 0) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 0, tex_top, h, light); }
+                        if check(0, -1, 0) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 1, tex_bot, h, light); }
+                        if check(1, 0, 0) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 3, tex_side, h, light); }
+                        if check(-1, 0, 0) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 2, tex_side, h, light); }
+                        if check(0, 0, 1) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 4, tex_side, h, light); }
+                        if check(0, 0, -1) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 5, tex_side, h, light); }
+                        
+                        if block.is_cross_model() {
+                             let (t, _, _) = block.get_texture_indices();
+                             self.add_cross_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, t, light);
+                        }
+                    }
                 }
-            }}}
+            }
             if !vertices.is_empty() {
                 let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk VB"), contents: bytemuck::cast_slice(&vertices), usage: BufferUsages::VERTEX });
                 let index_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk IB"), contents: bytemuck::cast_slice(&indices), usage: BufferUsages::INDEX });
@@ -143,7 +155,7 @@ if check(0, 0, -1) { self.add_face(&mut vertices, &mut indices, &mut index_offse
         }
     }
 
-    fn add_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, x: i32, y: i32, z: i32, face: u8, tex: u32, h: f32) {
+fn add_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, x: i32, y: i32, z: i32, face: u8, tex: u32, h: f32, light: f32) {
         let x = x as f32; let y = y as f32; let z = z as f32;
         let (p0, p1, p2, p3, uv0, uv1, uv2, uv3) = match face {
             0 => ([x,y+h,z+1.0], [x+1.0,y+h,z+1.0], [x+1.0,y+h,z], [x,y+h,z], [0.0,1.0], [1.0,1.0], [1.0,0.0], [0.0,0.0]),
@@ -154,8 +166,10 @@ if check(0, 0, -1) { self.add_face(&mut vertices, &mut indices, &mut index_offse
             5 => ([x+1.0,y,z], [x,y,z], [x,y+h,z], [x+1.0,y+h,z], [0.0,1.0], [1.0,1.0], [1.0,0.0], [0.0,0.0]),
             _ => return,
         };
-        v.push(Vertex{position:p0, tex_coords:uv0, ao:1.0, tex_index:tex, light}); v.push(Vertex{position:p1, tex_coords:uv0, ao:1.0, tex_index:tex, light});
-        v.push(Vertex{position:p2, tex_coords:uv0, ao:1.0, tex_index:tex, light}); v.push(Vertex{position:p3, tex_coords:uv0, ao:1.0, tex_index:tex, light});
+        v.push(Vertex{position:p0, tex_coords:uv0, ao:1.0, tex_index:tex, light}); 
+        v.push(Vertex{position:p1, tex_coords:uv1, ao:1.0, tex_index:tex, light});
+        v.push(Vertex{position:p2, tex_coords:uv2, ao:1.0, tex_index:tex, light}); 
+        v.push(Vertex{position:p3, tex_coords:uv3, ao:1.0, tex_index:tex, light});
         i.push(*off); i.push(*off+1); i.push(*off+2); i.push(*off); i.push(*off+2); i.push(*off+3); *off += 4;
     }
 
@@ -176,20 +190,20 @@ if check(0, 0, -1) { self.add_face(&mut vertices, &mut indices, &mut index_offse
         i.push(*off); i.push(*off+1); i.push(*off+2); i.push(*off); i.push(*off+2); i.push(*off+3); *off += 4;
     }
 
-fn add_cross_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, x: i32, y: i32, z: i32, tex: u32) {
+fn add_cross_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, x: i32, y: i32, z: i32, tex: u32, light: f32) {
         let x = x as f32; let y = y as f32; let z = z as f32;
         // Diagonal 1
-        v.push(Vertex{position:[x, y+1.0, z], tex_coords:[0.0,0.0], ao:1.0, tex_index:tex});
-        v.push(Vertex{position:[x+1.0, y+1.0, z+1.0], tex_coords:[1.0,0.0], ao:1.0, tex_index:tex});
-        v.push(Vertex{position:[x+1.0, y, z+1.0], tex_coords:[1.0,1.0], ao:1.0, tex_index:tex});
-        v.push(Vertex{position:[x, y, z], tex_coords:[0.0,1.0], ao:1.0, tex_index:tex});
+        v.push(Vertex{position:[x, y+1.0, z], tex_coords:[0.0,0.0], ao:1.0, tex_index:tex, light});
+        v.push(Vertex{position:[x+1.0, y+1.0, z+1.0], tex_coords:[1.0,0.0], ao:1.0, tex_index:tex, light});
+        v.push(Vertex{position:[x+1.0, y, z+1.0], tex_coords:[1.0,1.0], ao:1.0, tex_index:tex, light});
+        v.push(Vertex{position:[x, y, z], tex_coords:[0.0,1.0], ao:1.0, tex_index:tex, light});
         i.push(*off); i.push(*off+1); i.push(*off+2); i.push(*off); i.push(*off+2); i.push(*off+3); *off += 4;
         
         // Diagonal 2
-        v.push(Vertex{position:[x, y+1.0, z+1.0], tex_coords:[0.0,0.0], ao:1.0, tex_index:tex});
-        v.push(Vertex{position:[x+1.0, y+1.0, z], tex_coords:[1.0,0.0], ao:1.0, tex_index:tex});
-        v.push(Vertex{position:[x+1.0, y, z], tex_coords:[1.0,1.0], ao:1.0, tex_index:tex});
-        v.push(Vertex{position:[x, y, z+1.0], tex_coords:[0.0,1.0], ao:1.0, tex_index:tex});
+        v.push(Vertex{position:[x, y+1.0, z+1.0], tex_coords:[0.0,0.0], ao:1.0, tex_index:tex, light});
+        v.push(Vertex{position:[x+1.0, y+1.0, z], tex_coords:[1.0,0.0], ao:1.0, tex_index:tex, light});
+        v.push(Vertex{position:[x+1.0, y, z], tex_coords:[1.0,1.0], ao:1.0, tex_index:tex, light});
+        v.push(Vertex{position:[x, y, z+1.0], tex_coords:[0.0,1.0], ao:1.0, tex_index:tex, light});
         i.push(*off); i.push(*off+1); i.push(*off+2); i.push(*off); i.push(*off+2); i.push(*off+3); *off += 4;
     }
 

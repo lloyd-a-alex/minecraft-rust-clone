@@ -183,63 +183,122 @@ if let Some(act) = action {
                     }
                 } else if game_state == GameState::Playing {
                     // YOUR IN-GAME MOUSE LOGIC
-                    if player.inventory_open && pressed {
-                        // ... (Your inventory Stacking Logic) ...
-                        let (mx, my) = cursor_pos; let (w, h) = (win_size.0 as f32, win_size.1 as f32);
-                        let ndc_x = (mx as f32 / w) * 2.0 - 1.0; let ndc_y = -((my as f32 / h) * 2.0 - 1.0);
-                        let sw = 0.12; let sh = sw * (w/h); let sx = -(9.0*sw)/2.0; let by = -0.9;
-                        let mut click = None; let mut craft = false; let mut c_idx = 0;
+if player.inventory_open && pressed {
+                        let (mx, my) = cursor_pos; 
+                        let (w, h) = (win_size.0 as f32, win_size.1 as f32);
+                        let ndc_x = (mx as f32 / w) * 2.0 - 1.0; 
+                        let ndc_y = -((my as f32 / h) * 2.0 - 1.0);
+                        let sw = 0.12; 
+                        let sh = sw * (w / h); 
+                        let sx = -(9.0 * sw) / 2.0; 
+                        let by = -0.9;
+                        let mut click = None; 
+                        let mut craft = false; 
+                        let mut c_idx = 0;
                         let is_right_click = button == MouseButton::Right;
 
-                        for i in 0..9 { if ndc_x >= sx + i as f32 * sw && ndc_x < sx + (i+1) as f32 * sw && ndc_y >= by && ndc_y < by + sh { click = Some(i); break; } }
-                        let iby = by + sh * 1.5;
-                        for r in 0..3 { for c in 0..9 { let x = sx + c as f32 * sw; let y = iby + r as f32 * sh; if ndc_x >= x && ndc_x < x + sw && ndc_y >= y && ndc_y < y + sh { click = Some(9+r*9+c); } } }
+                        for i in 0..9 { 
+                            if ndc_x >= sx + i as f32 * sw && ndc_x < sx + (i + 1) as f32 * sw && ndc_y >= by && ndc_y < by + sh { 
+                                click = Some(i); 
+                                break; 
+                            } 
+                        }
                         
-                        let cx = 0.3; let cy = 0.5;
+                        let iby = by + sh * 1.5;
+                        for r in 0..3 { 
+                            for c in 0..9 { 
+                                let x = sx + c as f32 * sw; 
+                                let y = iby + r as f32 * sh; 
+                                if ndc_x >= x && ndc_x < x + sw && ndc_y >= y && ndc_y < y + sh { 
+                                    click = Some(9 + r * 9 + c); 
+                                } 
+                            } 
+                        }
+                        
+                        let cx = 0.3; 
+                        let cy = 0.5;
                         let grid_size = if player.crafting_open { 3 } else { 2 };
-                        for r in 0..grid_size { for c in 0..grid_size { 
-                            let x = cx + c as f32 * sw; let y = cy - r as f32 * sh;
-                            if ndc_x >= x+0.01 && ndc_x < x+sw-0.01 && ndc_y >= y+0.01 && ndc_y < y+sh-0.01 { click = Some(99); craft = true; c_idx = if player.crafting_open { r*3+c } else { match r*2+c { 0=>0, 1=>1, 2=>3, 3=>4, _=>0 } }; } 
-                        } }
+                        for r in 0..grid_size { 
+                            for c in 0..grid_size { 
+                                let x = cx + c as f32 * sw; 
+                                let y = cy - r as f32 * sh;
+                                if ndc_x >= x + 0.01 && ndc_x < x + sw - 0.01 && ndc_y >= y + 0.01 && ndc_y < y + sh - 0.01 { 
+                                    click = Some(99); 
+                                    craft = true; 
+                                    c_idx = if player.crafting_open { r * 3 + c } else { match r * 2 + c { 0 => 0, 1 => 1, 2 => 3, 3 => 4, _ => 0 } }; 
+                                } 
+                            } 
+                        }
                         
                         if let Some(i) = click {
                             let slot = if craft { &mut player.inventory.crafting_grid[c_idx] } else { &mut player.inventory.slots[i] };
                             if is_right_click {
                                 if player.inventory.cursor_item.is_none() {
-                                    if let Some(s) = slot { let half = s.count/2; if half>0 { player.inventory.cursor_item = Some(player::ItemStack::new(s.item, half)); s.count -= half; if s.count == 0 { *slot = None; } } }
+                                    if let Some(s) = slot { 
+                                        let half = s.count / 2; 
+                                        if half > 0 { 
+                                            player.inventory.cursor_item = Some(player::ItemStack::new(s.item, half)); 
+                                            s.count -= half; 
+                                            if s.count == 0 { *slot = None; } 
+                                        } 
+                                    }
                                 } else {
                                     let cursor = player.inventory.cursor_item.as_mut().unwrap();
                                     if let Some(s) = slot { 
-                                        if s.item == cursor.item && s.count < 64 { s.count += 1; cursor.count -= 1; if cursor.count == 0 { player.inventory.cursor_item = None; } }
-                                    } else { *slot = Some(player::ItemStack::new(cursor.item, 1)); cursor.count -= 1; if cursor.count == 0 { player.inventory.cursor_item = None; } }
+                                        if s.item == cursor.item && s.count < 64 { 
+                                            s.count += 1; 
+                                            cursor.count -= 1; 
+                                            if cursor.count == 0 { player.inventory.cursor_item = None; } 
+                                        }
+                                    } else { 
+                                        *slot = Some(player::ItemStack::new(cursor.item, 1)); 
+                                        cursor.count -= 1; 
+                                        if cursor.count == 0 { player.inventory.cursor_item = None; } 
+                                    }
                                 }
                             } else {
-                                // LEFT CLICK STACKING
                                 if let Some(cursor) = &mut player.inventory.cursor_item {
                                     if let Some(s) = slot {
                                         if s.item == cursor.item {
-                                            let space = 64 - s.count; let transfer = space.min(cursor.count);
-                                            s.count += transfer; cursor.count -= transfer;
+                                            let space = 64 - s.count; 
+                                            let transfer = space.min(cursor.count);
+                                            s.count += transfer; 
+                                            cursor.count -= transfer;
                                             if cursor.count == 0 { player.inventory.cursor_item = None; }
-                                        } else { let temp = *s; *s = *cursor; *cursor = temp; }
-                                    } else { *slot = Some(*cursor); player.inventory.cursor_item = None; }
-                                } else { player.inventory.cursor_item = *slot; *slot = None; }
+                                        } else { 
+                                            let temp = *s; 
+                                            *s = *cursor; 
+                                            *cursor = temp; 
+                                        }
+                                    } else { 
+                                        *slot = Some(*cursor); 
+                                        player.inventory.cursor_item = None; 
+                                    }
+                                } else { 
+                                    player.inventory.cursor_item = *slot; 
+                                    *slot = None; 
+                                }
                             }
                             if craft { player.inventory.check_recipes(); }
                         }
                         
-                        let ox = cx + 3.0*sw; let oy = cy - 0.5*sh;
-                        if ndc_x >= ox && ndc_x < ox+sw && ndc_y >= oy && ndc_y < oy+sh { 
+                        let ox = cx + 3.0 * sw; 
+                        let oy = cy - 0.5 * sh;
+                        if ndc_x >= ox && ndc_x < ox + sw && ndc_y >= oy && ndc_y < oy + sh { 
                             if let Some(o) = player.inventory.crafting_output { 
                                 if player.inventory.cursor_item.is_none() || (player.inventory.cursor_item.unwrap().item == o.item && player.inventory.cursor_item.unwrap().count + o.count <= 64) {
-                                    if let Some(curr) = player.inventory.cursor_item { player.inventory.cursor_item = Some(player::ItemStack::new(curr.item, curr.count + o.count)); } 
-                                    else { player.inventory.cursor_item = Some(o); }
-                                    player.inventory.craft(); player.inventory.check_recipes(); 
+                                    if let Some(curr) = player.inventory.cursor_item { 
+                                        player.inventory.cursor_item = Some(player::ItemStack::new(curr.item, curr.count + o.count)); 
+                                    } else { 
+                                        player.inventory.cursor_item = Some(o); 
+                                    }
+                                    player.inventory.craft(); 
+                                    player.inventory.check_recipes(); 
                                 } 
                             } 
                         }
                     } else if button == MouseButton::Left {
-                        left_click = pressed; 
+                        left_click = pressed;
 } else if button == MouseButton::Right && pressed && !player.inventory_open {
                     let (sin, cos) = player.rotation.x.sin_cos(); 
                     let (ysin, ycos) = player.rotation.y.sin_cos();
