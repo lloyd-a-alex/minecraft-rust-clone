@@ -68,9 +68,9 @@ pub fn get_noise_octaves(&self, x: f64, y: f64, z: f64, octaves: u32) -> f64 {
     }
 
 pub fn get_height_params(&self, x: i32, z: i32) -> (f32, f32, f32, f32) {
-        // DIABOLICAL FIX: Increased frequency (0.01) so biomes are no longer "too far apart"
-        let xf = x as f64 * 0.01;
-        let zf = z as f64 * 0.01;
+        // DIABOLICAL FIX: 0.015 frequency makes biomes tight and varied
+        let xf = x as f64 * 0.015;
+        let zf = z as f64 * 0.015;
         let continentalness = self.get_noise_octaves(xf, 0.0, zf, 4) as f32;
         let erosion = self.get_noise_octaves(xf + 500.0, 11.0, zf + 500.0, 4) as f32;
         let weirdness = self.get_noise_octaves(xf + 1000.0, 22.0, zf + 1000.0, 4) as f32;
@@ -118,20 +118,22 @@ pub fn get_biome_at(&self, x: i32, z: i32, y: i32) -> &'static str {
         self.get_biome(cont, eros, temp, humid, y)
     }
 
-    pub fn get_biome(&self, cont: f32, eros: f32, temp: f32, humid: f32, y: i32) -> &'static str {
-        if y > 105 { return "peaks"; }
-        if cont < -0.2 { return if temp < -0.4 { "ice_ocean" } else { "ocean" }; }
+pub fn get_biome(&self, cont: f32, eros: f32, temp: f32, humid: f32, y: i32) -> &'static str {
+        if y > 102 { return "peaks"; }
+        if cont < -0.25 { return if temp < -0.4 { "ice_ocean" } else { "ocean" }; }
         
-        if eros < -0.6 { return "badlands"; }
-        if eros > 0.5 { return "plains"; }
+        // EROSION BASED BIOMES
+        if eros < -0.5 { return "badlands"; }
+        if eros > 0.4 { return "plains"; }
         
-        if temp < -0.15 {
-            return if humid > 0.1 { "taiga" } else { "ice_plains" };
+        // TEMPERATURE / HUMIDITY GRID
+        if temp < -0.2 {
+            return if humid > 0.0 { "taiga" } else { "ice_plains" };
         }
-        if temp > 0.25 {
-            return if humid < -0.1 { "desert" } else { "jungle" };
+        if temp > 0.3 {
+            return if humid < 0.0 { "desert" } else { "jungle" };
         }
-        if humid > 0.4 { return "swamp"; }
+        if humid > 0.45 { return "swamp"; }
         
         "forest"
     }
