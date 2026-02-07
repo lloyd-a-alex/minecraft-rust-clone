@@ -268,8 +268,8 @@ pub fn render_main_menu(&mut self, menu: &MainMenu, _width: u32, _height: u32) -
     for gy in 0..grid_count {
         for gx in 0..grid_count {
             let rx = -1.0 + (gx as f32 * grid_size) + grid_size/2.0;
-            let ry = -1.0 + (gy as f32 * grid_size) + grid_size/2.0;
-let tex_id = 1u32;
+let ry = -1.0 + (gy as f32 * grid_size) + grid_size/2.0;
+            let tex_id = 2u32; // CLASSIC DIRT BACKGROUND
             let u_min = (tex_id % 32) as f32 / 32.0; let v_min = (tex_id / 32) as f32 / 32.0;
             let u_max = u_min + 1.0 / 32.0; let v_max = v_min + 1.0 / 32.0;
             let ao = 0.4;

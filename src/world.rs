@@ -56,19 +56,27 @@ pub fn is_transparent(&self) -> bool {
         matches!(self, BlockType::Air | BlockType::Water | BlockType::Lava | BlockType::Leaves | BlockType::SpruceLeaves | BlockType::BirchLeaves | 
                        BlockType::Torch | BlockType::Fire | BlockType::Glass | BlockType::Rose | BlockType::Dandelion | 
                        BlockType::DeadBush | BlockType::TallGrass | BlockType::OakSapling | BlockType::Sugarcane | 
-                       BlockType::Cactus | BlockType::Ice | BlockType::LilyPad | BlockType::Vine | BlockType::Wheat) 
+                       BlockType::Ice | BlockType::LilyPad | BlockType::Vine | BlockType::Wheat |
+                       BlockType::Wheat0 | BlockType::Wheat1 | BlockType::Wheat2 | BlockType::Wheat3 | 
+                       BlockType::Wheat4 | BlockType::Wheat5 | BlockType::Wheat6 | BlockType::Wheat7) 
     }
 
-
-pub fn is_cross_model(&self) -> bool {
-        // Roses and Dandelions removed from here to make them 3D models
-        matches!(self, BlockType::DeadBush | BlockType::TallGrass | BlockType::OakSapling | BlockType::Sugarcane)
+    pub fn is_cross_model(&self) -> bool {
+        matches!(self, BlockType::DeadBush | BlockType::TallGrass | BlockType::OakSapling | BlockType::Sugarcane | 
+                       BlockType::Rose | BlockType::Dandelion | BlockType::Wheat | BlockType::Wheat0 | 
+                       BlockType::Wheat1 | BlockType::Wheat2 | BlockType::Wheat3 | BlockType::Wheat4 | 
+                       BlockType::Wheat5 | BlockType::Wheat6 | BlockType::Wheat7)
     }
-pub fn is_water(&self) -> bool { matches!(self, BlockType::Water) }
 
-pub fn is_solid(&self) -> bool {
-    !matches!(self, BlockType::Air | BlockType::Water | BlockType::Lava | BlockType::Rose | BlockType::Dandelion | BlockType::DeadBush | BlockType::TallGrass | BlockType::OakSapling | BlockType::Sugarcane | BlockType::Fire)
-}
+    pub fn is_water(&self) -> bool { matches!(self, BlockType::Water) }
+
+    pub fn is_solid(&self) -> bool {
+        !matches!(self, BlockType::Air | BlockType::Water | BlockType::Lava | BlockType::Fire | 
+                       BlockType::Rose | BlockType::Dandelion | BlockType::DeadBush | BlockType::TallGrass | 
+                       BlockType::OakSapling | BlockType::Sugarcane | BlockType::LilyPad | BlockType::Vine | 
+                       BlockType::Wheat | BlockType::Wheat0 | BlockType::Wheat1 | BlockType::Wheat2 | 
+                       BlockType::Wheat3 | BlockType::Wheat4 | BlockType::Wheat5 | BlockType::Wheat6 | BlockType::Wheat7)
+    }
 
 pub fn is_tool(&self) -> bool { (*self as u8) >= 21 && (*self as u8) <= 40 }
     pub fn is_item(&self) -> bool { matches!(self, BlockType::Coal | BlockType::Stick | BlockType::IronIngot | BlockType::GoldIngot | BlockType::Diamond | BlockType::Wheat | BlockType::Bread | BlockType::Apple | BlockType::Porkchop | BlockType::CookedPorkchop) }
@@ -268,13 +276,15 @@ fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator
                     let mut block = BlockType::Air;
 
                     if density > 0.0 {
-                        // --- SPAGHETTI CAVES (Seamless across borders) ---
+                        // --- 3D NOISE CAVES (Seamless Spaghetti + Swiss Cheese) ---
                         let n1 = noise_gen.get_noise3d(wx as f64 * 0.05, y as f64 * 0.05, wz as f64 * 0.05);
                         let n2 = noise_gen.get_noise3d(wx as f64 * 0.05, y as f64 * 0.05 + 1000.0, wz as f64 * 0.05);
-                        let is_cave = (n1.abs() < 0.06) && (n2.abs() < 0.06);
+                        let is_spaghetti = (n1.abs() < 0.06) && (n2.abs() < 0.06);
+                        let cheese_n = noise_gen.get_noise3d(wx as f64 * 0.08, y as f64 * 0.08, wz as f64 * 0.08);
+                        let is_cheese = cheese_n > 0.72;
 
-                        if is_cave && y > 5 { 
-                            block = if y as i32 <= WATER_LEVEL { BlockType::Water } else { BlockType::Air };
+                        if (is_spaghetti || is_cheese) && y > 5 { 
+                            block = if (y as i32) <= WATER_LEVEL { BlockType::Water } else { BlockType::Air };
                         } else {
                             let above_density = noise_gen.get_density(wx, (y + 1) as i32, wz, cont, eros, weird);
                             if above_density <= 0.0 {
@@ -288,44 +298,78 @@ fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator
                                 };
                             } else {
                                 block = if y < 5 { BlockType::Bedrock } 
-                                        else if (y as i32) < (62 + (cont * 12.0) as i32) { BlockType::Stone } 
+                                        else if (y as i32) < (62 + (cont * 12.0) as i32) { 
+                                            // DIABOLICAL ORE VEINS
+                                            let mut orng = SimpleRng::new((wx as u64).wrapping_mul(73856093) ^ (wz as u64).wrapping_mul(19349663) ^ (y as u64));
+                                            let r = orng.next_f32();
+                                            if r < 0.012 { BlockType::CoalOre } 
+                                            else if r < 0.008 && y < 45 { BlockType::IronOre } 
+                                            else if r < 0.002 && y < 30 { BlockType::GoldOre } 
+                                            else if r < 0.001 && y < 12 { BlockType::DiamondOre }
+                                            else { BlockType::Stone }
+                                        } 
                                         else { BlockType::Dirt };
                             }
                         }
-                    } else if y as i32 <= WATER_LEVEL {
+                    } else if (y as i32) <= WATER_LEVEL {
                         block = BlockType::Water;
                     }
 
                     if block != BlockType::Air { chunk.set_block(lx, y, lz, block); }
                 }
 
-                // --- VARIETY DECORATORS (Trees with LEAVES) ---
+                // --- DIABOLICAL EXHAUSTIVE DECORATORS ---
                 let h = self.get_height_at_in_chunk(&chunk, lx, lz);
-                if h > WATER_LEVEL && h < 100 {
+                if h > WATER_LEVEL && h < 105 {
                     let biome = noise_gen.get_biome(cont, eros, temp, humid, h);
                     let r = rng.next_f32();
                     
-                    if biome == "forest" && r < 0.05 {
-                        let tree_h = 5 + (rng.next_f32() * 3.0) as i32;
-                        // Trunk
-                        for i in 1..=tree_h { if h+i < 127 { chunk.set_block(lx, (h+i) as usize, lz, BlockType::Wood); } }
-                        // Leaves (Diabolically hyper-thorough canopy)
-                        for ly in (h + tree_h - 2)..=(h + tree_h + 1) {
-                            let rad = if (ly as i32) > h + tree_h { 1 } else { 2 };
-                            for dx in -rad..=rad {
-                                for dz in -rad..=rad {
-                                    if (dx*dx + dz*dz) > rad*rad + 1 { continue; }
-                                    let (ox, oz) = (lx as i32 + dx, lz as i32 + dz);
-                                    if ox >= 0 && ox < 16 && oz >= 0 && oz < 16 {
-                                        if chunk.get_block(ox as usize, ly as usize, oz as usize) == BlockType::Air {
-                                            chunk.set_block(ox as usize, ly as usize, oz as usize, BlockType::Leaves);
+                    // ANTI-OVERLAP: Only place tree/plant if space above is currently AIR
+                    if chunk.get_block(lx, (h+1) as usize, lz) == BlockType::Air {
+                        if (biome == "forest" || biome == "jungle") && r < 0.04 {
+                            let tree_h = 5 + (rng.next_f32() * 3.0) as i32;
+                            for i in 1..=tree_h { if h+i < 127 { chunk.set_block(lx, (h+i) as usize, lz, BlockType::Wood); } }
+                            for ly in (h + tree_h - 2)..=(h + tree_h + 1) {
+                                let rad = if (ly as i32) > h + tree_h { 1 } else { 2 };
+                                for dx in -rad..=rad {
+                                    for dz in -rad..=rad {
+                                        if (dx*dx + dz*dz) > rad*rad + 1 { continue; }
+                                        let (ox, oz) = (lx as i32 + dx, lz as i32 + dz);
+                                        if ox >= 0 && ox < 16 && oz >= 0 && oz < 16 {
+                                            if chunk.get_block(ox as usize, ly as usize, oz as usize) == BlockType::Air {
+                                                chunk.set_block(ox as usize, ly as usize, oz as usize, BlockType::Leaves);
+                                            }
                                         }
                                     }
                                 }
                             }
+                        } else if biome == "taiga" && r < 0.03 {
+                            let tree_h = 7 + (rng.next_f32() * 4.0) as i32;
+                            for i in 1..=tree_h { if h+i < 127 { chunk.set_block(lx, (h+i) as usize, lz, BlockType::SpruceWood); } }
+                            let mut rad: i32 = 2;
+                            for ly in (h + 3)..=(h + tree_h) {
+                                for dx in -rad..=rad {
+                                    for dz in -rad..=rad {
+                                        if dx.abs() + dz.abs() > rad { continue; }
+                                        let (ox, oz) = (lx as i32 + dx, lz as i32 + dz);
+                                        if ox >= 0 && ox < 16 && oz >= 0 && oz < 16 {
+                                            if chunk.get_block(ox as usize, ly as usize, oz as usize) == BlockType::Air {
+                                                chunk.set_block(ox as usize, ly as usize, oz as usize, BlockType::SpruceLeaves);
+                                            }
+                                        }
+                                    }
+                                }
+                                if ly % 2 == 0 { rad = (rad - 1).max(1); }
+                            }
+                        } else if biome == "swamp" {
+                             let ground = chunk.get_block(lx, h as usize, lz);
+                             if ground == BlockType::Water && r < 0.05 { chunk.set_block(lx, (h+1) as usize, lz, BlockType::LilyPad); }
+                        } else if biome == "desert" && r < 0.01 {
+                            let c_h = 1 + (rng.next_f32() * 3.0) as i32;
+                            for i in 1..=c_h { if h+i < 127 { chunk.set_block(lx, (h+i) as usize, lz, BlockType::Cactus); } }
+                        } else if r < 0.02 {
+                            chunk.set_block(lx, (h+1) as usize, lz, if biome == "desert" { BlockType::DeadBush } else { BlockType::Rose });
                         }
-                    } else if r < 0.02 {
-                        chunk.set_block(lx, (h+1) as usize, lz, if biome == "desert" { BlockType::DeadBush } else { BlockType::Rose });
                     }
                 }
             }
@@ -340,208 +384,8 @@ fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator
         0
     }
 fn generate_terrain(&mut self) {
-        let noise_gen = NoiseGenerator::new(self.seed);
-        let render_distance = 6; 
-        
-        // 1. Base Terrain & Caves
-        for cx in -render_distance..=render_distance {
-            for cz in -render_distance..=render_distance {
-                let mut chunk = Chunk::new();
-                let chunk_x_world = cx * (CHUNK_SIZE_X as i32);
-                let chunk_z_world = cz * (CHUNK_SIZE_Z as i32);
-                for lx in 0..CHUNK_SIZE_X {
-                    for lz in 0..CHUNK_SIZE_Z {
-                        let wx = chunk_x_world + lx as i32;
-                        let wz = chunk_z_world + lz as i32;
-                        
-let mut height = noise_gen.get_height(wx, wz);
-                        let river_val = noise_gen.get_river_noise(wx, wz);
-                        let mut is_river = false;
-                        
-                        // DIABOLICAL FJORD LOGIC: Rivers cut deep through mountains
-                        if river_val < 0.08 {
-                            is_river = true;
-                            let depth_factor = if height > 80 { 18.0 } else { 8.0 }; 
-                            let river_depth = ((0.08 - river_val) / 0.08) as f32 * depth_factor; 
-                            height = (height as f32 - river_depth) as i32;
-                            if height > WATER_LEVEL - 1 { height = WATER_LEVEL - 1; }
-                        }
-                        
-                        let biome = noise_gen.get_biome_at(wx, wz, height);
-                        
-                        for y in 0..CHUNK_SIZE_Y {
-                            let y_i32 = y as i32;
-                            
-                            // 3D Noise Caves (Swiss Cheese)
-                            let cave_noise = noise_gen.get_noise3d(wx as f64 * 0.04, y as f64 * 0.04, wz as f64 * 0.04) 
-                                           + noise_gen.get_noise3d(wx as f64 * 0.02, y as f64 * 0.02, wz as f64 * 0.02) * 0.5;
-                            let is_cave = y_i32 < height && y_i32 > 5 && cave_noise > 0.6;
-                            
-                            if is_cave {
-                                if y_i32 <= WATER_LEVEL { chunk.set_block(lx, y, lz, BlockType::Water); }
-                                continue;
-                            }
-
-                            let mut block = BlockType::Air;
-                            if y_i32 <= height {
-                                if y_i32 == 0 { 
-                                    block = BlockType::Bedrock; 
-                                } else if y_i32 < 5 { 
-                                    let mut rng = SimpleRng::new((wx^y_i32^wz) as u64);
-                                    block = if rng.next_f32() < 0.5 { BlockType::Bedrock } else { BlockType::Stone }; 
-                                } else if y_i32 < height - 3 {
-                                    // ORE GENERATION
-                                    let mut rng = SimpleRng::new((wx as u64).wrapping_mul(73856093) ^ (wz as u64).wrapping_mul(19349663) ^ (y_i32 as u64));
-                                    let r = rng.next_f32();
-                                    block = BlockType::Stone;
-                                    if r < 0.012 { block = BlockType::CoalOre; } 
-                                    else if r < 0.008 && y_i32 < 45 { block = BlockType::IronOre; } 
-                                    else if r < 0.002 && y_i32 < 30 { block = BlockType::GoldOre; } 
-                                    else if r < 0.003 && y_i32 < 16 { block = BlockType::RedstoneOre; }
-                                    else if r < 0.002 && y_i32 < 16 { block = BlockType::LapisOre; }
-                                    else if r < 0.001 && y_i32 < 12 { block = BlockType::DiamondOre; }
-                                    else if r < 0.04 && y_i32 < 40 { block = BlockType::Gravel; }
-                                    else if r < 0.04 && y_i32 < 40 { block = BlockType::Dirt; }
-                                } else if y_i32 < height { 
-                                    block = if is_river { BlockType::Sand } 
-                                    else if biome == "desert" { BlockType::Sand } 
-                                    else { BlockType::Dirt }; 
-                                } else { 
-// Top Soil & Biome Surface
-                                    if y_i32 >= 90 { 
-                                        block = BlockType::Snow; // High Mountains
-                                    } else if is_river { 
-                                        block = BlockType::Sand; // Riverbeds
-                                    } else if biome == "desert" { 
-                                        block = BlockType::Sand; 
-                                    } else if y_i32 <= WATER_LEVEL + 1 { 
-                                        block = BlockType::Sand; // Beaches
-                                    } else if y_i32 > 80 {
-                                        block = BlockType::Stone; // Rocky Peaks
-                                    } else { 
-                                        block = BlockType::Grass; 
-                                    }
-                                }
-                            } else if y_i32 <= WATER_LEVEL { 
-                                block = BlockType::Water; 
-                            }
-
-                            if block != BlockType::Air { chunk.set_block(lx, y, lz, block); }
-                        }
-                    }
-                }
-                self.chunks.insert((cx, cz), chunk);
-            }
-        }
-        
-        // 2. Diabolical Decorators (Biome Specifics)
-        for cx in -render_distance..=render_distance {
-            for cz in -render_distance..=render_distance {
-                let chunk_x_world = cx * (CHUNK_SIZE_X as i32); 
-                let chunk_z_world = cz * (CHUNK_SIZE_Z as i32);
-                for lx in 0..CHUNK_SIZE_X {
-                    for lz in 0..CHUNK_SIZE_Z {
-                        let wx = chunk_x_world + lx as i32; 
-                        let wz = chunk_z_world + lz as i32;
-let height = noise_gen.get_height(wx, wz);
-                        
-                        // Skip rivers for most decoration
-                        if noise_gen.get_river_noise(wx, wz) < 0.1 { 
-                            if height < WATER_LEVEL - 1 {
-                                let mut rng = SimpleRng::new((wx as u64).wrapping_mul(self.seed as u64).wrapping_add(wz as u64));
-                                if rng.next_f32() < 0.2 { self.set_block_world(BlockPos{x:wx, y:height, z:wz}, BlockType::Clay); }
-                            }
-                            continue; 
-                        }
-                        
-                        let biome = noise_gen.get_biome_at(wx, wz, height);
-                        let mut rng = SimpleRng::new((wx as u64).wrapping_mul(self.seed as u64) ^ (wz as u64));
-                        let r = rng.next_f32();
-
-                        let surface_pos = BlockPos{x:wx, y:height, z:wz};
-                        let above = BlockPos{x:wx, y:height+1, z:wz};
-                        let ground = self.get_block(surface_pos);
-
-                        if biome == "swamp" {
-                             if ground == BlockType::Water && r < 0.05 { self.set_block_world(above, BlockType::LilyPad); }
-                             if ground == BlockType::Grass && r < 0.02 {
-                                 let h = 4 + (rng.next_f32() * 3.0) as i32;
-                                 for i in 1..=h { self.set_block_world(BlockPos{x:wx, y:height+i, z:wz}, BlockType::Wood); }
-                                 for ly in (height+h-2)..(height+h+2) {
-                                     let rad = if ly > height+h { 1 } else { 3 };
-                                     for dx in -rad..=rad { for dz in -rad..=rad {
-                                         if (dx*dx + dz*dz) > rad*rad+2 { continue; }
-                                         let lp = BlockPos{x:wx+dx, y:ly, z:wz+dz};
-                                         if self.get_block(lp) == BlockType::Air { 
-                                             self.set_block_world(lp, BlockType::Leaves);
-                                             if rng.next_f32() < 0.2 && ly > height+2 {
-                                                  let vlen = (rng.next_f32() * 3.0) as i32;
-                                                  for k in 1..vlen { self.set_block_world(BlockPos{x:wx+dx, y:ly-k, z:wz+dz}, BlockType::Vine); }
-                                             }
-                                         }
-                                     }}
-                                 }
-                             }
-                        } else if biome == "taiga" {
-                            if ground == BlockType::Grass && r < 0.02 {
-                                let h = 6 + (rng.next_f32() * 4.0) as i32;
-                                for i in 1..=h { self.set_block_world(BlockPos{x:wx, y:height+i, z:wz}, BlockType::SpruceWood); }
-                                let mut rad: i32 = 2;
-                                for ly in (height+3)..=(height+h) {
-                                    for dx in -rad..=rad { for dz in -rad..=rad {
-                                        if dx.abs() + dz.abs() > rad { continue; }
-                                        let lp = BlockPos{x:wx+dx, y:ly, z:wz+dz};
-                                        if self.get_block(lp) == BlockType::Air { self.set_block_world(lp, BlockType::SpruceLeaves); }
-                                    }}
-                                    if ly % 2 == 0 { rad = (rad - 1).max(0); }
-                                }
-                                self.set_block_world(BlockPos{x:wx, y:height+h+1, z:wz}, BlockType::SpruceLeaves);
-                            }
-                        } else if biome == "desert" {
-                             if ground == BlockType::Sand {
-                                 if r < 0.01 {
-                                     let h = 1 + (rng.next_f32() * 3.0) as i32;
-                                     for i in 0..h { self.set_block_world(BlockPos{x:wx, y:height+1+i, z:wz}, BlockType::Cactus); }
-                                 } else if r < 0.02 { self.set_block_world(above, BlockType::DeadBush); }
-                             }
-                        } else if biome == "ice_plains" {
-                             if height == WATER_LEVEL { self.set_block_world(surface_pos, BlockType::Ice); }
-                        } else {
-                            if ground == BlockType::Grass {
-if biome == "forest" && r < 0.01 {
-                                    let tree_h = 4 + (rng.next_f32() * 2.0) as i32;
-                                    for i in 1..=tree_h { self.set_block_world(BlockPos{x:wx, y:height+i, z:wz}, BlockType::Wood); }
-                                    // DIABOLICAL FIX: Offset flower check so it doesn't spawn on the same LX/LZ as the trunk
-                                    for ly in (height+tree_h-2)..(height+tree_h+2) {
-                                        let rad = if ly > height+tree_h { 1 } else { 2 };
-                                        for dx in -rad..=rad { for dz in -rad..=rad {
-                                            if (dx*dx + dz*dz) > rad*rad+1 { continue; }
-                                            let lp = BlockPos{x:wx+dx, y:ly, z:wz+dz};
-                                            if self.get_block(lp) == BlockType::Air { self.set_block_world(lp, BlockType::Leaves); }
-                                        }}
-                                    }
-                                }
-                                if r < 0.01 { self.set_block_world(above, BlockType::Rose); }
-                                else if r < 0.02 { self.set_block_world(above, BlockType::Dandelion); }
-                                else if r < 0.05 && biome == "plains" { self.set_block_world(above, BlockType::TallGrass); }
-                                else if r < 0.002 { self.set_block_world(above, BlockType::Pumpkin); }
-                                else if r > 0.998 { self.set_block_world(above, BlockType::Melon); }
-                            }
-                             if (ground == BlockType::Grass || ground == BlockType::Sand) && r < 0.05 {
-                                 let mut near_water = false;
-                                 for (dx, dz) in &[(1,0),(-1,0),(0,1),(0,-1)] {
-                                     if self.get_block(BlockPos{x:wx+dx, y:height, z:wz+dz}).is_water() { near_water = true; break; }
-                                 }
-                                 if near_water {
-                                     let h = 1 + (rng.next_f32() * 3.0) as i32;
-                                     for i in 0..h { self.set_block_world(BlockPos{x:wx, y:height+1+i, z:wz}, BlockType::Sugarcane); }
-                                 }
-                             }
-                        }
-                    }
-                }
-            }
-        }
+        // Consolidated terrain generation to prevent logic duplication and tree-overlap
+        self.generate_terrain_around(0, 0, 6);
     }
 pub fn get_light_world(&self, pos: BlockPos) -> u8 {
         let cx = pos.x.div_euclid(CHUNK_SIZE_X as i32); let cz = pos.z.div_euclid(CHUNK_SIZE_Z as i32);
@@ -756,7 +600,7 @@ if dist_sq < 2.25 {
                 } 
             }
         }
-        retained.push(entity);
+retained.push(entity);
     }
     self.entities = retained;
 }
