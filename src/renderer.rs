@@ -200,39 +200,24 @@ fn add_cross_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, x
     }
 
 fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32) {
-    let aspect = self.config.width as f32 / self.config.height as f32;
-    let mut x = start_x;
-    // Text Scaling for long names
-    let mut final_scale = scale;
-    if text.len() > 10 { final_scale *= 0.8; }
+        let aspect = self.config.width as f32 / self.config.height as f32;
+        let mut x = start_x;
+        let mut final_scale = scale;
+        if text.len() > 10 { final_scale *= 0.8; }
 
-    for c in text.to_uppercase().chars() {
-        if c == ' ' { x += final_scale; continue; }
-        let idx = if c >= 'A' && c <= 'Z' { 200 + (c as u32 - 'A' as u32) } 
-                  else if c >= '0' && c <= '9' { 200 + 26 + (c as u32 - '0' as u32) } 
-                  else if c == '-' { 236 } 
-                  else if c == '>' { 237 } 
-                  else { 200 }; 
-        
-        // FIX: Inset UVs slightly (0.01) to prevent background bleed from neighbors
-        let u_min = 0.01; let v_min = 0.01; let u_max = 0.99; let v_max = 0.99;
-        v.push(Vertex{position:[x,y+(final_scale*aspect),0.0], tex_coords:[u_min,v_min], ao:1.0, tex_index:idx}); 
-        v.push(Vertex{position:[x+final_scale,y+(final_scale*aspect),0.0], tex_coords:[u_max,v_min], ao:1.0, tex_index:idx});
-        v.push(Vertex{position:[x+final_scale,y,0.0], tex_coords:[u_max,v_max], ao:1.0, tex_index:idx}); 
-        v.push(Vertex{position:[x,y,0.0], tex_coords:[u_min,v_max], ao:1.0, tex_index:idx});
-        i.push(*off); i.push(*off+1); i.push(*off+2); i.push(*off); i.push(*off+2); i.push(*off+3); *off += 4;
-        
-        x += final_scale;
+        for c in text.to_uppercase().chars() {
+            if c == ' ' { x += final_scale; continue; }
+            let idx = if c >= 'A' && c <= 'Z' { 200 + (c as u32 - 'A' as u32) } 
+                      else if c >= '0' && c <= '9' { 200 + 26 + (c as u32 - '0' as u32) } 
+                      else if c == '-' { 236 } 
+                      else if c == '>' { 237 } 
+                      else { 200 }; 
+            
+            let u_min = 0.01; let v_min = 0.01; let u_max = 0.99; let v_max = 0.99;
+            self.add_ui_quad(v, i, off, x, y, final_scale, final_scale * aspect, idx);
+            x += final_scale;
+        }
     }
-        let idx = if c >= 'A' && c <= 'Z' { 200 + (c as u32 - 'A' as u32) } 
-                  else if c >= '0' && c <= '9' { 200 + 26 + (c as u32 - '0' as u32) } 
-                  else if c == '-' { 236 } 
-                  else if c == '>' { 237 } 
-                  else { 200 }; 
-self.add_ui_quad(v, i, off, x, y, final_scale, final_scale*aspect, idx); 
-        x += final_scale;
-    }
-}
 pub fn render_main_menu(&mut self, menu: &MainMenu, width: u32, height: u32) -> Result<(), wgpu::SurfaceError> {
     let output = self.surface.get_current_texture()?;
     let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());

@@ -246,12 +246,7 @@ fn generate_terrain(&mut self) {
                         let wx = chunk_x_world + lx as i32;
                         let wz = chunk_z_world + lz as i32;
                         
-                        let mut height = noise_gen.get_height(wx, wz);
-                        let m = noise_gen.get_noise3d(wx as f64 * 0.008, 0.0, wz as f64 * 0.008);
-                        let c = noise_gen.get_noise3d(wx as f64 * 0.02,  0.0, wz as f64 * 0.02);
-                        let mountain = ((m.max(0.0)).powf(2.2) * 35.0) as i32;
-                        let cliff = ((c.abs()).powf(3.0) * 18.0) as i32;
-                        let mut height = noise_gen.get_height(wx, wz);
+let mut height = noise_gen.get_height(wx, wz);
                         let m = noise_gen.get_noise3d(wx as f64 * 0.008, 0.0, wz as f64 * 0.008);
                         let c = noise_gen.get_noise3d(wx as f64 * 0.02,  0.0, wz as f64 * 0.02);
                         let mountain = ((m.max(0.0)).powf(2.2) * 35.0) as i32;
