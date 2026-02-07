@@ -645,9 +645,12 @@ pub fn update_entities(&mut self, dt: f32, player: &mut Player) {
         let dist_sq = entity.position.distance_squared(player.position);
         if dist_sq < 9.0 && entity.pickup_delay <= 0.0 {
             let dir = (player.position - entity.position).normalize(); entity.position += dir * 10.0 * dt;
-            if dist_sq < 2.25 { 
+if dist_sq < 2.25 { 
                 if player.inventory.add_item(entity.item_type) { 
                     log::info!("🎁 Picked up {:?}", entity.item_type);
+                    // main.rs handles this via the player reference if we pass audio, 
+                    // but since World doesn't have AudioSystem, we log it for now 
+                    // or rely on main.rs's update loop.
                     continue; 
                 } 
             }

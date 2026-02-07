@@ -231,7 +231,8 @@ KeyCode::Digit9 => self.inventory.select_slot(8),
         self.rotation.x = self.rotation.x.clamp(-1.55, 1.55); // Clamp pitch
     }
     
-pub fn update(&mut self, dt: f32, world: &World) {
+pub fn update(&mut self, world: &crate::world::World, dt: f32, audio: &crate::AudioSystem, in_cave: bool) {
+        let was_on_ground = self.on_ground;
         if self.is_dead || self.inventory_open { return; }
         let dt = dt.min(0.1); if self.invincible_timer > 0.0 { self.invincible_timer -= dt; }
 
@@ -300,9 +301,15 @@ if in_water {
             self.velocity.y = (self.velocity.y - 5.0 * dt).max(-1.5); // Slow gravity in leaves
             if self.keys.up { self.velocity.y = 3.0; } // Climb leaves
             self.on_ground = false;
-        } else {
+} else {
             self.velocity.y -= 28.0 * dt; 
-            if self.on_ground && self.keys.up { self.velocity.y = 8.5; self.on_ground = false; } 
+if self.on_ground && (move_delta.length_squared() > 0.0) {
+                self.bob_timer += dt;
+                if self.bob_timer > 0.35 {
+                    audio.play("walk", in_cave);
+                    self.bob_timer = 0.0;
+                }
+            }
         }
 
         if move_delta.length_squared() > 0.0 {
@@ -320,10 +327,15 @@ if in_water {
              self.walk_time += dt * 10.0;
         }
         
-        let next_y = self.position.y + self.velocity.y * dt;
+let next_y = self.position.y + self.velocity.y * dt;
         if self.velocity.y <= 0.0 {
             if let Some(ground_y) = self.check_ground(world, Vec3::new(self.position.x, next_y, self.position.z)) {
-                self.position.y = ground_y; 
+if !was_on_ground {
+                    let head_p = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + self.height * 0.4).floor() as i32, z: self.position.z.floor() as i32 };
+                    let is_submerged = world.get_block(head_p).is_water();
+                    audio.play("land", is_submerged);
+                }
+                self.position.y = ground_y;
                 if !in_water && self.velocity.y < -14.0 && self.invincible_timer <= 0.0 { 
                     let dmg = (self.velocity.y.abs() - 12.0) * 0.5;
                     self.health -= dmg;

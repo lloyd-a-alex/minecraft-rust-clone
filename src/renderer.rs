@@ -51,11 +51,9 @@ impl<'a> Renderer<'a> {
 }
     pub async fn new(window: &'a Window) -> Self {
         // --- KEY FIX: Use empty flags for compatibility ---
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
-            flags: wgpu::InstanceFlags::empty(), // <--- CRITICAL FIX
-            dx12_shader_compiler: wgpu::Dx12Compiler::Fxc,
-            gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
+            ..Default::default()
         });
         
         let surface = instance.create_surface(window).unwrap();
@@ -412,7 +410,7 @@ for m in self.chunk_meshes.values() { pass.set_vertex_buffer(0, m.vertex_buffer.
         let mut uv = Vec::new(); let mut ui = Vec::new(); let mut uoff = 0;
         let aspect = self.config.width as f32 / self.config.height as f32;
 
-        // DIABOLICAL LAYOUT CONSTANTS (Defined early so bubbles can see them)
+        // DIABOLICAL LAYOUT CONSTANTS (Defined early for scope access)
         let sw = 0.12; 
         let sh = sw * aspect; 
         let sx = -(sw * 9.0) / 2.0; 
@@ -426,16 +424,16 @@ for m in self.chunk_meshes.values() { pass.set_vertex_buffer(0, m.vertex_buffer.
         const UI_BUBBLE: u32 = 243;
         if player.air < player.max_air {
             let bubble_count = (player.air / player.max_air * 10.0).ceil() as i32;
-            let bx = sx + sw * 5.0; // Perfectly aligned with hotbar right side
-            let by_bubbles = by + sh + 0.08 * aspect; // Floating above hotbar
+            let bx_bubbles = sx + sw * 5.0; 
+            let by_bubbles = by + sh + 0.08 * aspect;
             for i in 0..10 {
                 if i < bubble_count {
-                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bx + i as f32 * 0.045, by_bubbles, 0.04, 0.04 * aspect, UI_BUBBLE);
+                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bx_bubbles + i as f32 * 0.045, by_bubbles, 0.04, 0.04 * aspect, UI_BUBBLE);
                 }
             }
         }
 
-        // --- DRAW HOTBAR (Visible in Inventory too!) ---
+        // --- DRAW HOTBAR ---
         
         if player.inventory_open {
              self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240); // Dim BG

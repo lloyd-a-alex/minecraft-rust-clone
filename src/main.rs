@@ -5,10 +5,82 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
 };
 use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
+use rodio::{Decoder, OutputStream, Sink};
+use std::io::Cursor;
+use std::time::{SystemTime, UNIX_EPOCH};
+pub struct AudioSystem {
+    _stream: OutputStream,
+    stream_handle: rodio::OutputStreamHandle,
+}
+
+impl AudioSystem {
+    pub fn new() -> Self {
+        let (stream, handle) = OutputStream::try_default().unwrap();
+        Self { _stream: stream, stream_handle: handle }
+    }
+
+pub fn play(&self, sound_type: &str, in_cave: bool) {
+        let sink = Sink::try_new(&self.stream_handle).unwrap();
+        let mut dur = match sound_type {
+            "click" | "pickup" => 0.05,
+            "land" => 0.2,
+            _ => 0.12,
+        };
+        
+        // Diabolical Reverb: Increase duration and intensity if in cave
+        let reverb_factor = if in_cave { 2.5 } else { 1.0 };
+        dur *= reverb_factor;
+
+// Underwater Muffle: Shift frequencies down significantly
+        let muffle = sound_type != "click" && sound_type != "pickup" && in_cave; // Reusing in_cave logic for underwater check
+        let freq_mult = if muffle { 0.3 } else { 1.0 };
+
+        let data = match sound_type {
+            "grass" => Self::gen_noise(dur, 120.0 * freq_mult, 40.0 * freq_mult, in_cave),
+            "stone" => Self::gen_noise(dur, 300.0 * freq_mult, 150.0 * freq_mult, in_cave),
+            "sand" => Self::gen_noise(dur, 100.0 * freq_mult, 80.0 * freq_mult, in_cave),
+            "place" => Self::gen_noise(dur, 400.0 * freq_mult, 300.0 * freq_mult, in_cave),
+            "walk" => Self::gen_noise(dur, 150.0 * freq_mult, 100.0 * freq_mult, in_cave),
+            "land" => Self::gen_noise(dur, 100.0 * freq_mult, 50.0 * freq_mult, in_cave),
+            "click" => Self::gen_noise(dur, 1200.0, 1000.0, false),
+            "drop" => Self::gen_noise(dur, 600.0 * freq_mult, 400.0 * freq_mult, in_cave),
+            "pickup" => Self::gen_noise(dur, 800.0, 1400.0, false),
+            _ => Self::gen_noise(dur, 200.0 * freq_mult, 100.0 * freq_mult, in_cave),
+        };
+        sink.append(Decoder::new(Cursor::new(data)).unwrap());
+        sink.detach();
+    }
+
+    fn gen_noise(dur: f32, freq_start: f32, freq_end: f32, reverb: bool) -> Vec<u8> {
+        let spec = hound::WavSpec { channels: 1, sample_rate: 44100, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
+        let mut buf = Vec::new();
+        let mut writer = hound::WavWriter::new(Cursor::new(&mut buf), spec).unwrap();
+        let samples = (dur * 44100.0) as u32;
+        
+        let mut history = vec![0i16; 4410]; // 0.1s echo buffer
+        
+        for i in 0..samples {
+            let t = i as f32 / 44100.0;
+            let freq = freq_start + (freq_end - freq_start) * (i as f32 / samples as f32);
+            let mut sample = (f32::sin(t * freq * 2.0 * std::f32::consts::PI) * 8000.0) as i16;
+            
+            if reverb {
+                let echo_idx = i as usize % history.len();
+                let echo = history[echo_idx];
+                sample = sample.saturating_add((echo as f32 * 0.4) as i16);
+                history[echo_idx] = sample;
+            }
+            
+            writer.write_sample(sample).unwrap();
+        }
+        writer.finalize().unwrap();
+        buf
+    }
+}
 
 mod renderer; mod world; mod texture; mod player; mod logger; mod noise_gen; mod network; mod ngrok_utils;
-use renderer::Renderer; use world::{World, BlockPos, BlockType}; use player::Player; use network::{NetworkManager, Packet};
+use renderer::Renderer; use world::{World, BlockType}; use player::Player; use network::{NetworkManager, Packet};
 
 // --- MENU SYSTEM ---
 #[derive(PartialEq)] enum GameState { Menu, Playing }
@@ -85,6 +157,7 @@ let mut player = Player::new();
     let mut modifiers = winit::keyboard::ModifiersState::default(); 
     let mut win_size = (window.inner_size().width, window.inner_size().height);
     let window_clone = window.clone();
+let audio = AudioSystem::new();
     let mut last_frame = Instant::now();
 
     // Initial Cursor Logic
@@ -308,9 +381,10 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                                     } else { 
                                         player.inventory.cursor_item = Some(o); 
                                     }
-                                    player.inventory.craft(); 
+player.inventory.craft(); 
                                     player.inventory.check_recipes(); 
-                                } 
+                                    audio.play("click", false);
+                                }
                             } 
                         }
                     } else if button == MouseButton::Left {
@@ -365,8 +439,11 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                                                     }
                                                 }
                                             }
-                                            let c = world.place_block(place, actual_blk);
-                                            player.inventory.remove_one_from_hand(); 
+let c = world.place_block(place, actual_blk);
+                                            let head_p = BlockPos { x: player.position.x as i32, y: (player.position.y + 1.5) as i32, z: player.position.z as i32 };
+                                            let is_submerged = world.get_block(head_p).is_water();
+                                            audio.play("place", is_submerged);
+                                            player.inventory.remove_one_from_hand();
                                             if let Some(net) = &network_mgr { net.send_packet(Packet::BlockUpdate { pos: place, block: actual_blk }); }
                                             for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
                                         }
@@ -400,9 +477,10 @@ if key == KeyCode::Escape && pressed {
 } else if key == KeyCode::KeyE && pressed && !is_paused {
                         player.inventory_open = !player.inventory_open;
                         player.crafting_open = false; 
-                        player.keys.reset(); // RESET HERE
+player.keys.reset(); // RESET HERE
+audio.play("click", false); // Sound for opening inventory
                         if player.inventory_open { 
-                            let _ = window_clone.set_cursor_grab(CursorGrabMode::None); 
+                            let _ = window_clone.set_cursor_grab(CursorGrabMode::None);
                             window_clone.set_cursor_visible(true); 
                         } else { 
                             let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined); // Confined keeps it in window!
@@ -422,8 +500,11 @@ if key == KeyCode::Escape && pressed {
                                 let r_y = (i_u32.wrapping_mul(7).wrapping_add(py_u32) % 20) as f32 / 40.0 - 0.25;
                                 let r_z = (i_u32.wrapping_mul(19).wrapping_add(pz_u32) % 20) as f32 / 40.0 - 0.25;
                                 let jitter = glam::Vec3::new(r_x, r_y, r_z);
-                                let ent = world::ItemEntity { position: player.position + glam::Vec3::new(0.0, 1.5, 0.0), velocity: (base_dir + jitter).normalize() * 10.0, item_type: stack.item, count: 1, pickup_delay: 1.5, lifetime: 300.0, rotation: 0.0, bob_offset: i as f32 * 0.5 };
-                                world.entities.push(ent);
+let ent = world::ItemEntity { position: player.position + glam::Vec3::new(0.0, 1.5, 0.0), velocity: (base_dir + jitter).normalize() * 10.0, item_type: stack.item, count: 1, pickup_delay: 1.5, lifetime: 300.0, rotation: 0.0, bob_offset: i as f32 * 0.5 };
+world.entities.push(ent);
+                                let head_p = BlockPos { x: player.position.x as i32, y: (player.position.y + 1.5) as i32, z: player.position.z as i32 };
+                                let is_submerged = world.get_block(head_p).is_water();
+                                audio.play("drop", is_submerged);
                             }
                         }
                     } else if !is_paused && !player.inventory_open { 
@@ -529,8 +610,14 @@ if !is_paused {
                                 }
 if !spawn_found { player.respawn(); player.position = glam::Vec3::new(0.0, 80.0, 0.0); death_timer = 0.0; }
                             }
-                        } else {
-                            player.update(dt, &world);
+} else {
+                            let head_pos = BlockPos { 
+                                x: player.position.x as i32, 
+                                y: (player.position.y + 1.0) as i32, 
+                                z: player.position.z as i32 
+                            };
+                            let is_cave = world.get_light_world(head_pos) < 6;
+                            player.update(&world, dt, &audio, is_cave);
                             let (sin, cos) = player.rotation.x.sin_cos(); 
                             let (ysin, ycos) = player.rotation.y.sin_cos();
                             let dir = glam::Vec3::new(ycos * cos, sin, ysin * cos).normalize();
@@ -571,6 +658,16 @@ if Some(hit) != breaking_pos {
                                                     color_idx: tex,
                                                 });
                                             }
+let b_type = world.get_block(hit);
+                                            let s_type = match b_type {
+                                                BlockType::Grass | BlockType::Leaves | BlockType::TallGrass => "grass",
+                                                BlockType::Stone | BlockType::Cobblestone | BlockType::CoalOre => "stone",
+                                                BlockType::Sand | BlockType::Gravel => "sand",
+                                                _ => "break",
+                                            };
+let head_p = BlockPos { x: player.position.x as i32, y: (player.position.y + 1.5) as i32, z: player.position.z as i32 };
+                                            let is_submerged = world.get_block(head_p).is_water();
+                                            audio.play(s_type, is_submerged);
                                             let c = world.break_block(hit);
                                             if let Some(net) = &network_mgr { net.send_packet(Packet::BlockUpdate { pos: hit, block: BlockType::Air }); }
                                             for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }

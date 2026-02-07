@@ -44,7 +44,7 @@ println!("✨ NEW PLAYER CONNECTED: {:?} (ID: {})", addr, client_id_counter);
                     let _ = stream.set_nonblocking(false); 
                     
                     // --- INSTANT HANDSHAKE (SYNC WORLD) ---
-                    let handshake = Packet::Handshake { username: "Host".to_string(), seed };
+                   let handshake = Packet::Handshake { username: "Host".to_string(), seed };
                     let bytes = bincode::serialize(&handshake).unwrap();
                     let _ = stream.write_all(&bytes);
                     // --------------------------------------
