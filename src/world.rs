@@ -251,7 +251,12 @@ fn generate_terrain(&mut self) {
                         let c = noise_gen.get_noise3d(wx as f64 * 0.02,  0.0, wz as f64 * 0.02);
                         let mountain = ((m.max(0.0)).powf(2.2) * 35.0) as i32;
                         let cliff = ((c.abs()).powf(3.0) * 18.0) as i32;
-                        height = (height + mountain + cliff).clamp(1, (CHUNK_SIZE_Y as i32) - 2);
+                        let mut height = noise_gen.get_height(wx, wz);
+                        let m = noise_gen.get_noise3d(wx as f64 * 0.008, 0.0, wz as f64 * 0.008);
+                        let c = noise_gen.get_noise3d(wx as f64 * 0.02,  0.0, wz as f64 * 0.02);
+                        let mountain = ((m.max(0.0)).powf(2.2) * 35.0) as i32;
+                        let cliff = ((c.abs()).powf(3.0) * 18.0) as i32;
+                        height = (height + mountain + cliff).clamp(1, (CHUNK_SIZE_Y as i32) - 3);
                         
                         let river_val = noise_gen.get_river_noise(wx, wz);
                         let mut is_river = false;

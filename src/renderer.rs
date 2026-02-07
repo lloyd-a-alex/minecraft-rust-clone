@@ -229,7 +229,7 @@ fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Ve
                   else if c == '-' { 236 } 
                   else if c == '>' { 237 } 
                   else { 200 }; 
-        self.add_ui_quad(v, i, off, x, y, final_scale, final_scale*aspect, idx); 
+self.add_ui_quad(v, i, off, x, y, final_scale, final_scale*aspect, idx); 
         x += final_scale;
     }
 }
@@ -245,38 +245,25 @@ pub fn render_main_menu(&mut self, menu: &MainMenu, width: u32, height: u32) -> 
 // 1. Background (Tile Dirt - classic darkened look)
     let grid_count = 10;
     let grid_size = 2.0 / grid_count as f32;
-    for y in 0..grid_count {
-        for x in 0..grid_count {
-            let rect = crate::Rect { x: -1.0 + (x as f32 * grid_size) + grid_size/2.0, y: -1.0 + (y as f32 * grid_size) + grid_size/2.0, w: grid_size, h: grid_size };
+    for gy in 0..grid_count {
+        for gx in 0..grid_count {
+            let rx = -1.0 + (gx as f32 * grid_size) + grid_size/2.0;
+            let ry = -1.0 + (gy as f32 * grid_size) + grid_size/2.0;
             let tex_id = 2u32; // Dirt
             let u_min = (tex_id % 16) as f32 / 16.0; let v_min = (tex_id / 16) as f32 / 16.0;
             let u_max = u_min + 1.0 / 16.0; let v_max = v_min + 1.0 / 16.0;
-            // Vertices with 0.5 AO for that classic dark menu look
             let ao = 0.4;
-            vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [u_min, v_max], ao, tex_index: 0 });
-            vertices.push(Vertex { position: [rect.x + rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [u_max, v_max], ao, tex_index: 0 });
-            vertices.push(Vertex { position: [rect.x + rect.w / 2.0, rect.y + rect.h / 2.0, 0.0], tex_coords: [u_max, v_min], ao, tex_index: 0 });
-            vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y + rect.h / 2.0, 0.0], tex_coords: [u_min, v_min], ao, tex_index: 0 });
-            indices.extend_from_slice(&[idx_offset, idx_offset + 1, idx_offset + 2, idx_offset, idx_offset + 2, idx_offset + 3]);
-            idx_offset += 4;
-        }
-    }
-
-    // 1.5 Draw Massive Title
-    self.draw_text("MINECRAFT", -0.65, 0.6, 0.15, &mut vertices, &mut indices, &mut idx_offset);
-            let u_min = (tex_id % 16) as f32 / 16.0; let v_min = (tex_id / 16) as f32 / 16.0;
-            let u_max = u_min + 1.0 / 16.0; let v_max = v_min + 1.0 / 16.0;
-            vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [u_min, v_max], ao: 1.0, tex_index: 0 });
-            vertices.push(Vertex { position: [rect.x + rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [u_max, v_max], ao: 1.0, tex_index: 0 });
-            vertices.push(Vertex { position: [rect.x + rect.w / 2.0, rect.y + rect.h / 2.0, 0.0], tex_coords: [u_max, v_min], ao: 1.0, tex_index: 0 });
-            vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y + rect.h / 2.0, 0.0], tex_coords: [u_min, v_min], ao: 1.0, tex_index: 0 });
+            vertices.push(Vertex { position: [rx - grid_size / 2.0, ry - grid_size / 2.0, 0.0], tex_coords: [u_min, v_max], ao, tex_index: tex_id, light: 1.0 });
+            vertices.push(Vertex { position: [rx + grid_size / 2.0, ry - grid_size / 2.0, 0.0], tex_coords: [u_max, v_max], ao, tex_index: tex_id, light: 1.0 });
+            vertices.push(Vertex { position: [rx + grid_size / 2.0, ry + grid_size / 2.0, 0.0], tex_coords: [u_max, v_min], ao, tex_index: tex_id, light: 1.0 });
+            vertices.push(Vertex { position: [rx - grid_size / 2.0, ry + grid_size / 2.0, 0.0], tex_coords: [u_min, v_min], ao, tex_index: tex_id, light: 1.0 });
             indices.extend_from_slice(&[idx_offset, idx_offset + 1, idx_offset + 2, idx_offset, idx_offset + 2, idx_offset + 3]);
             idx_offset += 4;
         }
     }
 
     // 1.5 Draw Title
-    self.draw_text("MINECRAFT", -0.35, 0.6, 0.008, &mut vertices, &mut indices, &mut idx_offset);
+    self.draw_text("MINECRAFT", -0.65, 0.6, 0.15, &mut vertices, &mut indices, &mut idx_offset);
 
     // 2. Buttons & Text
     for btn in &menu.buttons {

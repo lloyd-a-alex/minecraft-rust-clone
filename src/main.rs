@@ -67,14 +67,7 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     // --- PLAYER & LOGIC STATE (Preserved from your code) ---
 let mut player = Player::new();
     
-    // --- DIABOLICAL SHORE SPAWN ---
-    let mut spawn_found = false;
-    for r in 0..500 {
-        let tx = (r as f32).cos() * (r as f32 * 2.0);
-        let tz = (r as f32).sin() * (r as f32 * 2.0);
-        let h = world.get_block(BlockPos{ x: tx as i32, y: 0, z: tz as i32 }); // Mock height
-        // We will refine this in the loop once chunks generate
-    }
+// --- SPAWN STATE ---
     let mut spawn_found = false;
     let mut breaking_pos: Option<BlockPos> = None;
     let mut break_progress = 0.0;
@@ -126,13 +119,12 @@ let mut player = Player::new();
                     let mut action = None;
                     for btn in &main_menu.buttons { if btn.rect.contains(ndc_x, ndc_y) { action = Some(&btn.action); break; } }
                     
-                    if let Some(act) = action {
+if let Some(act) = action {
                         match act {
                             MenuAction::Singleplayer => {
                                 world = World::new(master_seed);
                                 renderer.rebuild_all_chunks(&world);
                                 game_state = GameState::Playing;
-                                // Run your spawn logic here
                                 spawn_found = false;
                             },
                             MenuAction::Host => {
@@ -145,7 +137,6 @@ let mut player = Player::new();
                                 spawn_found = false;
                             },
                             MenuAction::Join => {
-                                // Defaulting to localhost for simplicity as text input is complex for one file
                                 network_mgr = Some(NetworkManager::join("127.0.0.1:7878".to_string()));
                                 game_state = GameState::Playing;
                                 spawn_found = false;
@@ -159,34 +150,17 @@ let mut player = Player::new();
                             },
                             MenuAction::Quit => elwt.exit(),
                         }
-if game_state == GameState::Playing {
-                    // --- INFINITE GENERATION ---
-                    let p_cx = (player.position.x / 16.0).floor() as i32;
-                    let p_cz = (player.position.z / 16.0).floor() as i32;
-                    let r_dist = 6;
-                    for dx in -r_dist..=r_dist {
-                        for dz in -r_dist..=r_dist {
-                            let target = (p_cx + dx, p_cz + dz);
-                            if !world.chunks.contains_key(&target) {
-                                // Logic to generate a chunk at target
-                                // (For now, let's trigger a rebuild if missing)
-                            }
-                        }
-                    }
 
-                    // --- DAY/NIGHT CYCLE ---
-                    let day_time = (renderer.start_time.elapsed().as_secs_f32() % 600.0) / 600.0;
-                    let sky_brightness = (day_time * std::f32::consts::PI * 2.0).sin().max(0.1);
-                            window_clone.set_cursor_grab(CursorGrabMode::Confined).or_else(|_| window_clone.set_cursor_grab(CursorGrabMode::Locked)).unwrap();
+                        if game_state == GameState::Playing {
+                            let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined).or_else(|_| window_clone.set_cursor_grab(CursorGrabMode::Locked));
                             window_clone.set_cursor_visible(false);
                             
-                            // --- YOUR SUPER SAFE SPAWN LOGIC (Copied) ---
                             log::info!("🔍 Searching for dry land...");
                             'spawn_search: for r in 0..300i32 {
                                 for x in -r..=r {
                                     for z in -r..=r {
                                         if x.abs() != r && z.abs() != r { continue; }
-                                        for y in (0..150).rev() {
+                                        for y in (0..CHUNK_SIZE_Y as i32 - 1).rev() {
                                             let b = world.get_block(BlockPos { x, y, z });
                                             if b.is_solid() {
                                                 if !b.is_water() {
@@ -406,7 +380,24 @@ let b_max = b_min + glam::Vec3::ONE;
                 let dt = (now - last_frame).as_secs_f32().min(0.1);
                 last_frame = now;
 
-                if game_state == GameState::Playing {
+if game_state == GameState::Playing {
+                    // --- INFINITE GENERATION ---
+                    let p_cx = (player.position.x / 16.0).floor() as i32;
+                    let p_cz = (player.position.z / 16.0).floor() as i32;
+                    let r_dist = 6;
+                    for dx in -r_dist..=r_dist {
+                        for dz in -r_dist..=r_dist {
+                            let target = (p_cx + dx, p_cz + dz);
+                            if !world.chunks.contains_key(&target) {
+                                // Add world generation logic here if desired
+                            }
+                        }
+                    }
+
+                    // --- DAY/NIGHT CYCLE ---
+                    let day_time = (renderer.start_time.elapsed().as_secs_f32() % 600.0) / 600.0;
+                    let _sky_brightness = (day_time * std::f32::consts::PI * 2.0).sin().max(0.1);
+
                     if let Some(network) = &mut network_mgr {
                         while let Some(pkt) = network.try_recv() {
                             match pkt {
