@@ -408,26 +408,34 @@ for m in self.chunk_meshes.values() { pass.set_vertex_buffer(0, m.vertex_buffer.
             }
         }
 
-        // UI
+// UI
         let mut uv = Vec::new(); let mut ui = Vec::new(); let mut uoff = 0;
         let aspect = self.config.width as f32 / self.config.height as f32;
+
+        // DIABOLICAL LAYOUT CONSTANTS (Defined early so bubbles can see them)
+        let sw = 0.12; 
+        let sh = sw * aspect; 
+        let sx = -(sw * 9.0) / 2.0; 
+        let by = -0.9;
         
-        if !player.inventory_open && !is_paused { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.015, -0.015*aspect, 0.03, 0.03*aspect, 240); }
-// --- DRAW AIR BUBBLES ---
+        if !player.inventory_open && !is_paused { 
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.015, -0.015 * aspect, 0.03, 0.03 * aspect, 240); 
+        }
+
+        // --- DRAW AIR BUBBLES ---
         const UI_BUBBLE: u32 = 243;
-if player.air < player.max_air {
-                let bubble_count = (player.air / player.max_air * 10.0).ceil() as i32;
-                let bx = sx + sw * 5.0; // DIABOLICAL FIX: Align perfectly with right side of hotbar
-                let by_bubbles = by + sh + 0.08 * aspect; // Positioned ABOVE the hotbar, no clipping
-                for i in 0..10 {
-                    if i < bubble_count {
-                        self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bx + i as f32 * 0.045, by_bubbles, 0.04, 0.04*aspect, UI_BUBBLE);
-                    }
+        if player.air < player.max_air {
+            let bubble_count = (player.air / player.max_air * 10.0).ceil() as i32;
+            let bx = sx + sw * 5.0; // Perfectly aligned with hotbar right side
+            let by_bubbles = by + sh + 0.08 * aspect; // Floating above hotbar
+            for i in 0..10 {
+                if i < bubble_count {
+                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bx + i as f32 * 0.045, by_bubbles, 0.04, 0.04 * aspect, UI_BUBBLE);
                 }
             }
+        }
 
         // --- DRAW HOTBAR (Visible in Inventory too!) ---
-        let sw = 0.12; let sh = sw * aspect; let sx = -(sw * 9.0)/2.0; let by = -0.9;
         
         if player.inventory_open {
              self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240); // Dim BG
