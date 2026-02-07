@@ -27,6 +27,7 @@ struct VertexOutput {
     @location(0) tex_coords: vec2<f32>,
     @location(1) ao: f32,
     @location(2) depth: f32,
+    @location(3) light: f32,
 };
 
 @vertex
@@ -47,7 +48,8 @@ fn vs_main(model: VertexInput) -> VertexOutput {
     let u = (u_idx + model.tex_coords.x) * u_step;
     let v = (v_idx + model.tex_coords.y) * v_step;
     
-    out.tex_coords = vec2<f32>(u, v);
+out.tex_coords = vec2<f32>(u, v);
+    out.light = model.light;
     return out;
 }
 
@@ -96,7 +98,8 @@ fn vs_ui(model: VertexInput) -> VertexOutput {
     let u = (u_idx + model.tex_coords.x) * u_step;
     let v = (v_idx + model.tex_coords.y) * v_step;
     
-    out.tex_coords = vec2<f32>(u, v);
+out.tex_coords = vec2<f32>(u, v);
+    out.light = 1.0;
     return out;
 }
 

@@ -227,7 +227,6 @@ fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Ve
                       else if c == '>' { 237 } 
                       else { 200 }; 
             
-            let u_min = 0.01; let v_min = 0.01; let u_max = 0.99; let v_max = 0.99;
             self.add_ui_quad(v, i, off, x, y, final_scale, final_scale * aspect, idx);
             x += final_scale;
         }
@@ -355,13 +354,9 @@ let is_underwater = if world.get_block(eye_bp).is_water() { 1.0f32 } else { 0.0f
 for m in self.chunk_meshes.values() { pass.set_vertex_buffer(0, m.vertex_buffer.slice(..)); pass.set_index_buffer(m.index_buffer.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..m.index_count, 0, 0..1); }
             if !ent_v.is_empty() { pass.set_vertex_buffer(0, self.entity_vertex_buffer.slice(..)); pass.set_index_buffer(self.entity_index_buffer.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..ent_i.len() as u32, 0, 0..1); }
             
-            // --- BREAKING CRACKS OVERLAY ---
-if self.break_progress > 0.0 {
-                let mut crack_v: Vec<Vertex> = Vec::new(); let mut crack_i: Vec<u32> = Vec::new(); let mut crack_off = 0;
-                let crack_idx = (self.break_progress * 9.0) as u32 + 210;
-                // We need the targeted face from the raycast (this logic should move or be passed)
-                // For now, draw cracks on all sides of the breaking block slightly offset
-                // (Optimized: in a real build we'd raycast again to find the specific face)
+// --- BREAKING CRACKS OVERLAY (STUB) ---
+            if self.break_progress > 0.0 {
+                // Future crack logic
             }
         }
 

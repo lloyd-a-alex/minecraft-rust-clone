@@ -469,9 +469,9 @@ if game_state == GameState::Playing {
                                         }}
                                     }
 if !spawn_found { player.position = glam::Vec3::new(0.0, 80.0, 0.0); player.velocity = glam::Vec3::ZERO; }
-                                }
-                            },
+                                },
                                 Packet::PlayerMove { id, x, y, z, ry } => {
+
                                     if let Some(p) = world.remote_players.iter_mut().find(|p| p.id == id) { p.position = glam::Vec3::new(x,y,z); p.rotation = ry; } 
                                     else { world.remote_players.push(world::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); }
                                 },
@@ -502,14 +502,12 @@ if !spawn_found { player.position = glam::Vec3::new(0.0, 80.0, 0.0); player.velo
                                         }
 }}
                                 }
-                                if !spawn_found { player.respawn(); player.position = glam::Vec3::new(0.0, 80.0, 0.0); death_timer = 0.0; }
+if !spawn_found { player.respawn(); player.position = glam::Vec3::new(0.0, 80.0, 0.0); death_timer = 0.0; }
                             }
                         } else {
-
                             player.update(dt, &world);
-                            
-                            // TARGETING & BREAKING
-                            let (sin, cos) = player.rotation.x.sin_cos(); let (ysin, ycos) = player.rotation.y.sin_cos();
+                            let (sin, cos) = player.rotation.x.sin_cos(); 
+                            let (ysin, ycos) = player.rotation.y.sin_cos();
                             let dir = glam::Vec3::new(ycos * cos, sin, ysin * cos).normalize();
                             let ray_res = world.raycast(player.position + glam::Vec3::new(0.0, player.height*0.4, 0.0), dir, 5.0);
                             let current_target = ray_res.map(|(h, _)| h);
@@ -522,13 +520,13 @@ if !spawn_found { player.position = glam::Vec3::new(0.0, 80.0, 0.0); player.velo
                                     } else { break_grace_timer = 0.5; }
                                     
                                     if Some(hit) == breaking_pos {
-                                        let blk = world.get_block(hit); let tool = player.inventory.get_selected_item().unwrap_or(BlockType::Air);
-let is_correct_tool = tool.get_tool_class() == blk.get_best_tool_type();
+                                        let blk = world.get_block(hit); 
+                                        let tool = player.inventory.get_selected_item().unwrap_or(BlockType::Air);
+                                        let is_correct_tool = tool.get_tool_class() == blk.get_best_tool_type();
                                         let speed = if is_correct_tool || blk.get_best_tool_type() == "none" { tool.get_tool_speed() } else { 1.0 };
                                         let h = blk.get_hardness();
                                         if h > 0.0 { break_progress += (speed / h) * dt; } else { break_progress = 1.1; }
                                         if break_progress >= 1.0 {
-                                            // DURABILITY LOGIC
                                             if let Some(stack) = &mut player.inventory.slots[player.inventory.selected_hotbar_slot] {
                                                 if stack.item.is_tool() {
                                                     let damage = if is_correct_tool { 1 } else { 2 };
@@ -536,17 +534,12 @@ let is_correct_tool = tool.get_tool_class() == blk.get_best_tool_type();
                                                     else { player.inventory.slots[player.inventory.selected_hotbar_slot] = None; }
                                                 }
                                             }
-                                            // --- PARTICLE EMISSION ---
                                             let b_type = world.get_block(hit);
                                             let (tex, _, _) = b_type.get_texture_indices();
                                             for _ in 0..8 {
                                                 renderer.particles.push(renderer::Particle {
                                                     pos: glam::Vec3::new(hit.x as f32 + 0.5, hit.y as f32 + 0.5, hit.z as f32 + 0.5),
-                                                    vel: glam::Vec3::new(
-                                                        (rand::random::<f32>() - 0.5) * 4.0,
-                                                        rand::random::<f32>() * 5.0,
-                                                        (rand::random::<f32>() - 0.5) * 4.0,
-                                                    ),
+                                                    vel: glam::Vec3::new((rand::random::<f32>() - 0.5) * 4.0, rand::random::<f32>() * 5.0, (rand::random::<f32>() - 0.5) * 4.0),
                                                     life: 1.0,
                                                     color_idx: tex,
                                                 });
@@ -571,10 +564,9 @@ let is_correct_tool = tool.get_tool_class() == blk.get_best_tool_type();
                         Err(_) => {},
                     }
                 } else {
-                    // RENDER MENU
                     if let Err(_) = renderer.render_main_menu(&main_menu, win_size.0, win_size.1) { renderer.resize(win_size.0, win_size.1); }
                 }
-            },
+            }
             Event::AboutToWait => window.request_redraw(),
             _ => {}
         }
