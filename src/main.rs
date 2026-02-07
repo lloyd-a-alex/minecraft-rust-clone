@@ -151,6 +151,45 @@ if let Some(act) = action {
                             MenuAction::Quit => elwt.exit(),
                         }
 
+if game_state == GameState::Menu && pressed && button == MouseButton::Left {
+                    let ndc_x = (cursor_pos.0 as f32 / win_size.0 as f32) * 2.0 - 1.0;
+                    let ndc_y = 1.0 - (cursor_pos.1 as f32 / win_size.1 as f32) * 2.0;
+                    
+                    let mut action = None;
+                    for btn in &main_menu.buttons { if btn.rect.contains(ndc_x, ndc_y) { action = Some(&btn.action); break; } }
+                    
+                    if let Some(act) = action {
+                        match act {
+                            MenuAction::Singleplayer => {
+                                world = World::new(master_seed);
+                                renderer.rebuild_all_chunks(&world);
+                                game_state = GameState::Playing;
+                                spawn_found = false;
+                            },
+                            MenuAction::Host => {
+                                log::info!("Starting online hosting...");
+                                if let Some(addr) = ngrok_utils::start_ngrok_tunnel("7878") { log::info!("✅ SERVER LIVE: {}", addr); } 
+                                network_mgr = Some(NetworkManager::host("7878".to_string(), master_seed));
+                                world = World::new(master_seed);
+                                renderer.rebuild_all_chunks(&world);
+                                game_state = GameState::Playing;
+                                spawn_found = false;
+                            },
+                            MenuAction::Join => {
+                                network_mgr = Some(NetworkManager::join("127.0.0.1:7878".to_string()));
+                                game_state = GameState::Playing;
+                                spawn_found = false;
+                            },
+                            MenuAction::Stress => {
+                                let exe = std::env::current_exe().unwrap();
+                                for _ in 0..5 { std::process::Command::new(&exe).arg("--join-localhost").spawn().unwrap(); }
+                                network_mgr = Some(NetworkManager::host("7878".to_string(), master_seed));
+                                game_state = GameState::Playing;
+                                spawn_found = false;
+                            },
+                            MenuAction::Quit => elwt.exit(),
+                        }
+
                         if game_state == GameState::Playing {
                             let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined).or_else(|_| window_clone.set_cursor_grab(CursorGrabMode::Locked));
                             window_clone.set_cursor_visible(false);
@@ -182,8 +221,7 @@ if let Some(act) = action {
                         }
                     }
                 } else if game_state == GameState::Playing {
-                    // YOUR IN-GAME MOUSE LOGIC
-if player.inventory_open && pressed {
+                    if player.inventory_open && pressed {
                         let (mx, my) = cursor_pos; 
                         let (w, h) = (win_size.0 as f32, win_size.1 as f32);
                         let ndc_x = (mx as f32 / w) * 2.0 - 1.0; 
@@ -299,63 +337,64 @@ if player.inventory_open && pressed {
                         }
                     } else if button == MouseButton::Left {
                         left_click = pressed;
-} else if button == MouseButton::Right && pressed && !player.inventory_open {
-                    let (sin, cos) = player.rotation.x.sin_cos(); 
-                    let (ysin, ycos) = player.rotation.y.sin_cos();
-                    let dir = glam::Vec3::new(ycos * cos, sin, ysin * cos).normalize();
-                    
-                    if let Some((hit, place)) = world.raycast(player.position + glam::Vec3::new(0.0, player.height * 0.4, 0.0), dir, 5.0) {
-                        let targeted_block = world.get_block(hit);
-                        let held_item = player.inventory.get_selected_item().unwrap_or(BlockType::Air);
+                    } else if button == MouseButton::Right && pressed && !player.inventory_open {
+                        let (sin, cos) = player.rotation.x.sin_cos(); 
+                        let (ysin, ycos) = player.rotation.y.sin_cos();
+                        let dir = glam::Vec3::new(ycos * cos, sin, ysin * cos).normalize();
+                        
+                        if let Some((hit, place)) = world.raycast(player.position + glam::Vec3::new(0.0, player.height * 0.4, 0.0), dir, 5.0) {
+                            let targeted_block = world.get_block(hit);
+                            let held_item = player.inventory.get_selected_item().unwrap_or(BlockType::Air);
 
-                        // 1. Interaction Logic (Bucket/Farming/UI)
-                        if held_item == BlockType::BucketEmpty && targeted_block == BlockType::Water {
-                            world.place_block(hit, BlockType::Air);
-                            player.inventory.slots[player.inventory.selected_hotbar_slot] = Some(player::ItemStack::new(BlockType::BucketWater, 1));
-                            renderer.update_chunk(hit.x / 16, hit.z / 16, &world);
-                        } else if held_item == BlockType::BucketWater {
-                            world.place_block(place, BlockType::Water);
-                            player.inventory.slots[player.inventory.selected_hotbar_slot] = Some(player::ItemStack::new(BlockType::BucketEmpty, 1));
-                            renderer.update_chunk(place.x / 16, place.z / 16, &world);
-                        } else if held_item.get_tool_class() == "hoe" && (targeted_block == BlockType::Grass || targeted_block == BlockType::Dirt) {
-                            world.place_block(hit, BlockType::FarmlandDry);
-                            renderer.update_chunk(hit.x / 16, hit.z / 16, &world);
-                        } else if targeted_block == BlockType::CraftingTable {
-                            player.inventory_open = true; 
-                            player.crafting_open = true;
-                            let _ = window_clone.set_cursor_grab(CursorGrabMode::None); 
-                            window_clone.set_cursor_visible(true);
-                        } else {
-                            // 2. Block Placement Logic
-                            let p_min = player.position - glam::Vec3::new(player.radius, player.height * 0.5, player.radius);
-                            let p_max = player.position + glam::Vec3::new(player.radius, player.height * 0.5, player.radius);
-                            let b_min = glam::Vec3::new(place.x as f32, place.y as f32, place.z as f32);
-                            let b_max = b_min + glam::Vec3::ONE;
+                            // 1. Interaction Logic (Bucket/Farming/UI)
+                            if held_item == BlockType::BucketEmpty && targeted_block == BlockType::Water {
+                                world.place_block(hit, BlockType::Air);
+                                player.inventory.slots[player.inventory.selected_hotbar_slot] = Some(player::ItemStack::new(BlockType::BucketWater, 1));
+                                renderer.update_chunk(hit.x / 16, hit.z / 16, &world);
+                            } else if held_item == BlockType::BucketWater {
+                                world.place_block(place, BlockType::Water);
+                                player.inventory.slots[player.inventory.selected_hotbar_slot] = Some(player::ItemStack::new(BlockType::BucketEmpty, 1));
+                                renderer.update_chunk(place.x / 16, place.z / 16, &world);
+                            } else if held_item.get_tool_class() == "hoe" && (targeted_block == BlockType::Grass || targeted_block == BlockType::Dirt) {
+                                world.place_block(hit, BlockType::FarmlandDry);
+                                renderer.update_chunk(hit.x / 16, hit.z / 16, &world);
+                            } else if targeted_block == BlockType::CraftingTable {
+                                player.inventory_open = true; 
+                                player.crafting_open = true;
+                                let _ = window_clone.set_cursor_grab(CursorGrabMode::None); 
+                                window_clone.set_cursor_visible(true);
+                            } else {
+                                // 2. Block Placement Logic
+                                let p_min = player.position - glam::Vec3::new(player.radius, player.height * 0.5, player.radius);
+                                let p_max = player.position + glam::Vec3::new(player.radius, player.height * 0.5, player.radius);
+                                let b_min = glam::Vec3::new(place.x as f32, place.y as f32, place.z as f32);
+                                let b_max = b_min + glam::Vec3::ONE;
 
-                            let intersect = p_min.x < b_max.x - 0.1 && p_max.x > b_min.x + 0.1 && 
-                                            p_min.y < b_max.y && p_max.y > b_min.y && 
-                                            p_min.z < b_max.z - 0.1 && p_max.z > b_min.z + 0.1;
+                                let intersect = p_min.x < b_max.x - 0.1 && p_max.x > b_min.x + 0.1 && 
+                                                p_min.y < b_max.y && p_max.y > b_min.y && 
+                                                p_min.z < b_max.z - 0.1 && p_max.z > b_min.z + 0.1;
 
-                            if !intersect {
-                                if let Some(blk) = player.inventory.get_selected_item() {
-                                    if !blk.is_tool() && !blk.is_item() {
-                                        let mut actual_blk = blk;
-                                        // Double Chest Logic
-                                        if blk == BlockType::Chest {
-                                            for (dx, dz) in &[(1,0), (-1,0), (0,1), (0,-1)] {
-                                                let neighbor_pos = BlockPos { x: place.x + dx, y: place.y, z: place.z + dz };
-                                                if world.get_block(neighbor_pos) == BlockType::Chest {
-                                                    world.place_block(neighbor_pos, BlockType::ChestLeft);
-                                                    actual_blk = BlockType::ChestRight;
-                                                    renderer.update_chunk(neighbor_pos.x / 16, neighbor_pos.z / 16, &world);
-                                                    break;
+                                if !intersect {
+                                    if let Some(blk) = player.inventory.get_selected_item() {
+                                        if !blk.is_tool() && !blk.is_item() {
+                                            let mut actual_blk = blk;
+                                            // Double Chest Logic
+                                            if blk == BlockType::Chest {
+                                                for (dx, dz) in &[(1,0), (-1,0), (0,1), (0,-1)] {
+                                                    let neighbor_pos = BlockPos { x: place.x + dx, y: place.y, z: place.z + dz };
+                                                    if world.get_block(neighbor_pos) == BlockType::Chest {
+                                                        world.place_block(neighbor_pos, BlockType::ChestLeft);
+                                                        actual_blk = BlockType::ChestRight;
+                                                        renderer.update_chunk(neighbor_pos.x / 16, neighbor_pos.z / 16, &world);
+                                                        break;
+                                                    }
                                                 }
                                             }
+                                            let c = world.place_block(place, actual_blk);
+                                            player.inventory.remove_one_from_hand(); 
+                                            if let Some(net) = &network_mgr { net.send_packet(Packet::BlockUpdate { pos: place, block: actual_blk }); }
+                                            for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
                                         }
-                                        let c = world.place_block(place, actual_blk);
-                                        player.inventory.remove_one_from_hand(); 
-                                        if let Some(net) = &network_mgr { net.send_packet(Packet::BlockUpdate { pos: place, block: actual_blk }); }
-                                        for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
                                     }
                                 }
                             }

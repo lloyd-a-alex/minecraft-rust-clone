@@ -35,6 +35,7 @@ pub enum BlockType {
     BucketEmpty = 46, BucketWater = 47,
     FarmlandDry = 48, FarmlandWet = 49,
     Gravel = 50, Clay = 51, Sandstone = 52, Obsidian = 53, Cactus = 54,
+    Coal = 76, IronIngotItem = 77, GoldIngotItem = 78, DiamondItem = 79, // Added missing items
     GoldBlock = 120, IronBlock = 121, DiamondBlock = 122,
     Ice = 501, Mycelium = 502, LilyPad = 503, Vine = 504,
     Rose = 55, Dandelion = 56, DeadBush = 57, TallGrass = 58, Sugarcane = 59,
@@ -538,7 +539,7 @@ pub fn get_light_world(&self, pos: BlockPos) -> u8 {
         if block_type != BlockType::Air && block_type != BlockType::Bedrock && !block_type.is_water() {
              let mut rng = SimpleRng::new(pos.x as u64 ^ pos.z as u64 ^ pos.y as u64);
              let velocity = Vec3::new(rng.gen_range(-2.0, 2.0), 4.0, rng.gen_range(-2.0, 2.0));
-             let drop_item = match block_type { BlockType::Stone => BlockType::Cobblestone, BlockType::CoalOre => BlockType::Coal, BlockType::IronOre => BlockType::IronOre, BlockType::DiamondOre => BlockType::Diamond, BlockType::Grass => BlockType::Dirt, _ => block_type };
+             let drop_item = match block_type { BlockType::Stone => BlockType::Cobblestone, BlockType::CoalOre => BlockType::Coal, BlockType::IronOre => BlockType::IronOre, BlockType::DiamondOre => BlockType::DiamondItem, BlockType::Grass => BlockType::Dirt, _ => block_type };
              self.entities.push(ItemEntity { position: Vec3::new(pos.x as f32 + 0.5, pos.y as f32 + 0.5, pos.z as f32 + 0.5), velocity, item_type: drop_item, count: 1, pickup_delay: 1.0, lifetime: 300.0, rotation: 0.0, bob_offset: rng.next_f32() * 10.0 });
         }
 self.set_block_world(pos, BlockType::Air);
