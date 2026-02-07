@@ -244,22 +244,16 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                             window_clone.set_cursor_visible(false);
                             
                             log::info!("🔍 Searching for dry land...");
-                            'spawn_search: for r in 0..500i32 {
+'spawn_search: for r in 0..1000i32 {
                                 for x in -r..=r {
                                     for z in -r..=r {
                                         if x.abs() != r && z.abs() != r { continue; }
-                                        for y in (world::WATER_LEVEL..world::CHUNK_SIZE_Y as i32 - 1).rev() {
-                                            let b = world.get_block(BlockPos { x, y, z });
-                                            if b.is_solid() && !b.is_water() {
-                                                let head_check = world.get_block(BlockPos { x, y: y + 1, z });
-                                                if head_check == BlockType::Air {
-                                                    player.position = glam::Vec3::new(x as f32 + 0.5, y as f32 + 2.5, z as f32 + 0.5);
-                                                    player.spawn_timer = 2.0; // Invincible and locked during chunk load
-                                                    spawn_found = true;
-                                                    log::info!("✅ Dry land found at: {}, {}, {}", x, y, z);
-                                                    break 'spawn_search;
-                                                }
-                                            }
+                                        let h = world.get_height_at(x, z);
+                                        if h > world::WATER_LEVEL as i32 + 2 {
+                                            player.position = glam::Vec3::new(x as f32 + 0.5, h as f32 + 2.5, z as f32 + 0.5);
+                                            spawn_found = true;
+                                            log::info!("✅ Spawned on dry land: {}, {}, {}", x, h, z);
+                                            break 'spawn_search;
                                         }
                                     }
                                 }
@@ -473,15 +467,12 @@ if key == KeyCode::Escape && pressed {
                             player.inventory_open = false; 
                             let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); window_clone.set_cursor_visible(false);
                             if let Some(c) = player.inventory.cursor_item { player.inventory.add_item(c.item); player.inventory.cursor_item = None; }
+                        } else if is_paused {
+                            is_paused = false;
+                            let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); window_clone.set_cursor_visible(false);
                         } else {
-                            is_paused = !is_paused;
-                            if is_paused { 
-                                let _ = window_clone.set_cursor_grab(CursorGrabMode::None); 
-                                window_clone.set_cursor_visible(true); 
-                            } else { 
-                                let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); 
-                                window_clone.set_cursor_visible(false); 
-                            }
+                            is_paused = true;
+                            let _ = window_clone.set_cursor_grab(CursorGrabMode::None); window_clone.set_cursor_visible(true);
                         }
 } else if key == KeyCode::KeyE && pressed && !is_paused {
                         player.inventory_open = !player.inventory_open;
@@ -520,6 +511,9 @@ world.entities.push(ent);
                         player.handle_input(key, pressed);
                         if pressed && key == KeyCode::Space && !player.is_flying && player.on_ground { player.velocity.y = 8.0; }
                         if pressed && key == KeyCode::KeyF { player.is_flying = !player.is_flying; if player.is_flying { player.velocity = glam::Vec3::ZERO; } }
+                        if pressed && key == KeyCode::KeyN { player.is_noclip = !player.is_noclip; player.is_flying = player.is_noclip; }
+                        if pressed && key == KeyCode::Equal { player.admin_speed = (player.admin_speed + 1.0).min(10.0); }
+                        if pressed && key == KeyCode::Minus { player.admin_speed = (player.admin_speed - 1.0).max(1.0); }
                         if key == KeyCode::ControlLeft { player.is_sprinting = pressed; }
                         if pressed {
                             let slot = match key { KeyCode::Digit1=>Some(0), KeyCode::Digit2=>Some(1), KeyCode::Digit3=>Some(2), KeyCode::Digit4=>Some(3), KeyCode::Digit5=>Some(4), KeyCode::Digit6=>Some(5), KeyCode::Digit7=>Some(6), KeyCode::Digit8=>Some(7), KeyCode::Digit9=>Some(8), _=>None };
@@ -709,8 +703,14 @@ renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.
                 }
             }
 Event::AboutToWait => {
-                if game_state == GameState::Playing && !is_paused && !player.inventory_open {
-                    // Try Locked first, fallback to Confined to prevent escaping to taskbar
+if game_state == GameState::Playing && !is_paused && !player.inventory_open {
+                    let p_cx = (player.position.x / 16.0).floor() as i32;
+                    let p_cz = (player.position.z / 16.0).floor() as i32;
+                    let newly_generated = world.generate_terrain_around(p_cx, p_cz, 6);
+                    for (cx, cz) in newly_generated {
+                        renderer.update_chunk(cx, cz, &world);
+                    }
+
                     if window.set_cursor_grab(CursorGrabMode::Locked).is_err() {
                         let _ = window.set_cursor_grab(CursorGrabMode::Confined);
                     }

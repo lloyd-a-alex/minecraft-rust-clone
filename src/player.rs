@@ -147,7 +147,9 @@ pub struct Player {
     pub hotbar: crate::Hotbar, // Fixed import
     
     // New fields required by Main Menu & Gameplay logic
-    pub is_flying: bool,
+pub is_flying: bool,
+    pub is_noclip: bool, // NEW
+    pub admin_speed: f32, // NEW
     pub is_sprinting: bool,
     pub health: f32,
     pub max_health: f32,
@@ -191,7 +193,9 @@ Player {
             keys: PlayerKeys::default(),
             hotbar: crate::Hotbar::new(),
             
-            is_flying: false,
+is_flying: false,
+            is_noclip: false,
+            admin_speed: 1.0,
             is_sprinting: false,
             health: 20.0,
             max_health: 20.0,
@@ -286,7 +290,10 @@ let feet_bp = BlockPos { x: self.position.x.floor() as i32, y: self.position.y.f
         let mut move_delta = Vec3::ZERO;
         if self.keys.forward { move_delta += forward; } if self.keys.backward { move_delta -= forward; }
         if self.keys.right { move_delta += right; } if self.keys.left { move_delta -= right; }
-        if move_delta.length_squared() > 0.0 { move_delta = move_delta.normalize() * self.speed * dt; }
+        if move_delta.length_squared() > 0.0 { 
+            let speed_mult = if self.is_flying { self.admin_speed * 4.0 } else { 1.0 };
+            move_delta = move_delta.normalize() * self.speed * speed_mult * dt; 
+        }
         
         // Physics & Block Modifiers
 let chest_bp = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + self.height * 0.3).floor() as i32, z: self.position.z.floor() as i32 };
@@ -327,18 +334,17 @@ if self.on_ground && (move_delta.length_squared() > 0.0) {
             }
         }
 
-        if move_delta.length_squared() > 0.0 {
+if move_delta.length_squared() > 0.0 {
              let next_x = self.position.x + move_delta.x;
-             // X Movement
-             if !self.check_collision_horizontal(world, Vec3::new(next_x, self.position.y, self.position.z)) { 
-                 self.position.x = next_x; 
-             }
-             
              let next_z = self.position.z + move_delta.z;
-             // Z Movement
-             if !self.check_collision_horizontal(world, Vec3::new(self.position.x, self.position.y, next_z)) { 
-                 self.position.z = next_z; 
-             } 
+
+             if self.is_noclip {
+                 self.position.x = next_x;
+                 self.position.z = next_z;
+             } else {
+                 if !self.check_collision_horizontal(world, Vec3::new(next_x, self.position.y, self.position.z)) { self.position.x = next_x; }
+                 if !self.check_collision_horizontal(world, Vec3::new(self.position.x, self.position.y, next_z)) { self.position.z = next_z; }
+             }
              self.walk_time += dt * 10.0;
         }
         

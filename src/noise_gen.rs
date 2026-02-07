@@ -58,36 +58,26 @@ pub fn get_height(&self, x: i32, z: i32) -> i32 {
         let xf = x as f64;
         let zf = z as f64;
 
-        // DIABOLICAL BETA GENERATION: Layered Octaves
-        // Octave 1: Continental scale (Big shapes)
-        let c = self.get_noise3d(xf * 0.001, 0.0, zf * 0.001);
-        // Octave 2: Erosion (Valleys and hills)
-        let e = self.get_noise3d(xf * 0.01, 100.0, zf * 0.01);
-        // Octave 3: Detail (Surface bumps)
-        let d = self.get_noise3d(xf * 0.04, 200.0, zf * 0.04);
-
-        // Beta Logic: Combinatorial terrain
-        let mut h = 64.0; // Beta sea level
+        // DIABOLICAL MULTI-OCTAVE NOISE
+        let n1 = self.get_noise3d(xf * 0.003, 0.0, zf * 0.003) * 40.0; // Macro
+        let n2 = self.get_noise3d(xf * 0.015, 11.1, zf * 0.015) * 15.0; // Hills
+        let n3 = self.get_noise3d(xf * 0.05, 22.2, zf * 0.05) * 4.0;   // Bumps
         
-        if c > 0.1 {
-            // Mountainous: c increases height exponentially
-            h += (c * 50.0) + (e * 20.0) + (d * 4.0);
-        } else if c < -0.1 {
-            // Oceans: deep floors
-            h += (c * 30.0) + (e * 5.0);
-        } else {
-            // Rolling Plains: smooth transition
-            h += (e * 12.0) + (d * 2.0);
+        // Use n1 as a mask for mountains
+        let mut h = 64.0 + n1 + n2 + n3;
+        
+        // If the macro noise is high, sharpen the peaks for "Natural Mountains"
+        if n1 > 15.0 {
+            h += (n1 - 15.0).powf(1.8) * 0.8;
         }
 
-        h.clamp(5.0, 125.0) as i32
+        h.clamp(10.0, 120.0) as i32
     }
 
-    pub fn get_river_noise(&self, x: i32, z: i32) -> f64 {
-        // Snakey rivers
-        let val = self.get_noise3d(x as f64 * 0.006, 500.0, z as f64 * 0.006);
-        // Add turbulence
-        val + self.get_noise3d(x as f64 * 0.03, 500.0, z as f64 * 0.03) * 0.1
+pub fn get_river_noise(&self, x: i32, z: i32) -> f64 {
+        // Wider, smoother rivers that don't cut to bedrock
+        let val = self.get_noise3d(x as f64 * 0.004, 500.0, z as f64 * 0.004);
+        val.abs() 
     }
 
 pub fn get_biome(&self, x: i32, z: i32, height: i32) -> &'static str {

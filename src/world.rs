@@ -230,10 +230,51 @@ pub remote_players: Vec<RemotePlayer>,
 }
 
 impl World {
-    pub fn new(seed: u32) -> Self {
+pub fn new(seed: u32) -> Self {
         let mut world = World { chunks: HashMap::new(), entities: Vec::new(), remote_players: Vec::new(), seed };
-        world.generate_terrain();
+        world.generate_terrain_around(0, 0, 6);
         world
+    }
+
+    pub fn generate_terrain_around(&mut self, center_x: i32, center_z: i32, radius: i32) -> Vec<(i32, i32)> {
+        let mut new_chunks = Vec::new();
+        let noise_gen = NoiseGenerator::new(self.seed);
+        for cx in (center_x - radius)..=(center_x + radius) {
+            for cz in (center_z - radius)..=(center_z + radius) {
+                if !self.chunks.contains_key(&(cx, cz)) {
+                    self.generate_single_chunk(cx, cz, &noise_gen);
+                    new_chunks.push((cx, cz));
+                }
+            }
+        }
+        new_chunks
+    }
+
+    fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator) {
+        let mut chunk = Chunk::new();
+        let chunk_x_world = cx * 16;
+        let chunk_z_world = cz * 16;
+        for lx in 0..CHUNK_SIZE_X {
+            for lz in 0..CHUNK_SIZE_Z {
+                let wx = chunk_x_world + lx as i32;
+                let wz = chunk_z_world + lz as i32;
+                let height = noise_gen.get_height(wx, wz);
+                for y in 0..CHUNK_SIZE_Y {
+                    let y_i32 = y as i32;
+                    let mut block = BlockType::Air;
+                    if y_i32 <= height {
+                        if y_i32 == 0 { block = BlockType::Bedrock; }
+                        else if y_i32 == height { block = BlockType::Grass; }
+                        else if y_i32 > height - 3 { block = BlockType::Dirt; }
+                        else { block = BlockType::Stone; }
+                    } else if y_i32 <= WATER_LEVEL {
+                        block = BlockType::Water;
+                    }
+                    if block != BlockType::Air { chunk.set_block(lx, y, lz, block); }
+                }
+            }
+        }
+        self.chunks.insert((cx, cz), chunk);
     }
 fn generate_terrain(&mut self) {
         let noise_gen = NoiseGenerator::new(self.seed);
@@ -251,20 +292,16 @@ fn generate_terrain(&mut self) {
                         let wz = chunk_z_world + lz as i32;
                         
 let mut height = noise_gen.get_height(wx, wz);
-                        let m = noise_gen.get_noise3d(wx as f64 * 0.008, 0.0, wz as f64 * 0.008);
-                        let c = noise_gen.get_noise3d(wx as f64 * 0.02,  0.0, wz as f64 * 0.02);
-                        let mountain = ((m.max(0.0)).powf(2.2) * 35.0) as i32;
-                        let cliff = ((c.abs()).powf(3.0) * 18.0) as i32;
-                        height = (height + mountain + cliff).clamp(1, (CHUNK_SIZE_Y as i32) - 3);
-                        
                         let river_val = noise_gen.get_river_noise(wx, wz);
                         let mut is_river = false;
                         
-                        // Rivers
-                        if river_val.abs() < 0.08 {
-                            let depth_factor = (0.08 - river_val.abs()) / 0.08;
-                            height = (height as f32 * (1.0 - depth_factor as f32) + (WATER_LEVEL - 3) as f32 * depth_factor as f32) as i32;
+                        // Shallow, natural rivers
+                        if river_val < 0.04 {
                             is_river = true;
+                            let river_depth = ((0.04 - river_val) / 0.04) * 6.0; 
+                            height = (height as f32 - river_depth as f32) as i32;
+                            // Ensure riverbed isn't too high
+                            if height > WATER_LEVEL - 1 { height = WATER_LEVEL - 1; }
                         }
                         
                         let biome = noise_gen.get_biome(wx, wz, height);
@@ -307,28 +344,23 @@ let mut height = noise_gen.get_height(wx, wz);
                                     else if biome == "desert" { BlockType::Sand } 
                                     else { BlockType::Dirt }; 
                                 } else { 
-                                    // Top Soil
-                                    if height > 72 && biome != "desert" { 
-                                        block = BlockType::Stone;
+// Top Soil & Biome Surface
+                                    if y_i32 >= 90 { 
+                                        block = BlockType::Snow; // High Mountains
                                     } else if is_river { 
-                                        if height < WATER_LEVEL { block = BlockType::Dirt; } else { block = BlockType::Sand; }
-                                    } else if height >= 85 { 
-                                        block = BlockType::Snow; 
+                                        block = BlockType::Sand; // Riverbeds
                                     } else if biome == "desert" { 
                                         block = BlockType::Sand; 
-                                    } else if height <= WATER_LEVEL + 1 { 
+                                    } else if y_i32 <= WATER_LEVEL + 1 { 
                                         block = BlockType::Sand; // Beaches
+                                    } else if y_i32 > 80 {
+                                        block = BlockType::Stone; // Rocky Peaks
                                     } else { 
                                         block = BlockType::Grass; 
                                     }
                                 }
                             } else if y_i32 <= WATER_LEVEL { 
                                 block = BlockType::Water; 
-                            }
-                            
-                            // Lava Pools Deep Down
-                            if y_i32 < 10 && block == BlockType::Air && !is_river {
-                                block = BlockType::Water; // Safety placeholder
                             }
 
                             if block != BlockType::Air { chunk.set_block(lx, y, lz, block); }
@@ -454,6 +486,12 @@ pub fn get_light_world(&self, pos: BlockPos) -> u8 {
         if pos.y < 0 || pos.y >= CHUNK_SIZE_Y as i32 { return 15; }
         if let Some(chunk) = self.chunks.get(&(cx, cz)) { chunk.get_light(lx, pos.y as usize, lz) } else { 15 }
     }
+pub fn get_height_at(&self, x: i32, z: i32) -> i32 {
+        for y in (0..CHUNK_SIZE_Y as i32).rev() {
+            if self.get_block(BlockPos { x, y, z }).is_solid() { return y; }
+        }
+        0
+    }
     pub fn get_block(&self, pos: BlockPos) -> BlockType {
         let cx = pos.x.div_euclid(CHUNK_SIZE_X as i32); let cz = pos.z.div_euclid(CHUNK_SIZE_Z as i32);
         let lx = pos.x.rem_euclid(CHUNK_SIZE_X as i32) as usize; let lz = pos.z.rem_euclid(CHUNK_SIZE_Z as i32) as usize;
@@ -575,9 +613,9 @@ self.set_block_world(pos, BlockType::Air);
                 } 
             } 
         }
-        let mut visited = HashSet::new(); 
+let mut visited = HashSet::new(); 
         let mut steps = 0;
-        let max_steps = 50; // Reduced from 200 to prevent lag
+        let max_steps = 20; // DIABOLICAL FIX: Further reduced to stop lagspikes
 while let Some(pos) = queue.pop_front() {
             if steps > max_steps { 
                 break; 

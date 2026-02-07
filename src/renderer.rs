@@ -104,7 +104,31 @@ let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         }
     }
 
-    pub fn rebuild_all_chunks(&mut self, world: &World) { self.chunk_meshes.clear(); for (key, _) in &world.chunks { self.update_chunk(key.0, key.1, world); } }
+pub fn rebuild_all_chunks(&mut self, world: &World) { 
+        self.chunk_meshes.clear(); 
+        for (key, _) in &world.chunks { self.update_chunk(key.0, key.1, world); }
+        self.update_clouds(world);
+    }
+
+    fn update_clouds(&mut self, world: &World) {
+        let mut vertices = Vec::new(); let mut indices = Vec::new(); let mut offset = 0;
+        let cloud_y = 110.0;
+        for cx in -10..10 {
+            for cz in -10..10 {
+                let wx = cx * 16; let wz = cz * 16;
+                let noise = crate::noise_gen::NoiseGenerator::new(world.seed);
+                if noise.get_noise3d(wx as f64 * 0.01, 0.0, wz as f64 * 0.01) > 0.4 {
+                    self.add_face(&mut vertices, &mut indices, &mut offset, wx, cloud_y as i32, wz, 0, 228, 1.0, 1.0);
+                    self.add_face(&mut vertices, &mut indices, &mut offset, wx, cloud_y as i32, wz, 1, 228, 1.0, 0.8);
+                }
+            }
+        }
+        if !vertices.is_empty() {
+            let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Cloud VB"), contents: bytemuck::cast_slice(&vertices), usage: BufferUsages::VERTEX });
+            let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Cloud IB"), contents: bytemuck::cast_slice(&indices), usage: BufferUsages::INDEX });
+            self.chunk_meshes.insert((999, 999), ChunkMesh { vertex_buffer: vb, index_buffer: ib, index_count: indices.len() as u32 });
+        }
+    }
 
 pub fn update_chunk(&mut self, cx: i32, cz: i32, world: &World) {
         self.chunk_meshes.remove(&(cx, cz));
@@ -245,7 +269,7 @@ pub fn render_main_menu(&mut self, menu: &MainMenu, _width: u32, _height: u32) -
         for gx in 0..grid_count {
             let rx = -1.0 + (gx as f32 * grid_size) + grid_size/2.0;
             let ry = -1.0 + (gy as f32 * grid_size) + grid_size/2.0;
-let tex_id = 2u32; // Dirt
+let tex_id = 1u32;
             let u_min = (tex_id % 32) as f32 / 32.0; let v_min = (tex_id / 32) as f32 / 32.0;
             let u_max = u_min + 1.0 / 32.0; let v_max = v_min + 1.0 / 32.0;
             let ao = 0.4;
