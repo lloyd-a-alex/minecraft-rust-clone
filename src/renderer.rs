@@ -67,9 +67,9 @@ impl<'a> Renderer<'a> {
         surface.configure(&device, &config);
 
         let atlas = TextureAtlas::new();
-        let atlas_size = Extent3d { width: 256, height: 256, depth_or_array_layers: 1 };
+        let atlas_size = Extent3d { width: 512, height: 512, depth_or_array_layers: 1 };
         let texture = device.create_texture(&TextureDescriptor { label: Some("atlas"), size: atlas_size, mip_level_count: 1, sample_count: 1, dimension: TextureDimension::D2, format: TextureFormat::Rgba8UnormSrgb, usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST, view_formats: &[] });
-        queue.write_texture(ImageCopyTexture { texture: &texture, mip_level: 0, origin: Origin3d::ZERO, aspect: TextureAspect::All }, &atlas.data, ImageDataLayout { offset: 0, bytes_per_row: Some(256 * 4), rows_per_image: Some(256) }, atlas_size);
+        queue.write_texture(ImageCopyTexture { texture: &texture, mip_level: 0, origin: Origin3d::ZERO, aspect: TextureAspect::All }, &atlas.data, ImageDataLayout { offset: 0, bytes_per_row: Some(512 * 4), rows_per_image: Some(512) }, atlas_size);
         let texture_view = texture.create_view(&TextureViewDescriptor::default());
         let sampler = device.create_sampler(&SamplerDescriptor { mag_filter: FilterMode::Nearest, min_filter: FilterMode::Nearest, mipmap_filter: FilterMode::Nearest, ..Default::default() });
 
@@ -221,17 +221,17 @@ fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Ve
 
         for c in text.to_uppercase().chars() {
             if c == ' ' { x += final_scale; continue; }
-let idx = if c >= 'A' && c <= 'Z' { 200 + (c as u32 - 'A' as u32) } 
-                      else if c >= '0' && c <= '9' { 200 + 26 + (c as u32 - '0' as u32) } 
-                      else if c == '-' { 200 + 36 } 
-                      else if c == '>' { 200 + 37 } 
-                      else { 200 };
+let idx = if c >= 'A' && c <= 'Z' { 300 + (c as u32 - 'A' as u32) } 
+                      else if c >= '0' && c <= '9' { 300 + 26 + (c as u32 - '0' as u32) } 
+                      else if c == '-' { 300 + 36 } 
+                      else if c == '>' { 300 + 37 } 
+                      else { 300 };
             
             self.add_ui_quad(v, i, off, x, y, final_scale, final_scale * aspect, idx);
             x += final_scale;
         }
     }
-pub fn render_main_menu(&mut self, menu: &MainMenu, width: u32, height: u32) -> Result<(), wgpu::SurfaceError> {
+pub fn render_main_menu(&mut self, menu: &MainMenu, _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
     let output = self.surface.get_current_texture()?;
     let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
     let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Menu") });
@@ -247,9 +247,9 @@ pub fn render_main_menu(&mut self, menu: &MainMenu, width: u32, height: u32) -> 
         for gx in 0..grid_count {
             let rx = -1.0 + (gx as f32 * grid_size) + grid_size/2.0;
             let ry = -1.0 + (gy as f32 * grid_size) + grid_size/2.0;
-            let tex_id = 2u32; // Dirt
-            let u_min = (tex_id % 16) as f32 / 16.0; let v_min = (tex_id / 16) as f32 / 16.0;
-            let u_max = u_min + 1.0 / 16.0; let v_max = v_min + 1.0 / 16.0;
+let tex_id = 2u32; // Dirt
+            let u_min = (tex_id % 32) as f32 / 32.0; let v_min = (tex_id / 32) as f32 / 32.0;
+            let u_max = u_min + 1.0 / 32.0; let v_max = v_min + 1.0 / 32.0;
             let ao = 0.4;
             vertices.push(Vertex { position: [rx - grid_size / 2.0, ry - grid_size / 2.0, 0.0], tex_coords: [u_min, v_max], ao, tex_index: tex_id, light: 1.0 });
             vertices.push(Vertex { position: [rx + grid_size / 2.0, ry - grid_size / 2.0, 0.0], tex_coords: [u_max, v_max], ao, tex_index: tex_id, light: 1.0 });
@@ -260,28 +260,28 @@ pub fn render_main_menu(&mut self, menu: &MainMenu, width: u32, height: u32) -> 
         }
     }
 
-    // 1.5 Draw Title
-    self.draw_text("MINECRAFT", -0.65, 0.6, 0.15, &mut vertices, &mut indices, &mut idx_offset);
+// 1.5 Draw Title (DIABOLICALLY BIG)
+    self.draw_text("MINECRAFT", -0.85, 0.7, 0.2, &mut vertices, &mut indices, &mut idx_offset);
 
     // 2. Buttons & Text
     for btn in &menu.buttons {
         let tex_id = if btn.hovered { 251 } else { 250 };
-        let u_min = (tex_id % 16) as f32 / 16.0; let v_min = (tex_id / 16) as f32 / 16.0;
-        let u_max = u_min + 1.0 / 16.0; let v_max = v_min + 1.0 / 16.0;
+        let u_min = (tex_id % 32) as f32 / 32.0; let v_min = (tex_id / 32) as f32 / 32.0;
+        let u_max = u_min + 1.0 / 32.0; let v_max = v_min + 1.0 / 32.0;
         let rect = &btn.rect;
-vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [u_min, v_max], ao: 1.0, tex_index: tex_id, light: 1.0 });
+        
+        // Button Quad
+        vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [u_min, v_max], ao: 1.0, tex_index: tex_id, light: 1.0 });
         vertices.push(Vertex { position: [rect.x + rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [u_max, v_max], ao: 1.0, tex_index: tex_id, light: 1.0 });
         vertices.push(Vertex { position: [rect.x + rect.w / 2.0, rect.y + rect.h / 2.0, 0.0], tex_coords: [u_max, v_min], ao: 1.0, tex_index: tex_id, light: 1.0 });
         vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y + rect.h / 2.0, 0.0], tex_coords: [u_min, v_min], ao: 1.0, tex_index: tex_id, light: 1.0 });
         indices.extend_from_slice(&[idx_offset, idx_offset + 1, idx_offset + 2, idx_offset, idx_offset + 2, idx_offset + 3]);
         idx_offset += 4;
 
-        let px = (btn.rect.x + 1.0) * 0.5 * width as f32;
-        let py = (1.0 - btn.rect.y) * 0.5 * height as f32;
-        let text_w = btn.text.len() as f32 * 14.0;
-        self.draw_text(&btn.text, (px - text_w / 2.0) / width as f32 * 2.0 - 1.0,
-                       1.0 - (py - 10.0) / height as f32 * 2.0,
-                       0.003, &mut vertices, &mut indices, &mut idx_offset);
+        // Button Text (Centered and readable)
+        let text_scale = 0.06;
+        let center_offset = (btn.text.len() as f32 * text_scale) / 2.0;
+        self.draw_text(&btn.text, rect.x - center_offset, rect.y - 0.02, text_scale, &mut vertices, &mut indices, &mut idx_offset);
     }
 
     // Render Pass
@@ -443,7 +443,7 @@ if let Some(stack) = &player.inventory.slots[i] {
                     let (t, _, _) = stack.item.get_texture_indices();
                     self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, by+0.02*aspect, sw-0.04, sh-0.04*aspect, t);
                     // Shifted text so it doesn't overlap slots
-                    if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x + 0.065, by + 0.02, 0.035, &mut uv, &mut ui, &mut uoff); }
+if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x + 0.07, by + 0.02, 0.04, &mut uv, &mut ui, &mut uoff); }
                     
                     // DURABILITY BAR
                     if stack.item.is_tool() {

@@ -55,10 +55,10 @@ pub fn check_recipes(&mut self) {
         
         let mut result = None;
 
-        // 1. LOG -> 4 PLANKS (Any single log)
+// 1. LOG -> 4 PLANKS (EXACTLY one log)
         let log_count = g.iter().filter(|&&id| id == 4).count();
         let other_count = g.iter().filter(|&&id| id != 0 && id != 4).count();
-        if log_count > 0 && other_count == 0 {
+        if log_count == 1 && other_count == 0 {
             result = Some((BlockType::Planks, 4));
         }
 

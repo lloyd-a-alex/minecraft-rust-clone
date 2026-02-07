@@ -60,7 +60,7 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
 // --- GAME STATE ---
     let mut game_state = GameState::Menu;
     let mut main_menu = MainMenu::new_main();
-    let mut pause_menu = MainMenu::new_pause();
+    let pause_menu = MainMenu::new_pause();
     let mut network_mgr: Option<NetworkManager> = None;
     
     // If CLI args provided, jump straight to game
@@ -400,12 +400,12 @@ if key == KeyCode::Escape && pressed {
 } else if key == KeyCode::KeyE && pressed && !is_paused {
                         player.inventory_open = !player.inventory_open;
                         player.crafting_open = false; 
+                        player.keys.reset(); // RESET HERE
                         if player.inventory_open { 
-                            player.keys.reset(); // STOP INFINITE MOVE GLITCH
                             let _ = window_clone.set_cursor_grab(CursorGrabMode::None); 
                             window_clone.set_cursor_visible(true); 
                         } else { 
-                            let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); 
+                            let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined); // Confined keeps it in window!
                             window_clone.set_cursor_visible(false); 
                         }
                     } else if key == KeyCode::KeyQ && pressed && !is_paused && !player.inventory_open {
@@ -602,9 +602,12 @@ renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.
                 }
             }
 Event::AboutToWait => {
-                // Ensure cursor stays locked if we are playing and not in menus
                 if game_state == GameState::Playing && !is_paused && !player.inventory_open {
-                    let _ = window.set_cursor_grab(CursorGrabMode::Locked);
+                    // Try Locked first, fallback to Confined to prevent escaping to taskbar
+                    if window.set_cursor_grab(CursorGrabMode::Locked).is_err() {
+                        let _ = window.set_cursor_grab(CursorGrabMode::Confined);
+                    }
+                    window.set_cursor_visible(false);
                 }
                 window.request_redraw();
             },

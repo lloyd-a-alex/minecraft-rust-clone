@@ -37,10 +37,10 @@ fn vs_main(model: VertexInput) -> VertexOutput {
     out.depth = out.clip_position.w;
     out.ao = model.ao;
     
-    // Texture Atlas Logic (Simple Grid)
-    let atlas_size = 16.0; 
-    let u_idx = f32(model.tex_index % 16u);
-    let v_idx = f32(model.tex_index / 16u);
+// Texture Atlas Logic (Simple Grid)
+    let atlas_size = 32.0;
+let u_idx = f32(model.tex_index % 32u);
+    let v_idx = f32(model.tex_index / 32u);
     
     let u_step = 1.0 / atlas_size;
     let v_step = 1.0 / atlas_size;
@@ -90,9 +90,9 @@ fn vs_ui(model: VertexInput) -> VertexOutput {
     out.ao = 1.0;
     
     // Texture Atlas Logic (Same as vs_main)
-    let atlas_size = 16.0; 
-    let u_idx = f32(model.tex_index % 16u);
-    let v_idx = f32(model.tex_index / 16u);
+    let atlas_size = 32.0;
+let u_idx = f32(model.tex_index % 32u);
+    let v_idx = f32(model.tex_index / 32u);
     let u_step = 1.0 / atlas_size;
     let v_step = 1.0 / atlas_size;
     let u = (u_idx + model.tex_coords.x) * u_step;

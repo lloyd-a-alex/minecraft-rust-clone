@@ -6,9 +6,9 @@ pub struct TextureAtlas {
 }
 
 impl TextureAtlas {
-    pub fn new() -> Self {
-        let atlas_width = 256;
-        let atlas_height = 256;
+pub fn new() -> Self {
+        let atlas_width = 512;
+        let atlas_height = 512;
         let total_pixels = atlas_width * atlas_height;
         let rgba_bytes = (total_pixels * 4) as usize;
         let mut data = vec![0u8; rgba_bytes];
@@ -140,7 +140,7 @@ impl TextureAtlas {
         Self::clear_tile(&mut data, block_size, atlas_width, UI_BAR);
         Self::generate_ui_bar_data(&mut data, block_size, atlas_width, UI_BAR);
 
-Self::generate_font(&mut data, block_size, atlas_width, 200);
+Self::generate_font(&mut data, block_size, atlas_width, 300);
 
         // --- 9. BREAKING CRACKS (Indices 210-219) ---
         for i in 0..10 { Self::generate_cracks(&mut data, block_size, atlas_width, 210 + i, i as f32 / 9.0); }
@@ -358,7 +358,8 @@ fn generate_birch_side(data: &mut [u8], size: u32, w: u32, idx: u32) {
         Self::place_texture(data, size, w, idx, &p);
     }
 
-fn generate_spruce_wood(data: &mut [u8], size: u32, w: u32, idx: u32) {
+#[allow(dead_code)]
+    fn generate_spruce_wood(data: &mut [u8], size: u32, w: u32, idx: u32) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for y in 0..size {
             for x in 0..size {
@@ -926,14 +927,13 @@ fn generate_font(data: &mut [u8], size: u32, w: u32, start_idx: u32) {
             [0xE, 0x11, 0x11, 0x13, 0xD], [0x1E, 0x11, 0x1E, 0x12, 0x11], [0xF, 0x10, 0xE, 0x1, 0x1E], [0x1F, 0x4, 0x4, 0x4, 0x4],
             [0x11, 0x11, 0x11, 0x11, 0xE], [0x11, 0x11, 0x11, 0xA, 0x4], [0x11, 0x11, 0x15, 0x15, 0xA], [0x11, 0xA, 0x4, 0xA, 0x11],
             [0x11, 0x11, 0xA, 0x4, 0x4], [0x1F, 0x2, 0x4, 0x8, 0x1F], 
-            // 0-3
             [0xE, 0x11, 0x13, 0x15, 0xE], [0x4, 0xC, 0x4, 0x4, 0xE], [0xE, 0x11, 0x2, 0x4, 0x1F], [0xE, 0x11, 0x6, 0x11, 0xE], 
-            // 4-9
             [0x9, 0x9, 0xF, 0x1, 0x1], [0x1F, 0x10, 0x1E, 0x1, 0x1E], [0xE, 0x10, 0x1E, 0x11, 0xE], [0x1F, 0x2, 0x4, 0x8, 0x8], [0xE, 0x11, 0xE, 0x11, 0xE], [0xE, 0x11, 0x1E, 0x1, 0xE],
-            // ->
             [0x0, 0x0, 0xF, 0x0, 0x0], [0x0, 0x2, 0x4, 0x8, 0x0],
         ];
-for (i, _) in chars.iter().enumerate() {
+        for (i, _) in chars.iter().enumerate() {
+            let idx = start_idx + i as u32;
+            Self::clear_tile(data, size, w, idx); // DIABOLICAL FIX: Wipe the tile first so no blocks show through!
             let mut p = vec![0u8; (size * size * 4) as usize];
             let pattern = patterns[i];
             for y in 0..5 {
@@ -942,13 +942,13 @@ for (i, _) in chars.iter().enumerate() {
                     if (row >> (4 - x)) & 1 == 1 {
                         let sx = x * 3; let sy = y * 3;
                         for dy in 0..3 { for dx in 0..3 {
-                            let idx = (((sy + dy) * size as usize + (sx + dx)) * 4) as usize;
-                            if idx + 3 < p.len() { p[idx]=255; p[idx+1]=255; p[idx+2]=255; p[idx+3]=255; }
+                            let px_idx = (((sy + dy) * size as usize + (sx + dx)) * 4) as usize;
+                            if px_idx + 3 < p.len() { p[px_idx]=255; p[px_idx+1]=255; p[px_idx+2]=255; p[px_idx+3]=255; }
                         }}
                     }
                 }
             }
-            Self::place_texture(data, size, w, start_idx + i as u32, &p);
+            Self::place_texture(data, size, w, idx, &p);
         }
     }
 fn generate_bucket(data: &mut [u8], size: u32, w: u32, idx: u32, water: bool) {
