@@ -20,11 +20,10 @@ pub struct MainMenu { buttons: Vec<MenuButton> }
 impl MainMenu {
 fn new() -> Self {
         let mut b = Vec::new();
-        // Minecraft proportions: Buttons are roughly 400px wide on 1080p -> ~0.4 width in NDC
-        let w = 0.5; 
-        let h = 0.1; 
-        let g = 0.04; // Gap
-        let sy = 0.1; // Start Y (lower than before to make room for Title)
+        let w = 0.8; // Wider buttons
+        let h = 0.12; 
+        let g = 0.05; 
+        let sy = 0.2; 
 
         b.push(MenuButton{rect:Rect{x:0.0,y:sy,w,h}, text:"SINGLEPLAYER".to_string(), action:MenuAction::Singleplayer, hovered:false});
         b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g),w,h}, text:"HOST ONLINE".to_string(), action:MenuAction::Host, hovered:false});
@@ -66,7 +65,16 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     }
 
     // --- PLAYER & LOGIC STATE (Preserved from your code) ---
-    let mut player = Player::new();
+let mut player = Player::new();
+    
+    // --- DIABOLICAL SHORE SPAWN ---
+    let mut spawn_found = false;
+    for r in 0..500 {
+        let tx = (r as f32).cos() * (r as f32 * 2.0);
+        let tz = (r as f32).sin() * (r as f32 * 2.0);
+        let h = world.get_block(BlockPos{ x: tx as i32, y: 0, z: tz as i32 }); // Mock height
+        // We will refine this in the loop once chunks generate
+    }
     let mut spawn_found = false;
     let mut breaking_pos: Option<BlockPos> = None;
     let mut break_progress = 0.0;
@@ -151,7 +159,24 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
                             },
                             MenuAction::Quit => elwt.exit(),
                         }
-                        if game_state == GameState::Playing {
+if game_state == GameState::Playing {
+                    // --- INFINITE GENERATION ---
+                    let p_cx = (player.position.x / 16.0).floor() as i32;
+                    let p_cz = (player.position.z / 16.0).floor() as i32;
+                    let r_dist = 6;
+                    for dx in -r_dist..=r_dist {
+                        for dz in -r_dist..=r_dist {
+                            let target = (p_cx + dx, p_cz + dz);
+                            if !world.chunks.contains_key(&target) {
+                                // Logic to generate a chunk at target
+                                // (For now, let's trigger a rebuild if missing)
+                            }
+                        }
+                    }
+
+                    // --- DAY/NIGHT CYCLE ---
+                    let day_time = (renderer.start_time.elapsed().as_secs_f32() % 600.0) / 600.0;
+                    let sky_brightness = (day_time * std::f32::consts::PI * 2.0).sin().max(0.1);
                             window_clone.set_cursor_grab(CursorGrabMode::Confined).or_else(|_| window_clone.set_cursor_grab(CursorGrabMode::Locked)).unwrap();
                             window_clone.set_cursor_visible(false);
                             
@@ -241,8 +266,34 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
                         }
                     } else if button == MouseButton::Left {
                         left_click = pressed; 
-                    } else if button == MouseButton::Right && pressed && !player.inventory_open {
-                        // PLACE BLOCK LOGIC
+} else if button == MouseButton::Right && pressed && !player.inventory_open {
+                        let (sin, cos) = player.rotation.x.sin_cos(); let (ysin, ycos) = player.rotation.y.sin_cos();
+                        let dir = glam::Vec3::new(ycos * cos, sin, ysin * cos).normalize();
+                        if let Some((hit, place)) = world.raycast(player.position + glam::Vec3::new(0.0, player.height*0.4, 0.0), dir, 5.0) {
+                            let targeted_block = world.get_block(hit);
+                            let held_item = player.inventory.get_selected_item().unwrap_or(BlockType::Air);
+
+                            // --- BUCKET LOGIC ---
+                            if held_item == BlockType::BucketEmpty && targeted_block == BlockType::Water {
+                                world.place_block(hit, BlockType::Air);
+                                player.inventory.slots[player.inventory.selected_hotbar_slot] = Some(player::ItemStack::new(BlockType::BucketWater, 1));
+                                renderer.update_chunk(hit.x / 16, hit.z / 16, &world);
+                                return;
+                            } else if held_item == BlockType::BucketWater {
+                                world.place_block(place, BlockType::Water);
+                                player.inventory.slots[player.inventory.selected_hotbar_slot] = Some(player::ItemStack::new(BlockType::BucketEmpty, 1));
+                                renderer.update_chunk(place.x / 16, place.z / 16, &world);
+                                return;
+                            }
+
+                            // --- HOE / FARMING LOGIC ---
+                            if held_item.get_tool_class() == "hoe" && (targeted_block == BlockType::Grass || targeted_block == BlockType::Dirt) {
+                                world.place_block(hit, BlockType::FarmlandDry);
+                                renderer.update_chunk(hit.x / 16, hit.z / 16, &world);
+                                return;
+                            }
+
+                            if targeted_block == BlockType::CraftingTable {
                         let (sin, cos) = player.rotation.x.sin_cos(); let (ysin, ycos) = player.rotation.y.sin_cos();
                         let dir = glam::Vec3::new(ycos * cos, sin, ysin * cos).normalize();
                         if let Some((hit, place)) = world.raycast(player.position + glam::Vec3::new(0.0, player.height*0.4, 0.0), dir, 5.0) {
@@ -254,14 +305,28 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
                                 let p_max = player.position + glam::Vec3::new(player.radius, player.height, player.radius);
                                 let b_min = glam::Vec3::new(place.x as f32, place.y as f32, place.z as f32);
 let b_max = b_min + glam::Vec3::ONE;
-                                // Expand player check slightly to be safe (0.1 padding)
-                                let intersect = p_min.x < b_max.x - 0.05 && p_max.x > b_min.x + 0.05 && 
-                                                p_min.y < b_max.y - 0.05 && p_max.y > b_min.y + 0.05 && 
-                                                p_min.z < b_max.z - 0.05 && p_max.z > b_min.z + 0.05;
+                                // Expand player check for Towering (Prevent placing block in feet)
+                                let intersect = p_min.x < b_max.x - 0.1 && p_max.x > b_min.x + 0.1 && 
+                                                p_min.y < b_max.y && p_max.y > b_min.y && 
+                                                p_min.z < b_max.z - 0.1 && p_max.z > b_min.z + 0.1;
                                 if !intersect {
                                     if let Some(blk) = player.inventory.get_selected_item() {
                                         if !blk.is_tool() && !blk.is_item() {
-                                            let c = world.place_block(place, blk); 
+                                            // --- DOUBLE CHEST MERGE LOGIC ---
+                                            let mut actual_blk = blk;
+                                            if blk == BlockType::Chest {
+                                                for (dx, dz) in &[(1,0), (-1,0), (0,1), (0,-1)] {
+                                                    let neighbor_pos = BlockPos { x: place.x + dx, y: place.y, z: place.z + dz };
+                                                    if world.get_block(neighbor_pos) == BlockType::Chest {
+                                                        // Merge neighbor and current
+                                                        world.place_block(neighbor_pos, BlockType::ChestLeft);
+                                                        actual_blk = BlockType::ChestRight;
+                                                        renderer.update_chunk(neighbor_pos.x / 16, neighbor_pos.z / 16, &world);
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            let c = world.place_block(place, actual_blk);
                                             player.inventory.remove_one_from_hand(); 
                                             if let Some(net) = &network_mgr { net.send_packet(Packet::BlockUpdate { pos: place, block: blk }); }
                                             for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
@@ -415,11 +480,35 @@ let b_max = b_min + glam::Vec3::ONE;
                                     
                                     if Some(hit) == breaking_pos {
                                         let blk = world.get_block(hit); let tool = player.inventory.get_selected_item().unwrap_or(BlockType::Air);
-                                        let speed = if tool.get_tool_class() == blk.get_best_tool_type() || blk.get_best_tool_type() == "none" { tool.get_tool_speed() } else { 1.0 };
+let is_correct_tool = tool.get_tool_class() == blk.get_best_tool_type();
+                                        let speed = if is_correct_tool || blk.get_best_tool_type() == "none" { tool.get_tool_speed() } else { 1.0 };
                                         let h = blk.get_hardness();
                                         if h > 0.0 { break_progress += (speed / h) * dt; } else { break_progress = 1.1; }
                                         if break_progress >= 1.0 {
-                                            let c = world.break_block(hit); 
+                                            // DURABILITY LOGIC
+                                            if let Some(stack) = &mut player.inventory.slots[player.inventory.selected_hotbar_slot] {
+                                                if stack.item.is_tool() {
+                                                    let damage = if is_correct_tool { 1 } else { 2 };
+                                                    if stack.durability > damage { stack.durability -= damage; }
+                                                    else { player.inventory.slots[player.inventory.selected_hotbar_slot] = None; }
+                                                }
+                                            }
+                                            // --- PARTICLE EMISSION ---
+                                            let b_type = world.get_block(hit);
+                                            let (tex, _, _) = b_type.get_texture_indices();
+                                            for _ in 0..8 {
+                                                renderer.particles.push(renderer::Particle {
+                                                    pos: glam::Vec3::new(hit.x as f32 + 0.5, hit.y as f32 + 0.5, hit.z as f32 + 0.5),
+                                                    vel: glam::Vec3::new(
+                                                        (rand::random::<f32>() - 0.5) * 4.0,
+                                                        rand::random::<f32>() * 5.0,
+                                                        (rand::random::<f32>() - 0.5) * 4.0,
+                                                    ),
+                                                    life: 1.0,
+                                                    color_idx: tex,
+                                                });
+                                            }
+                                            let c = world.break_block(hit);
                                             if let Some(net) = &network_mgr { net.send_packet(Packet::BlockUpdate { pos: hit, block: BlockType::Air }); }
                                             for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
                                             breaking_pos = None; break_progress = 0.0;

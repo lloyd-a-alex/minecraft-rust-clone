@@ -150,8 +150,30 @@ impl TextureAtlas {
         Self::clear_tile(&mut data, block_size, atlas_width, UI_BAR);
         Self::generate_ui_bar_data(&mut data, block_size, atlas_width, UI_BAR);
 
-        Self::generate_font(&mut data, block_size, atlas_width, 200);
-// --- 9. UI BUTTONS ---
+Self::generate_font(&mut data, block_size, atlas_width, 200);
+
+        // --- 9. BREAKING CRACKS (Indices 210-219) ---
+        for i in 0..10 { Self::generate_cracks(&mut data, block_size, atlas_width, 210 + i, i as f32 / 9.0); }
+
+        // --- 10. WHEAT CROPS (Indices 220-227) ---
+        for i in 0..8 { Self::generate_wheat_stage(&mut data, block_size, atlas_width, 220 + i, i); }
+
+// --- 11. CLOUDS (Index 228) ---
+        Self::generate_noise(&mut data, block_size, atlas_width, 228, [255, 255, 255], 10);
+
+        // --- 12. SPECIALTY BLOCKS ---
+        Self::generate_generic(&mut data, block_size, atlas_width, 120, [255, 220, 0]); // Gold Block
+        Self::generate_generic(&mut data, block_size, atlas_width, 121, [230, 230, 230]); // Iron Block
+        Self::generate_generic(&mut data, block_size, atlas_width, 122, [100, 255, 255]); // Diamond Block
+        Self::generate_dirt(&mut data, block_size, atlas_width, 123); // Farmland Dry
+        Self::generate_noise(&mut data, block_size, atlas_width, 124, [60, 40, 20], 5); // Farmland Wet
+
+        // --- 13. TOOLS (HOES/BUCKETS) ---
+        for i in 41..=45 { Self::generate_tool(&mut data, block_size, atlas_width, i, [150, 150, 150]); } // Hoes
+        Self::generate_bucket(&mut data, block_size, atlas_width, 46, false); // Bucket Empty
+        Self::generate_bucket(&mut data, block_size, atlas_width, 47, true);  // Bucket Water
+
+        // --- 12. UI BUTTONS ---
         Self::generate_button(&mut data, block_size, atlas_width, 250, false); // Normal
         Self::generate_button(&mut data, block_size, atlas_width, 251, true);  // Hovered
 TextureAtlas { data, size: block_size, grid_size: grid_width_in_blocks }
@@ -335,15 +357,25 @@ fn generate_birch_side(data: &mut [u8], size: u32, w: u32, idx: u32) {
         for y in 0..size {
             for x in 0..size {
                 let i = ((y * size + x) * 4) as usize;
-                let noise = ((x * 7 + y * 13) % 20) as i32 - 10;
-                p[i] = (235 + noise).clamp(0,255) as u8; 
-                p[i+1] = (230 + noise).clamp(0,255) as u8; 
-                p[i+2] = (225 + noise).clamp(0,255) as u8; 
-                p[i+3] = 255;
-                // Horizontal dark knots (Natural Birch look)
-                if (y % 6 == 0 && (x > 2 && x < 10)) || (y % 11 == 0 && x > 8) {
-                    p[i]=60; p[i+1]=55; p[i+2]=50;
+                let noise = ((x * 17 + y * 31) % 15) as i32;
+                p[i] = (230 + noise) as u8; p[i+1] = (225 + noise) as u8; p[i+2] = (220 + noise) as u8; p[i+3] = 255;
+                // Dark knots (More organic)
+                if (y % 7 == 0 && x > 4 && x < 12) || (y % 13 == 0 && x < 6) {
+                    p[i]=40; p[i+1]=40; p[i+2]=40;
                 }
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_spruce_wood(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y * size + x) * 4) as usize;
+                let grain = ((y * 11 + x * 3) % 10) as i32;
+                p[i] = (60 - grain) as u8; p[i+1] = (45 - grain) as u8; p[i+2] = (35 - grain) as u8; p[i+3] = 255;
+                if x % 8 == 0 { p[i]=40; p[i+1]=30; p[i+2]=25; } // Bark texture
             }
         }
         Self::place_texture(data, size, w, idx, &p);
@@ -603,32 +635,178 @@ fn generate_obsidian(data: &mut [u8], size: u32, w: u32, idx: u32) {
     }
     
     // --- STUBS FOR COMPLETENESS ---
-    fn generate_deadbush(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [100, 60, 20]); }
-    fn generate_tallgrass(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [50, 200, 50]); }
-    fn generate_sugarcane(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [100, 255, 100]); }
-    fn generate_sapling(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [34, 139, 34]); }
-    fn generate_bookshelf(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [100, 50, 20]); }
-    fn generate_tnt_side(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [200, 50, 50]); }
-    fn generate_tnt_top(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [200, 200, 200]); }
-    fn generate_pumpkin_face(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [255, 140, 0]); }
-fn generate_melon_side(data: &mut [u8], size: u32, w: u32, idx: u32) {
+fn generate_deadbush(data: &mut [u8], size: u32, w: u32, idx: u32) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for y in 0..size {
             for x in 0..size {
-                let i = ((y*size+x)*4) as usize;
-                let stripe = (x + y/2) % 6 < 2;
-                if stripe { p[i]=50; p[i+1]=120; p[i+2]=30; }
-                else { p[i]=80; p[i+1]=180; p[i+2]=60; }
+                let i = ((y * size + x) * 4) as usize;
+                // Jagged, thin brown branches
+                let is_branch = (x as i32 - y as i32).abs() < 2 || (x as i32 + y as i32 - 16).abs() < 2;
+                if is_branch && y > 4 { p[i]=110; p[i+1]=80; p[i+2]=40; p[i+3]=255; }
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_tallgrass(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y * size + x) * 4) as usize;
+                let is_stalk = (x == 4 || x == 8 || x == 12) && y > 2;
+                if is_stalk { p[i]=60; p[i+1]=140; p[i+2]=40; p[i+3]=255; }
+                else if (x + y) % 4 == 0 && y > 6 { p[i]=80; p[i+1]=160; p[i+2]=60; p[i+3]=255; }
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_sugarcane(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y * size + x) * 4) as usize;
+                let is_ring = y % 5 == 0;
+                if x > 5 && x < 10 {
+                    if is_ring { p[i]=120; p[i+1]=200; p[i+2]=80; }
+                    else { p[i]=100; p[i+1]=255; p[i+2]=100; }
+                    p[i+3]=255;
+                }
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_sapling(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y * size + x) * 4) as usize;
+                let is_stem = x == 8 && y > 10;
+                let is_leaf = (x as i32 - 8).abs() < 4 && (y as i32 - 8).abs() < 4;
+                if is_stem { p[i]=100; p[i+1]=60; p[i+2]=20; p[i+3]=255; }
+                else if is_leaf { p[i]=40; p[i+1]=180; p[i+2]=40; p[i+3]=255; }
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_bookshelf(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y * size + x) * 4) as usize;
+                let is_shelf = y % 8 < 2;
+                if is_shelf { p[i]=160; p[i+1]=100; p[i+2]=50; }
+                else {
+                    let book_col = match x % 5 { 0=>[200,50,50], 1=>[50,200,50], 2=>[50,50,200], 3=>[200,200,50], _=>[200,200,200] };
+                    p[i]=book_col[0]; p[i+1]=book_col[1]; p[i+2]=book_col[2];
+                }
                 p[i+3]=255;
             }
         }
         Self::place_texture(data, size, w, idx, &p);
     }
-    fn generate_mossy(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [100, 120, 100]); }
-    fn generate_stick(data: &mut [u8], size: u32, w: u32, idx: u32) { Self::generate_generic(data, size, w, idx, [100, 50, 0]); }
-    fn generate_ingot(data: &mut [u8], size: u32, w: u32, idx: u32, c: [u8; 3]) { Self::generate_generic(data, size, w, idx, c); }
-    fn generate_gem(data: &mut [u8], size: u32, w: u32, idx: u32, c: [u8; 3]) { Self::generate_generic(data, size, w, idx, c); }
-    fn generate_meat(data: &mut [u8], size: u32, w: u32, idx: u32, c: [u8; 3]) { Self::generate_generic(data, size, w, idx, c); }
+
+    fn generate_tnt_side(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y * size + x) * 4) as usize;
+                let is_white_band = y > 6 && y < 10;
+                if is_white_band { p[i]=255; p[i+1]=255; p[i+2]=255; }
+                else { p[i]=200; p[i+1]=40; p[i+2]=20; }
+                p[i+3]=255;
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_tnt_top(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y * size + x) * 4) as usize;
+                let is_fuse = (x as i32 - 8).abs() < 2 && (y as i32 - 8).abs() < 2;
+                if is_fuse { p[i]=50; p[i+1]=50; p[i+2]=50; }
+                else { p[i]=200; p[i+1]=40; p[i+2]=20; }
+                p[i+3]=255;
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_pumpkin_face(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y * size + x) * 4) as usize;
+                let is_eye = (y == 4 || y == 5) && (x == 4 || x == 5 || x == 10 || x == 11);
+                let is_mouth = y > 9 && y < 12 && x > 3 && x < 12;
+                if is_eye || is_mouth { p[i]=40; p[i+1]=20; p[i+2]=0; }
+                else { p[i]=230; p[i+1]=120; p[i+2]=0; }
+                p[i+3]=255;
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_mossy(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y * size + x) * 4) as usize;
+                let is_moss = (x * 7 + y * 3) % 11 < 4;
+                if is_moss { p[i]=60; p[i+1]=100; p[i+2]=40; }
+                else { p[i]=120; p[i+1]=120; p[i+2]=120; }
+                p[i+3]=255;
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_stick(data: &mut [u8], size: u32, w: u32, idx: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for i in 0..size {
+            let idx = ((i * size + i) * 4) as usize;
+            if idx + 3 < p.len() { p[idx]=100; p[idx+1]=60; p[idx+2]=20; p[idx+3]=255; }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_ingot(data: &mut [u8], size: u32, w: u32, idx: u32, c: [u8; 3]) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 6..10 {
+            for x in 4..12 {
+                let i = ((y * size + x) * 4) as usize;
+                p[i]=c[0]; p[i+1]=c[1]; p[i+2]=c[2]; p[i+3]=255;
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_gem(data: &mut [u8], size: u32, w: u32, idx: u32, c: [u8; 3]) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 4..12 {
+            for x in 4..12 {
+                let i = ((y * size + x) * 4) as usize;
+                let dist = (x as i32 - 8).abs() + (y as i32 - 8).abs();
+                if dist < 6 { p[i]=c[0]; p[i+1]=c[1]; p[i+2]=c[2]; p[i+3]=255; }
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_meat(data: &mut [u8], size: u32, w: u32, idx: u32, c: [u8; 3]) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 5..11 {
+            for x in 4..12 {
+                let i = ((y * size + x) * 4) as usize;
+                p[i]=c[0]; p[i+1]=c[1]; p[i+2]=c[2]; p[i+3]=255;
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
 
     fn generate_tool(data: &mut [u8], size: u32, w: u32, idx: u32, color: [u8; 3]) {
         let mut p = vec![0u8; (size * size * 4) as usize];
@@ -702,8 +880,36 @@ fn generate_melon_side(data: &mut [u8], size: u32, w: u32, idx: u32) {
         Self::place_texture(data, size, w, idx, &p);
     }
 
-    fn generate_ui_bar_data(data: &mut [u8], size: u32, w: u32, idx: u32) {
+fn generate_ui_bar_data(data: &mut [u8], size: u32, w: u32, idx: u32) {
         Self::generate_generic(data, size, w, idx, [200, 200, 200]);
+    }
+
+    fn generate_cracks(data: &mut [u8], size: u32, w: u32, idx: u32, intensity: f32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y * size + x) * 4) as usize;
+                // Procedural jagged cracks based on intensity
+                let seed = (x * 713 + y * 911) % 100;
+                if seed < (intensity * 40.0) as u32 {
+                    p[i]=0; p[i+1]=0; p[i+2]=0; p[i+3]=200; // Black jagged lines
+                }
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
+    }
+
+    fn generate_wheat_stage(data: &mut [u8], size: u32, w: u32, idx: u32, stage: u32) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        let height = (stage + 1) * 2;
+        let col = if stage < 7 { [100, 180, 50] } else { [200, 180, 50] }; // Green -> Yellow
+        for y in (size - height)..size {
+            for x in [4, 8, 12] {
+                let i = ((y * size + x) * 4) as usize;
+                p[i]=col[0]; p[i+1]=col[1]; p[i+2]=col[2]; p[i+3]=255;
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
     }
 
 fn generate_font(data: &mut [u8], size: u32, w: u32, start_idx: u32) {
@@ -740,5 +946,17 @@ for (i, _) in chars.iter().enumerate() {
             }
             Self::place_texture(data, size, w, start_idx + i as u32, &p);
         }
+    }
+fn generate_bucket(data: &mut [u8], size: u32, w: u32, idx: u32, water: bool) {
+        let mut p = vec![0u8; (size * size * 4) as usize];
+        for y in 4..12 {
+            for x in 4..12 {
+                let i = ((y * size + x) * 4) as usize;
+                let is_rim = y == 4 || x == 4 || x == 11 || y == 11;
+                if is_rim { p[i]=180; p[i+1]=180; p[i+2]=180; p[i+3]=255; }
+                else if water { p[i]=40; p[i+1]=60; p[i+2]=220; p[i+3]=255; }
+            }
+        }
+        Self::place_texture(data, size, w, idx, &p);
     }
 }

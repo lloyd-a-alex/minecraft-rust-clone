@@ -10,12 +10,22 @@ use crate::MainMenu; // Added Rect
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Vertex { pub position: [f32; 3], pub tex_coords: [f32; 2], pub ao: f32, pub tex_index: u32 }
+pub struct Particle { pub pos: glam::Vec3, pub vel: glam::Vec3, pub life: f32, pub color_idx: u32 }
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Vertex { pub position: [f32; 3], pub tex_coords: [f32; 2], pub ao: f32, pub tex_index: u32, pub light: f32 }
 impl Vertex {
     pub fn desc() -> VertexBufferLayout<'static> {
         VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as BufferAddress, step_mode: VertexStepMode::Vertex,
-            attributes: &[VertexAttribute { offset: 0, shader_location: 0, format: VertexFormat::Float32x3 }, VertexAttribute { offset: 12, shader_location: 1, format: VertexFormat::Float32x2 }, VertexAttribute { offset: 20, shader_location: 2, format: VertexFormat::Float32 }, VertexAttribute { offset: 24, shader_location: 3, format: VertexFormat::Uint32 }],
+            attributes: &[
+                VertexAttribute { offset: 0, shader_location: 0, format: VertexFormat::Float32x3 }, 
+                VertexAttribute { offset: 12, shader_location: 1, format: VertexFormat::Float32x2 }, 
+                VertexAttribute { offset: 20, shader_location: 2, format: VertexFormat::Float32 }, 
+                VertexAttribute { offset: 24, shader_location: 3, format: VertexFormat::Uint32 },
+                VertexAttribute { offset: 28, shader_location: 4, format: VertexFormat::Float32 }
+            ],
         }
     }
 }
@@ -23,6 +33,7 @@ impl Vertex {
 pub struct ChunkMesh { vertex_buffer: Buffer, index_buffer: Buffer, index_count: u32 }
 
 pub struct Renderer<'a> {
+    pub particles: Vec<Particle>,
     surface: Surface<'a>, device: Device, queue: Queue, pub config: SurfaceConfiguration,
     pipeline: RenderPipeline, ui_pipeline: RenderPipeline,
     depth_texture: TextureView, bind_group: BindGroup,
@@ -108,6 +119,7 @@ impl<'a> Renderer<'a> {
                 let (tex_top, tex_bot, tex_side) = block.get_texture_indices();
                 let wx = chunk_x + x as i32; let wy = y as i32; let wz = chunk_z + z as i32;
                 let h = if block.is_water() { if block.get_water_level() == 8 { 1.0 } else { block.get_water_level() as f32 / 9.0 + 0.1 } } else { 1.0 };
+        let light = world.get_light_world(BlockPos { x: wx, y: wy, z: wz }) as f32 / 15.0;
                 
                 let check = |dx, dy, dz| { let n = world.get_block(BlockPos { x: wx+dx, y: wy+dy, z: wz+dz }); n == BlockType::Air || (n.is_transparent() && n != block) };
                 if check(0, 1, 0) { self.add_face(&mut vertices, &mut indices, &mut index_offset, wx, wy, wz, 0, tex_top, h); }
@@ -142,8 +154,8 @@ if check(0, 0, -1) { self.add_face(&mut vertices, &mut indices, &mut index_offse
             5 => ([x+1.0,y,z], [x,y,z], [x,y+h,z], [x+1.0,y+h,z], [0.0,1.0], [1.0,1.0], [1.0,0.0], [0.0,0.0]),
             _ => return,
         };
-        v.push(Vertex{position:p0, tex_coords:uv0, ao:1.0, tex_index:tex}); v.push(Vertex{position:p1, tex_coords:uv1, ao:1.0, tex_index:tex});
-        v.push(Vertex{position:p2, tex_coords:uv2, ao:1.0, tex_index:tex}); v.push(Vertex{position:p3, tex_coords:uv3, ao:1.0, tex_index:tex});
+        v.push(Vertex{position:p0, tex_coords:uv0, ao:1.0, tex_index:tex, light}); v.push(Vertex{position:p1, tex_coords:uv0, ao:1.0, tex_index:tex, light});
+        v.push(Vertex{position:p2, tex_coords:uv0, ao:1.0, tex_index:tex, light}); v.push(Vertex{position:p3, tex_coords:uv0, ao:1.0, tex_index:tex, light});
         i.push(*off); i.push(*off+1); i.push(*off+2); i.push(*off); i.push(*off+2); i.push(*off+3); *off += 4;
     }
 
@@ -201,6 +213,22 @@ fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Ve
                   else if c == '-' { 236 } 
                   else if c == '>' { 237 } 
                   else { 200 }; 
+        
+        // FIX: Inset UVs slightly (0.01) to prevent background bleed from neighbors
+        let u_min = 0.01; let v_min = 0.01; let u_max = 0.99; let v_max = 0.99;
+        v.push(Vertex{position:[x,y+(final_scale*aspect),0.0], tex_coords:[u_min,v_min], ao:1.0, tex_index:idx}); 
+        v.push(Vertex{position:[x+final_scale,y+(final_scale*aspect),0.0], tex_coords:[u_max,v_min], ao:1.0, tex_index:idx});
+        v.push(Vertex{position:[x+final_scale,y,0.0], tex_coords:[u_max,v_max], ao:1.0, tex_index:idx}); 
+        v.push(Vertex{position:[x,y,0.0], tex_coords:[u_min,v_max], ao:1.0, tex_index:idx});
+        i.push(*off); i.push(*off+1); i.push(*off+2); i.push(*off); i.push(*off+2); i.push(*off+3); *off += 4;
+        
+        x += final_scale;
+    }
+        let idx = if c >= 'A' && c <= 'Z' { 200 + (c as u32 - 'A' as u32) } 
+                  else if c >= '0' && c <= '9' { 200 + 26 + (c as u32 - '0' as u32) } 
+                  else if c == '-' { 236 } 
+                  else if c == '>' { 237 } 
+                  else { 200 }; 
         self.add_ui_quad(v, i, off, x, y, final_scale, final_scale*aspect, idx); 
         x += final_scale;
     }
@@ -214,11 +242,28 @@ pub fn render_main_menu(&mut self, menu: &MainMenu, width: u32, height: u32) -> 
     let mut indices: Vec<u32> = Vec::new();
     let mut idx_offset = 0;
 
-    // 1. Background (Tile Dirt)
-    for y in -4..4 {
-        for x in -4..4 {
-            let rect = crate::Rect { x: x as f32 * 0.5, y: y as f32 * 0.5, w: 0.5, h: 0.5 };
-            let tex_id = 2u32;
+// 1. Background (Tile Dirt - classic darkened look)
+    let grid_count = 10;
+    let grid_size = 2.0 / grid_count as f32;
+    for y in 0..grid_count {
+        for x in 0..grid_count {
+            let rect = crate::Rect { x: -1.0 + (x as f32 * grid_size) + grid_size/2.0, y: -1.0 + (y as f32 * grid_size) + grid_size/2.0, w: grid_size, h: grid_size };
+            let tex_id = 2u32; // Dirt
+            let u_min = (tex_id % 16) as f32 / 16.0; let v_min = (tex_id / 16) as f32 / 16.0;
+            let u_max = u_min + 1.0 / 16.0; let v_max = v_min + 1.0 / 16.0;
+            // Vertices with 0.5 AO for that classic dark menu look
+            let ao = 0.4;
+            vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [u_min, v_max], ao, tex_index: 0 });
+            vertices.push(Vertex { position: [rect.x + rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [u_max, v_max], ao, tex_index: 0 });
+            vertices.push(Vertex { position: [rect.x + rect.w / 2.0, rect.y + rect.h / 2.0, 0.0], tex_coords: [u_max, v_min], ao, tex_index: 0 });
+            vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y + rect.h / 2.0, 0.0], tex_coords: [u_min, v_min], ao, tex_index: 0 });
+            indices.extend_from_slice(&[idx_offset, idx_offset + 1, idx_offset + 2, idx_offset, idx_offset + 2, idx_offset + 3]);
+            idx_offset += 4;
+        }
+    }
+
+    // 1.5 Draw Massive Title
+    self.draw_text("MINECRAFT", -0.65, 0.6, 0.15, &mut vertices, &mut indices, &mut idx_offset);
             let u_min = (tex_id % 16) as f32 / 16.0; let v_min = (tex_id / 16) as f32 / 16.0;
             let u_max = u_min + 1.0 / 16.0; let v_max = v_min + 1.0 / 16.0;
             vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [u_min, v_max], ao: 1.0, tex_index: 0 });
@@ -284,8 +329,22 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
         let view = output.texture.create_view(&TextureViewDescriptor::default());
         let view_proj = player.build_view_projection_matrix(self.config.width as f32 / self.config.height as f32);
         self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[view_proj]));
-        let time = self.start_time.elapsed().as_secs_f32();
-        self.queue.write_buffer(&self.time_buffer, 0, bytemuck::cast_slice(&[0.5, 0.8, 0.9, 1.0, time, 0.0, 0.0, 0.0]));
+let time = self.start_time.elapsed().as_secs_f32();
+        let eye_bp = BlockPos { x: player.position.x.floor() as i32, y: (player.position.y + player.height * 0.4).floor() as i32, z: player.position.z.floor() as i32 };
+let is_underwater = if world.get_block(eye_bp).is_water() { 1.0f32 } else { 0.0f32 };
+        
+        // BIOME FOG LOGIC
+        let noise_gen = crate::noise_gen::NoiseGenerator::new(0); // Using 0 as temp seed for biome check
+        let height = noise_gen.get_height(eye_bp.x, eye_bp.z);
+        let biome = noise_gen.get_biome(eye_bp.x, eye_bp.z, height);
+        let fog_color = match biome {
+            "swamp" => [0.3, 0.4, 0.2, 1.0],
+            "desert" => [0.8, 0.7, 0.5, 1.0],
+            "ice_plains" => [0.9, 0.9, 1.0, 1.0],
+            _ => [0.5, 0.8, 0.9, 1.0], // Default sky blue
+        };
+
+        self.queue.write_buffer(&self.time_buffer, 0, bytemuck::cast_slice(&[fog_color[0], fog_color[1], fog_color[2], fog_color[3], time, is_underwater, 0.0, 0.0]));
 
         let mut ent_v = Vec::new(); let mut ent_i = Vec::new(); let mut ent_off = 0;
         for rp in &world.remote_players {
@@ -307,8 +366,17 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
         {
             let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { label: Some("3D Pass"), color_attachments: &[Some(RenderPassColorAttachment { view: &view, resolve_target: None, ops: Operations { load: LoadOp::Clear(Color { r: 0.5, g: 0.8, b: 0.9, a: 1.0 }), store: StoreOp::Store } })], depth_stencil_attachment: Some(RenderPassDepthStencilAttachment { view: &self.depth_texture, depth_ops: Some(Operations { load: LoadOp::Clear(1.0), store: StoreOp::Store }), stencil_ops: None }), timestamp_writes: None, occlusion_query_set: None });
             pass.set_pipeline(&self.pipeline); pass.set_bind_group(0, &self.bind_group, &[]); pass.set_bind_group(1, &self.camera_bind_group, &[]); pass.set_bind_group(2, &self.time_bind_group, &[]);
-            for m in self.chunk_meshes.values() { pass.set_vertex_buffer(0, m.vertex_buffer.slice(..)); pass.set_index_buffer(m.index_buffer.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..m.index_count, 0, 0..1); }
+for m in self.chunk_meshes.values() { pass.set_vertex_buffer(0, m.vertex_buffer.slice(..)); pass.set_index_buffer(m.index_buffer.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..m.index_count, 0, 0..1); }
             if !ent_v.is_empty() { pass.set_vertex_buffer(0, self.entity_vertex_buffer.slice(..)); pass.set_index_buffer(self.entity_index_buffer.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..ent_i.len() as u32, 0, 0..1); }
+            
+            // --- BREAKING CRACKS OVERLAY ---
+            if self.break_progress > 0.0 {
+                let mut crack_v = Vec::new(); let mut crack_i = Vec::new(); let mut crack_off = 0;
+                let crack_idx = (self.break_progress * 9.0) as u32 + 210;
+                // We need the targeted face from the raycast (this logic should move or be passed)
+                // For now, draw cracks on all sides of the breaking block slightly offset
+                // (Optimized: in a real build we'd raycast again to find the specific face)
+            }
         }
 
         // UI
@@ -320,11 +388,11 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
         const UI_BUBBLE: u32 = 243;
         if player.air < player.max_air {
             let bubble_count = (player.air / player.max_air * 10.0).ceil() as i32;
-            let bx = 0.12;
-            let by_bubbles = -0.75;
+            let bx = 0.05; // Centered above hotbar
+            let by_bubbles = -0.78; // Higher up
             for i in 0..10 {
                 if i < bubble_count {
-                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bx + i as f32 * 0.04, by_bubbles, 0.03, 0.03*aspect, UI_BUBBLE);
+                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bx + i as f32 * 0.045, by_bubbles, 0.04, 0.04*aspect, UI_BUBBLE);
                 }
             }
         }
@@ -342,10 +410,24 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
                 let x = sx + (i as f32 * sw);
                 if i == player.inventory.selected_hotbar_slot { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x-0.005, by-0.005*aspect, sw+0.01, sh+0.01*aspect, 241); }
                 self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, by, sw, sh, 240);
-                if let Some(stack) = &player.inventory.slots[i] {
+if let Some(stack) = &player.inventory.slots[i] {
                     let (t, _, _) = stack.item.get_texture_indices();
                     self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, by+0.02*aspect, sw-0.04, sh-0.04*aspect, t);
                     if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x+0.01, by+0.01, 0.03, &mut uv, &mut ui, &mut uoff); }
+                    
+                    // DURABILITY BAR
+                    if stack.item.is_tool() {
+                        let max_dur = stack.item.get_max_durability();
+                        if stack.durability < max_dur {
+                            let ratio = stack.durability as f32 / max_dur as f32;
+                            let bar_w = sw * 0.7 * ratio;
+                            let bar_x = x + (sw * 0.15);
+                            let bar_y = by + 0.05 * aspect;
+                            // Color logic: Green -> Yellow -> Red
+                            let tex = if ratio > 0.5 { 244 } else if ratio > 0.2 { 245 } else { 246 }; // Use different UI bar colors
+                            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bar_x, bar_y, bar_w, 0.01 * aspect, tex);
+                        }
+                    }
                 }
             }
             if !player.inventory_open {

@@ -4,8 +4,16 @@ use crate::world::{World, BlockPos, BlockType};
 use serde::{Serialize, Deserialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ItemStack { pub item: BlockType, pub count: u8 }
-impl ItemStack { pub fn new(item: BlockType, count: u8) -> Self { Self { item, count } } }
+pub struct ItemStack { 
+    pub item: BlockType, 
+    pub count: u8,
+    pub durability: u16,
+}
+impl ItemStack { 
+    pub fn new(item: BlockType, count: u8) -> Self { 
+        Self { item, count, durability: item.get_max_durability() } 
+    } 
+}
 
 pub const INVENTORY_SIZE: usize = 36; 
 pub const HOTBAR_SIZE: usize = 9;
@@ -147,8 +155,9 @@ pub struct Player {
     pub walk_time: f32,
     pub sensitivity: f32,
     pub inventory_open: bool,
-    pub crafting_open: bool,
+pub crafting_open: bool,
     pub is_dead: bool,
+    pub bob_timer: f32,
 }
 
 #[derive(Default)] 
@@ -181,8 +190,9 @@ Player {
             walk_time: 0.0,
             sensitivity: 0.005,
             inventory_open: false,
-            crafting_open: false,
+crafting_open: false,
             is_dead: false,
+            bob_timer: 0.0,
         }
     }
     pub fn respawn(&mut self) { self.position = Vec3::new(0.0, 80.0, 0.0); self.velocity = Vec3::ZERO; self.health = self.max_health; self.is_dead = false; self.invincible_timer = 3.0; }
@@ -220,13 +230,13 @@ let feet_bp = BlockPos { x: self.position.x.floor() as i32, y: self.position.y.f
         
 // 1. DROWNING (Approx 10 seconds total air)
         if world.get_block(eye_bp).is_water() {
-            self.air -= dt * 1.0; 
+            self.air -= dt; // 1 unit per second
             if self.air <= 0.0 {
                 self.air = 0.0;
                 if self.invincible_timer <= 0.0 { self.health -= 2.0; self.invincible_timer = 1.0; }
             }
         } else {
-            self.air = (self.air + dt * 2.0).min(self.max_air);
+            self.air = (self.air + dt * 2.5).min(self.max_air); // Regenerate air
         }
 
         // 2. LAVA DAMAGE
@@ -258,20 +268,19 @@ let chest_bp = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y
         let in_leaves = matches!(current_block, BlockType::Leaves);
 
 if in_water {
-            move_delta *= 0.6; // Slower in water
+            move_delta *= 0.65;
             if self.keys.up { 
-                self.velocity.y = (self.velocity.y + 12.0 * dt).min(4.5); // Stronger float up
+                self.velocity.y = (self.velocity.y + 14.0 * dt).min(4.0); 
             } else if self.keys.down { 
-                self.velocity.y = (self.velocity.y - 12.0 * dt).max(-5.0); 
+                self.velocity.y = (self.velocity.y - 14.0 * dt).max(-4.0); 
             } else {
-                // Natural slow sink
-                self.velocity.y = (self.velocity.y - 2.0 * dt).max(-1.5);
+                self.velocity.y = (self.velocity.y - 1.5 * dt).max(-1.2); // Slower sink
             }
             self.on_ground = false;
         } else if in_leaves {
-            move_delta *= 0.7; // Movement penalty in leaves
-            self.velocity.y = (self.velocity.y - 10.0 * dt).max(-2.0); // Fall slowly through leaves
-            if self.keys.up { self.velocity.y = 3.5; } // Can "climb" leaves slowly
+            move_delta *= 0.75; // Walk through leaves
+            self.velocity.y = (self.velocity.y - 5.0 * dt).max(-1.5); // Slow gravity in leaves
+            if self.keys.up { self.velocity.y = 3.0; } // Climb leaves
             self.on_ground = false;
         } else {
             self.velocity.y -= 28.0 * dt; 
@@ -304,9 +313,11 @@ if in_water {
                 self.velocity.y = 0.0; 
                 self.on_ground = true;
             } else { self.position.y = next_y; self.on_ground = false; }
-        } else {
+} else {
             if let Some(ceil_y) = self.check_ceiling(world, Vec3::new(self.position.x, next_y, self.position.z)) {
-                self.position.y = ceil_y - self.height - 0.01; self.velocity.y = 0.0;
+                // FIX: No teleport. Just stop upward velocity and keep Y position below the ceiling.
+                self.position.y = (ceil_y - (self.height * 0.5) - 0.01).min(self.position.y);
+                self.velocity.y = 0.0;
             } else { self.position.y = next_y; }
             self.on_ground = false;
         }

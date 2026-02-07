@@ -19,6 +19,7 @@ struct VertexInput {
     @location(1) tex_coords: vec2<f32>,
     @location(2) ao: f32,
     @location(3) tex_index: u32,
+    @location(4) light: f32,
 };
 
 struct VertexOutput {
@@ -60,8 +61,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let base_color = textureSample(t_diffuse, s_diffuse, in.tex_coords);
     if (base_color.a < 0.1) { discard; }
     
-    // Simple Lighting
-    let brightness = 1.0; 
+// --- VOXEL LIGHTING ---
+    let brightness = in.light; 
     var lit_color = base_color.rgb * in.ao * brightness;
     
     // Simple Fog

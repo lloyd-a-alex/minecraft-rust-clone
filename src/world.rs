@@ -31,13 +31,20 @@ pub enum BlockType {
     WoodAxe = 26, StoneAxe = 27, IronAxe = 28, GoldAxe = 29, DiamondAxe = 30,
     WoodShovel = 31, StoneShovel = 32, IronShovel = 33, GoldShovel = 34, DiamondShovel = 35,
     WoodSword = 36, StoneSword = 37, IronSword = 38, GoldSword = 39, DiamondSword = 40,
-    Coal = 41, Gravel = 50, Clay = 51, Sandstone = 52, Obsidian = 53, Cactus = 54, 
+    WoodHoe = 41, StoneHoe = 42, IronHoe = 43, GoldHoe = 44, DiamondHoe = 45,
+    BucketEmpty = 46, BucketWater = 47,
+    FarmlandDry = 48, FarmlandWet = 49,
+    Gravel = 50, Clay = 51, Sandstone = 52, Obsidian = 53, Cactus = 54,
+    GoldBlock = 120, IronBlock = 121, DiamondBlock = 122,
     Ice = 501, Mycelium = 502, LilyPad = 503, Vine = 504,
     Rose = 55, Dandelion = 56, DeadBush = 57, TallGrass = 58, Sugarcane = 59,
-    OakSapling = 60, Glass = 61, Bookshelf = 62, TNT = 63, Pumpkin = 64, Melon = 65,
+OakSapling = 60, Glass = 61, Bookshelf = 62, TNT = 63, Pumpkin = 64, Melon = 65,
     BrickBlock = 66, MossyCobble = 67, Lava = 70, Fire = 71,
     SpruceWood = 72, SpruceLeaves = 73, BirchWood = 74, BirchLeaves = 75,
+    Wheat0 = 85, Wheat1 = 86, Wheat2 = 87, Wheat3 = 88, Wheat4 = 89, Wheat5 = 90, Wheat6 = 91, Wheat7 = 92,
+    Cloud = 95,
     CraftingTable = 100, Furnace = 101, FurnaceActive = 102, Chest = 103,
+    ChestLeft = 104, ChestRight = 105,
     WheatSeeds = 110, Wheat = 111, Bread = 112, Apple = 113, Porkchop = 114, CookedPorkchop = 115,
 }
 
@@ -84,8 +91,15 @@ match self {
             BlockType::Rose => (37, 37, 37), BlockType::Dandelion => (38, 38, 38), BlockType::DeadBush => (39, 39, 39),
             BlockType::TallGrass => (45, 45, 45), BlockType::Sugarcane => (46, 46, 46), BlockType::OakSapling => (47, 47, 47),
             BlockType::Glass => (48, 48, 48), BlockType::Bookshelf => (14, 49, 14), 
-            BlockType::TNT => (50, 51, 50), BlockType::Pumpkin => (52, 53, 52), BlockType::Melon => (54, 55, 54),
+BlockType::TNT => (50, 51, 50), BlockType::Pumpkin => (52, 53, 52), BlockType::Melon => (54, 55, 54),
+            BlockType::GoldBlock => (120, 120, 120), BlockType::IronBlock => (121, 121, 121), BlockType::DiamondBlock => (122, 122, 122),
+            BlockType::FarmlandDry => (123, 123, 123), BlockType::FarmlandWet => (124, 124, 124),
             BlockType::BrickBlock => (56, 56, 56), BlockType::MossyCobble => (57, 57, 57),
+            BlockType::Wheat0 => (220, 220, 220), BlockType::Wheat1 => (221, 221, 221),
+            BlockType::Wheat2 => (222, 222, 222), BlockType::Wheat3 => (223, 223, 223),
+            BlockType::Wheat4 => (224, 224, 224), BlockType::Wheat5 => (225, 225, 225),
+            BlockType::Wheat6 => (226, 226, 226), BlockType::Wheat7 => (227, 227, 227),
+            BlockType::Cloud => (228, 228, 228),
             BlockType::Wheat => (80, 80, 80), BlockType::Bread => (81, 81, 81), BlockType::Apple => (82, 82, 82),
             BlockType::Porkchop => (83, 83, 83), BlockType::CookedPorkchop => (84, 84, 84),
             t if t.is_tool() => { let i = *t as u32; (i, i, i) }
@@ -97,18 +111,38 @@ pub fn get_display_name(&self) -> &str {
         match self {
             BlockType::Air => "Air", BlockType::Grass => "Grass", BlockType::Dirt => "Dirt",
             BlockType::Stone => "Stone", BlockType::Wood => "Oak Log", BlockType::Leaves => "Oak Leaves",
-            BlockType::SpruceWood => "Spruce Log", BlockType::SpruceLeaves => "Spruce Leaves",
-            BlockType::BirchWood => "Birch Log", BlockType::BirchLeaves => "Birch Leaves",
             BlockType::Snow => "Snow", BlockType::Sand => "Sand", BlockType::Bedrock => "Bedrock",
             BlockType::Water => "Water", BlockType::CoalOre => "Coal Ore", BlockType::IronOre => "Iron Ore",
             BlockType::GoldOre => "Gold Ore", BlockType::DiamondOre => "Diamond Ore",
+            BlockType::RedstoneOre => "Redstone Ore", BlockType::LapisOre => "Lapis Ore",
             BlockType::Planks => "Planks", BlockType::Stick => "Stick", BlockType::Cobblestone => "Cobblestone",
             BlockType::IronIngot => "Iron Ingot", BlockType::GoldIngot => "Gold Ingot", BlockType::Diamond => "Diamond",
             BlockType::Torch => "Torch", BlockType::CraftingTable => "Crafting Table", BlockType::Furnace => "Furnace",
-            BlockType::Melon => "Melon", BlockType::Pumpkin => "Pumpkin",
-            BlockType::Rose => "Rose", BlockType::Dandelion => "Dandelion",
-            t if t.is_tool() => "Tool", 
-            _ => "Unknown"
+            BlockType::Chest | BlockType::ChestLeft | BlockType::ChestRight => "Chest",
+            BlockType::Gravel => "Gravel", BlockType::Clay => "Clay", BlockType::Sandstone => "Sandstone",
+            BlockType::Obsidian => "Obsidian", BlockType::Cactus => "Cactus", BlockType::Ice => "Ice",
+            BlockType::LilyPad => "Lily Pad", BlockType::Mycelium => "Mycelium", BlockType::Vine => "Vine",
+            BlockType::Rose => "Rose", BlockType::Dandelion => "Dandelion", BlockType::DeadBush => "Dead Bush",
+            BlockType::TallGrass => "Tall Grass", BlockType::Sugarcane => "Sugarcane", BlockType::OakSapling => "Oak Sapling",
+            BlockType::Glass => "Glass", BlockType::Bookshelf => "Bookshelf", BlockType::TNT => "TNT",
+            BlockType::Pumpkin => "Pumpkin", BlockType::Melon => "Melon", BlockType::BrickBlock => "Bricks",
+            BlockType::MossyCobble => "Mossy Cobblestone", BlockType::Lava => "Lava", BlockType::Fire => "Fire",
+            BlockType::SpruceWood => "Spruce Log", BlockType::SpruceLeaves => "Spruce Leaves",
+            BlockType::BirchWood => "Birch Log", BlockType::BirchLeaves => "Birch Leaves",
+            BlockType::WheatSeeds => "Wheat Seeds", BlockType::Wheat => "Wheat", BlockType::Bread => "Bread",
+            BlockType::Apple => "Apple", BlockType::Porkchop => "Raw Porkchop", BlockType::CookedPorkchop => "Cooked Porkchop",
+            BlockType::BucketEmpty => "Empty Bucket", BlockType::BucketWater => "Water Bucket",
+            BlockType::FarmlandDry => "Farmland", BlockType::FarmlandWet => "Hydrated Farmland",
+            BlockType::GoldBlock => "Block of Gold", BlockType::IronBlock => "Block of Iron", BlockType::DiamondBlock => "Block of Diamond",
+            t if t.is_tool() => match *t as u8 {
+                21..=25 => match *t as u8 % 5 { 1=>"Wood Pickaxe", 2=>"Stone Pickaxe", 3=>"Iron Pickaxe", 4=>"Gold Pickaxe", 0=>"Diamond Pickaxe", _=>"Pickaxe" },
+                26..=30 => match *t as u8 % 5 { 1=>"Wood Axe", 2=>"Stone Axe", 3=>"Iron Axe", 4=>"Gold Axe", 0=>"Diamond Axe", _=>"Axe" },
+                31..=35 => match *t as u8 % 5 { 1=>"Wood Shovel", 2=>"Stone Shovel", 3=>"Iron Shovel", 4=>"Gold Shovel", 0=>"Diamond Shovel", _=>"Shovel" },
+                36..=40 => match *t as u8 % 5 { 1=>"Wood Sword", 2=>"Stone Sword", 3=>"Iron Sword", 4=>"Gold Sword", 0=>"Diamond Sword", _=>"Sword" },
+                41..=45 => match *t as u8 % 5 { 1=>"Wood Hoe", 2=>"Stone Hoe", 3=>"Iron Hoe", 4=>"Gold Hoe", 0=>"Diamond Hoe", _=>"Hoe" },
+                _ => "Tool"
+            },
+            _ => "Unknown Block"
         }
     }
 
@@ -120,9 +154,22 @@ pub fn get_display_name(&self) -> &str {
 BlockType::Stone | BlockType::Cobblestone | BlockType::CoalOre => 3.0,
             BlockType::IronOre | BlockType::GoldOre | BlockType::DiamondOre => 4.5,
             BlockType::Melon | BlockType::Pumpkin => 1.0,
-            BlockType::Rose | BlockType::Dandelion | BlockType::TallGrass | BlockType::DeadBush | BlockType::OakSapling | BlockType::Sugarcane => 0.0,
+            BlockType::Rose | BlockType::Dandelion | BlockType::TallGrass | BlockType::DeadBush | BlockType::OakSapling | BlockType::Sugarcane => 0.05, // Small value so they can be mined
             _ => 1.0,
         }
+    }
+
+    pub fn get_max_durability(&self) -> u16 {
+        let u = *self as u8;
+        if u >= 21 && u <= 25 { // Pickaxes
+            match u % 5 { 1 => 60, 2 => 131, 3 => 250, 4 => 32, 0 => 1561, _ => 60 }
+        } else if u >= 26 && u <= 30 { // Axes
+            match u % 5 { 1 => 60, 2 => 131, 3 => 250, 4 => 32, 0 => 1561, _ => 60 }
+        } else if u >= 31 && u <= 35 { // Shovels
+            match u % 5 { 1 => 60, 2 => 131, 3 => 250, 4 => 32, 0 => 1561, _ => 60 }
+        } else if u >= 36 && u <= 40 { // Swords
+            match u % 5 { 1 => 60, 2 => 131, 3 => 250, 4 => 32, 0 => 1561, _ => 60 }
+        } else { 0 }
     }
     
     pub fn get_best_tool_type(&self) -> &'static str {
@@ -134,9 +181,15 @@ BlockType::Stone | BlockType::Cobblestone | BlockType::CoalOre => 3.0,
         }
     }
     
-    pub fn get_tool_class(&self) -> &'static str {
+    
+pub fn get_tool_class(&self) -> &'static str {
         let u = *self as u8;
-        if u >= 21 && u <= 25 { "pickaxe" } else if u >= 26 && u <= 30 { "axe" } else if u >= 31 && u <= 35 { "shovel" } else if u >= 36 && u <= 40 { "sword" } else { "none" }
+        if u >= 21 && u <= 25 { "pickaxe" } 
+        else if u >= 26 && u <= 30 { "axe" } 
+        else if u >= 31 && u <= 35 { "shovel" } 
+        else if u >= 36 && u <= 40 { "sword" } 
+        else if u >= 41 && u <= 45 { "hoe" }
+        else { "none" }
     }
     
     pub fn get_tool_speed(&self) -> f32 {
@@ -145,9 +198,19 @@ BlockType::Stone | BlockType::Cobblestone | BlockType::CoalOre => 3.0,
     }
 }
 
-pub struct Chunk { pub blocks: Box<[[[BlockType; CHUNK_SIZE_Z]; CHUNK_SIZE_Y]; CHUNK_SIZE_X]> }
+pub struct Chunk { 
+    pub blocks: Box<[[[BlockType; CHUNK_SIZE_Z]; CHUNK_SIZE_Y]; CHUNK_SIZE_X]>,
+    pub light: Box<[[[u8; CHUNK_SIZE_Z]; CHUNK_SIZE_Y]; CHUNK_SIZE_X]>,
+}
 impl Chunk {
-    pub fn new() -> Self { Chunk { blocks: Box::new([[[BlockType::Air; CHUNK_SIZE_Z]; CHUNK_SIZE_Y]; CHUNK_SIZE_X]) } }
+    pub fn new() -> Self { 
+        Chunk { 
+            blocks: Box::new([[[BlockType::Air; CHUNK_SIZE_Z]; CHUNK_SIZE_Y]; CHUNK_SIZE_X]),
+            light: Box::new([[[15u8; CHUNK_SIZE_Z]; CHUNK_SIZE_Y]; CHUNK_SIZE_X]),
+        } 
+    }
+    pub fn get_light(&self, x: usize, y: usize, z: usize) -> u8 { if x >= CHUNK_SIZE_X || y >= CHUNK_SIZE_Y || z >= CHUNK_SIZE_Z { return 15; } self.light[x][y][z] }
+    pub fn set_light(&mut self, x: usize, y: usize, z: usize, val: u8) { if x < CHUNK_SIZE_X && y < CHUNK_SIZE_Y && z < CHUNK_SIZE_Z { self.light[x][y][z] = val; } }
     pub fn get_block(&self, x: usize, y: usize, z: usize) -> BlockType { if x >= CHUNK_SIZE_X || y >= CHUNK_SIZE_Y || z >= CHUNK_SIZE_Z { return BlockType::Air; } self.blocks[x][y][z] }
     pub fn set_block(&mut self, x: usize, y: usize, z: usize, block: BlockType) { if x < CHUNK_SIZE_X && y < CHUNK_SIZE_Y && z < CHUNK_SIZE_Z { self.blocks[x][y][z] = block; } }
 }
@@ -380,7 +443,12 @@ fn generate_terrain(&mut self) {
             }
         }
     }
-
+pub fn get_light_world(&self, pos: BlockPos) -> u8 {
+        let cx = pos.x.div_euclid(CHUNK_SIZE_X as i32); let cz = pos.z.div_euclid(CHUNK_SIZE_Z as i32);
+        let lx = pos.x.rem_euclid(CHUNK_SIZE_X as i32) as usize; let lz = pos.z.rem_euclid(CHUNK_SIZE_Z as i32) as usize;
+        if pos.y < 0 || pos.y >= CHUNK_SIZE_Y as i32 { return 15; }
+        if let Some(chunk) = self.chunks.get(&(cx, cz)) { chunk.get_light(lx, pos.y as usize, lz) } else { 15 }
+    }
     pub fn get_block(&self, pos: BlockPos) -> BlockType {
         let cx = pos.x.div_euclid(CHUNK_SIZE_X as i32); let cz = pos.z.div_euclid(CHUNK_SIZE_Z as i32);
         let lx = pos.x.rem_euclid(CHUNK_SIZE_X as i32) as usize; let lz = pos.z.rem_euclid(CHUNK_SIZE_Z as i32) as usize;
