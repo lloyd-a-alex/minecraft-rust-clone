@@ -504,8 +504,8 @@ if !spawn_found { player.position = glam::Vec3::new(0.0, 80.0, 0.0); player.velo
                                 }
                                 if !spawn_found { player.respawn(); player.position = glam::Vec3::new(0.0, 80.0, 0.0); death_timer = 0.0; }
                             }
-                            }
                         } else {
+
                             player.update(dt, &world);
                             
                             // TARGETING & BREAKING
