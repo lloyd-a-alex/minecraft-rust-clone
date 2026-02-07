@@ -129,8 +129,6 @@ pub fn check_recipes(&mut self) {
     }
 }
 
-pub struct KeyState { pub forward: bool, pub backward: bool, pub left: bool, pub right: bool, pub up: bool, pub down: bool }
-
 #[allow(dead_code)]
 pub struct Player {
     pub position: Vec3,
@@ -156,8 +154,9 @@ pub struct Player {
     pub sensitivity: f32,
     pub inventory_open: bool,
 pub crafting_open: bool,
-    pub is_dead: bool,
+pub is_dead: bool,
     pub bob_timer: f32,
+    pub spawn_timer: f32,
 }
 
 #[derive(Default)] 
@@ -191,8 +190,9 @@ Player {
             sensitivity: 0.005,
             inventory_open: false,
 crafting_open: false,
-            is_dead: false,
+is_dead: false,
             bob_timer: 0.0,
+            spawn_timer: 0.0,
         }
     }
     pub fn respawn(&mut self) { self.position = Vec3::new(0.0, 80.0, 0.0); self.velocity = Vec3::ZERO; self.health = self.max_health; self.is_dead = false; self.invincible_timer = 3.0; }
@@ -270,8 +270,14 @@ let chest_bp = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y
 if in_water {
             move_delta *= 0.65;
             if self.keys.up { 
-                self.velocity.y = (self.velocity.y + 14.0 * dt).min(4.0); 
-            } else if self.keys.down { 
+                // Diabolical Fix: If we are near the surface, give a massive boost to "breach" onto land
+                let surface_check = world.get_block(BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + 0.8).floor() as i32, z: self.position.z.floor() as i32 });
+                if surface_check == BlockType::Air {
+                    self.velocity.y = 9.0; // Same as a regular jump to clear 1 block
+                } else {
+                    self.velocity.y = (self.velocity.y + 20.0 * dt).min(4.5); 
+                }
+            } else if self.keys.down {
                 self.velocity.y = (self.velocity.y - 14.0 * dt).max(-4.0); 
             } else {
                 self.velocity.y = (self.velocity.y - 1.5 * dt).max(-1.2); // Slower sink

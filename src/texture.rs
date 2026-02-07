@@ -368,6 +368,7 @@ fn generate_birch_side(data: &mut [u8], size: u32, w: u32, idx: u32) {
         Self::place_texture(data, size, w, idx, &p);
     }
 
+    #[allow(dead_code)]
     fn generate_spruce_wood(data: &mut [u8], size: u32, w: u32, idx: u32) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for y in 0..size {

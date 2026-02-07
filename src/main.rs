@@ -14,22 +14,26 @@ use renderer::Renderer; use world::{World, BlockPos, BlockType}; use player::Pla
 #[derive(PartialEq)] enum GameState { Menu, Playing }
 struct Rect { x: f32, y: f32, w: f32, h: f32 }
 impl Rect { fn contains(&self, nx: f32, ny: f32) -> bool { nx >= self.x - self.w/2.0 && nx <= self.x + self.w/2.0 && ny >= self.y - self.h/2.0 && ny <= self.y + self.h/2.0 } }
-enum MenuAction { Singleplayer, Host, Join, Stress, Quit }
+enum MenuAction { Singleplayer, Host, Join, Stress, Resume, Quit }
 struct MenuButton { rect: Rect, text: String, action: MenuAction, hovered: bool }
 pub struct MainMenu { buttons: Vec<MenuButton> }
 impl MainMenu {
-fn new() -> Self {
+    fn new_main() -> Self {
         let mut b = Vec::new();
-        let w = 0.8; // Wider buttons
-        let h = 0.12; 
-        let g = 0.05; 
-        let sy = 0.2; 
-
+        let w = 0.8; let h = 0.12; let g = 0.05; let sy = 0.2; 
         b.push(MenuButton{rect:Rect{x:0.0,y:sy,w,h}, text:"SINGLEPLAYER".to_string(), action:MenuAction::Singleplayer, hovered:false});
         b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g),w,h}, text:"HOST ONLINE".to_string(), action:MenuAction::Host, hovered:false});
         b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g)*2.0,w,h}, text:"JOIN GAME".to_string(), action:MenuAction::Join, hovered:false});
         b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g)*3.0,w,h}, text:"STRESS TEST".to_string(), action:MenuAction::Stress, hovered:false});
         b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g)*4.5,w,h}, text:"QUIT".to_string(), action:MenuAction::Quit, hovered:false});
+        MainMenu { buttons: b }
+    }
+
+    fn new_pause() -> Self {
+        let mut b = Vec::new();
+        let w = 0.8; let h = 0.12; let g = 0.05; let sy = 0.1;
+        b.push(MenuButton{rect:Rect{x:0.0,y:sy,w,h}, text:"RESUME GAME".to_string(), action:MenuAction::Resume, hovered:false});
+        b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g)*1.5,w,h}, text:"QUIT TO MENU".to_string(), action:MenuAction::Quit, hovered:false});
         MainMenu { buttons: b }
     }
 }
@@ -53,9 +57,10 @@ fn main() {
 let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     let mut world = World::new(master_seed); // Temp world for menu background
     
-    // --- GAME STATE ---
+// --- GAME STATE ---
     let mut game_state = GameState::Menu;
-    let mut main_menu = MainMenu::new();
+    let mut main_menu = MainMenu::new_main();
+    let mut pause_menu = MainMenu::new_pause();
     let mut network_mgr: Option<NetworkManager> = None;
     
     // If CLI args provided, jump straight to game
@@ -109,13 +114,12 @@ let mut player = Player::new();
             Event::WindowEvent { event: WindowEvent::ModifiersChanged(m), .. } => modifiers = m.state(),
             
 // --- MOUSE INPUT ---
-            Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } => {
+Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } => {
                 let pressed = state == ElementState::Pressed;
-                
+                let ndc_x = (cursor_pos.0 as f32 / win_size.0 as f32) * 2.0 - 1.0;
+                let ndc_y = 1.0 - (cursor_pos.1 as f32 / win_size.1 as f32) * 2.0;
+
                 if game_state == GameState::Menu && pressed && button == MouseButton::Left {
-                    let ndc_x = (cursor_pos.0 as f32 / win_size.0 as f32) * 2.0 - 1.0;
-                    let ndc_y = 1.0 - (cursor_pos.1 as f32 / win_size.1 as f32) * 2.0;
-                    
                     let mut action = None;
                     for btn in &main_menu.buttons { if btn.rect.contains(ndc_x, ndc_y) { action = Some(&btn.action); break; } }
                     
@@ -128,7 +132,6 @@ let mut player = Player::new();
                                 spawn_found = false;
                             },
                             MenuAction::Host => {
-                                log::info!("Starting online hosting...");
                                 if let Some(addr) = ngrok_utils::start_ngrok_tunnel("7878") { log::info!("✅ SERVER LIVE: {}", addr); } 
                                 network_mgr = Some(NetworkManager::host("7878".to_string(), master_seed));
                                 world = World::new(master_seed);
@@ -151,36 +154,48 @@ let mut player = Player::new();
                                 spawn_found = false;
                             },
                             MenuAction::Quit => elwt.exit(),
+                            _ => {}
                         }
 
                         if game_state == GameState::Playing {
-                            let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined).or_else(|_| window_clone.set_cursor_grab(CursorGrabMode::Locked));
+                            let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked);
                             window_clone.set_cursor_visible(false);
                             
                             log::info!("🔍 Searching for dry land...");
-                            'spawn_search: for r in 0..300i32 {
+                            'spawn_search: for r in 0..500i32 {
                                 for x in -r..=r {
                                     for z in -r..=r {
                                         if x.abs() != r && z.abs() != r { continue; }
-                                        for y in (0..world::CHUNK_SIZE_Y as i32 - 1).rev() {
+                                        for y in (world::WATER_LEVEL..world::CHUNK_SIZE_Y as i32 - 1).rev() {
                                             let b = world.get_block(BlockPos { x, y, z });
-                                            if b.is_solid() {
-                                                if !b.is_water() {
-                                                    player.position = glam::Vec3::new(x as f32 + 0.5, y as f32 + 2.0, z as f32 + 0.5);
+                                            if b.is_solid() && !b.is_water() {
+                                                let head_check = world.get_block(BlockPos { x, y: y + 1, z });
+                                                if head_check == BlockType::Air {
+                                                    player.position = glam::Vec3::new(x as f32 + 0.5, y as f32 + 2.5, z as f32 + 0.5);
+                                                    player.spawn_timer = 2.0; // Invincible and locked during chunk load
                                                     spawn_found = true;
-                                                    log::info!("✅ Spawn found at: {}, {}, {}", x, y, z);
+                                                    log::info!("✅ Dry land found at: {}, {}, {}", x, y, z);
                                                     break 'spawn_search;
-                                                } else { break; }
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
-                            if !spawn_found && network_mgr.as_ref().map(|n| n.is_server).unwrap_or(true) {
-                                log::warn!("⚠️ No dry land found! Constructing emergency platform.");
-                                player.position = glam::Vec3::new(0.0, 80.0, 0.0);
-                                for x in -1..=1 { for z in -1..=1 { world.place_block(BlockPos { x, y: 78, z }, BlockType::Bedrock); } }
+                            if !spawn_found {
+                                player.position = glam::Vec3::new(0.0, 100.0, 0.0);
+                                for x in -2..=2 { for z in -2..=2 { world.place_block(BlockPos { x, y: 98, z }, BlockType::Stone); } }
                             }
+                        }
+                    }
+                } else if is_paused && pressed && button == MouseButton::Left {
+                    let mut action = None;
+                    for btn in &pause_menu.buttons { if btn.rect.contains(ndc_x, ndc_y) { action = Some(&btn.action); break; } }
+                    if let Some(act) = action {
+                        match act {
+                            MenuAction::Resume => { is_paused = false; let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); window_clone.set_cursor_visible(false); },
+                            MenuAction::Quit => { game_state = GameState::Menu; is_paused = false; window_clone.set_cursor_visible(true); let _ = window_clone.set_cursor_grab(CursorGrabMode::None); },
+                            _ => {}
                         }
                     }
                 } else if game_state == GameState::Playing {
@@ -367,15 +382,20 @@ let mut player = Player::new();
             Event::WindowEvent { event: WindowEvent::KeyboardInput { event: KeyEvent { physical_key: PhysicalKey::Code(key), state, .. }, .. }, .. } => {
                 let pressed = state == ElementState::Pressed;
                 if game_state == GameState::Playing {
-                    if key == KeyCode::Escape && pressed {
+if key == KeyCode::Escape && pressed {
                         if player.inventory_open { 
                             player.inventory_open = false; 
                             let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); window_clone.set_cursor_visible(false);
                             if let Some(c) = player.inventory.cursor_item { player.inventory.add_item(c.item); player.inventory.cursor_item = None; }
                         } else {
                             is_paused = !is_paused;
-                            if is_paused { let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined); window_clone.set_cursor_visible(true); }
-                            else { let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); window_clone.set_cursor_visible(false); }
+                            if is_paused { 
+                                let _ = window_clone.set_cursor_grab(CursorGrabMode::None); 
+                                window_clone.set_cursor_visible(true); 
+                            } else { 
+                                let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); 
+                                window_clone.set_cursor_visible(false); 
+                            }
                         }
                     } else if key == KeyCode::KeyE && pressed && !is_paused {
                         player.inventory_open = !player.inventory_open;
@@ -483,7 +503,8 @@ if !spawn_found { player.position = glam::Vec3::new(0.0, 80.0, 0.0); player.velo
                         if net_timer > 0.05 { net_timer = 0.0; network.send_packet(Packet::PlayerMove { id: network.my_id, x: player.position.x, y: player.position.y, z: player.position.z, ry: player.rotation.y }); }
                     }
 
-                    if !is_paused {
+if !is_paused {
+                        if player.spawn_timer > 0.0 { player.spawn_timer -= dt; player.velocity = glam::Vec3::ZERO; }
                         // DEATH
                         if player.is_dead {
                             death_timer += dt;
@@ -555,9 +576,16 @@ if !spawn_found { player.respawn(); player.position = glam::Vec3::new(0.0, 80.0,
                         }
                         world.update_entities(dt, &mut player);
                     }
-                    renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.0 };
+renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.0 };
                     renderer.update_camera(&player, win_size.0 as f32 / win_size.1 as f32);
-                    match renderer.render(&world, &player, is_paused, cursor_pos, win_size.0, win_size.1) {
+                    
+                    let result = if is_paused {
+                        renderer.render_pause_menu(&pause_menu, &world, &player, cursor_pos, win_size.0, win_size.1)
+                    } else {
+                        renderer.render(&world, &player, is_paused, cursor_pos, win_size.0, win_size.1)
+                    };
+
+                    match result {
                         Ok(_) => {}
                         Err(wgpu::SurfaceError::Lost) => renderer.resize(win_size.0, win_size.1),
                         Err(wgpu::SurfaceError::OutOfMemory) => elwt.exit(),

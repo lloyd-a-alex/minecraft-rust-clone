@@ -305,10 +305,58 @@ vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y - rect.h / 2.0, 
         rpass.draw_indexed(0..indices.len() as u32, 0, 0..1);
     }
 
+self.queue.submit(std::iter::once(encoder.finish()));
+    output.present();
+    Ok(())
+}
+
+pub fn render_pause_menu(&mut self, menu: &MainMenu, world: &World, player: &Player, cursor_pos: (f64, f64), width: u32, height: u32) -> Result<(), wgpu::SurfaceError> {
+    // First render the world as a background
+    self.render(world, player, true, cursor_pos, width, height)?;
+    
+    let output = self.surface.get_current_texture()?;
+    let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Pause") });
+
+    let mut vertices: Vec<Vertex> = Vec::new();
+    let mut indices: Vec<u32> = Vec::new();
+    let mut idx_offset = 0;
+
+    // Dim overlay
+    self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, -1.0, -1.0, 2.0, 2.0, 240);
+
+    for btn in &menu.buttons {
+        let tex_id = if btn.hovered { 251 } else { 250 };
+        let rect = &btn.rect;
+        self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, rect.x - rect.w/2.0, rect.y - rect.h/2.0, rect.w, rect.h, tex_id);
+        
+        let tx = (rect.x + 1.0) * 0.5 * width as f32;
+        let ty = (1.0 - rect.y) * 0.5 * height as f32;
+        let tw = btn.text.len() as f32 * 14.0;
+        self.draw_text(&btn.text, (tx - tw / 2.0) / width as f32 * 2.0 - 1.0, 1.0 - (ty - 10.0) / height as f32 * 2.0, 0.003, &mut vertices, &mut indices, &mut idx_offset);
+    }
+
+    let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Pause VB"), contents: bytemuck::cast_slice(&vertices), usage: wgpu::BufferUsages::VERTEX });
+    let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Pause IB"), contents: bytemuck::cast_slice(&indices), usage: wgpu::BufferUsages::INDEX });
+
+    {
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Pause Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &view, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store } })],
+            depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
+        });
+        rpass.set_pipeline(&self.ui_pipeline);
+        rpass.set_bind_group(0, &self.bind_group, &[]);
+        rpass.set_vertex_buffer(0, vb.slice(..));
+        rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+        rpass.draw_indexed(0..indices.len() as u32, 0, 0..1);
+    }
+
     self.queue.submit(std::iter::once(encoder.finish()));
     output.present();
     Ok(())
 }
+
 pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor_pos: (f64, f64), _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&TextureViewDescriptor::default());
