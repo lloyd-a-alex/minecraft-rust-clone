@@ -164,6 +164,13 @@ pub struct PlayerKeys {
     pub forward: bool, pub backward: bool, pub left: bool, pub right: bool, pub up: bool, pub down: bool 
 }
 
+impl PlayerKeys {
+    pub fn reset(&mut self) {
+        self.forward = false; self.backward = false; self.left = false;
+        self.right = false; self.up = false; self.down = false;
+    }
+}
+
 #[allow(dead_code)]
 impl Player {
 pub fn new() -> Self {

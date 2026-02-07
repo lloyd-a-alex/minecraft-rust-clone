@@ -16,27 +16,17 @@ impl TextureAtlas {
         let block_size = 16;
         let grid_width_in_blocks = atlas_width / block_size;
 
-        // --- 1. BASIC TERRAIN ---
-        // Grass Top (Green Noise)
-        Self::generate_noise(&mut data, block_size, atlas_width, 0, [100, 170, 80], 20); 
-        // Grass Side (Dirt + Green Overlay)
-        Self::generate_grass_side(&mut data, block_size, atlas_width, 1);
-// Dirt (Coarse / Clumpy)
-        Self::generate_dirt(&mut data, block_size, atlas_width, 2);
-        // Stone
-        Self::generate_noise(&mut data, block_size, atlas_width, 3, [125, 125, 125], 20);
-        // Wood Side
-        Self::generate_wood_side(&mut data, block_size, atlas_width, 4, [110, 80, 50]);
-        // Leaves (Variegated / Fancy)
-        Self::generate_leaves_fancy(&mut data, block_size, atlas_width, 5);
-        // Snow
-        Self::generate_noise(&mut data, block_size, atlas_width, 6, [245, 250, 255], 10);
-        // Sand (Fixed color - less green, more beige/gold)
-        Self::generate_noise(&mut data, block_size, atlas_width, 7, [225, 210, 150], 15);
-        // Bedrock (High Contrast)
-        Self::generate_bedrock(&mut data, block_size, atlas_width, 8);
-        // Water (Animated Blue)
-        Self::generate_liquid(&mut data, block_size, atlas_width, 9, [40, 60, 220]);
+// --- 1. BASIC TERRAIN (Mellowed Colors) ---
+        Self::generate_noise(&mut data, block_size, atlas_width, 0, [115, 155, 105], 10); // Grass Top
+        Self::generate_grass_side(&mut data, block_size, atlas_width, 1);                 // Grass Side
+        Self::generate_dirt(&mut data, block_size, atlas_width, 2);                      // Dirt
+        Self::generate_noise(&mut data, block_size, atlas_width, 3, [140, 140, 140], 12); // Stone
+        Self::generate_wood_side(&mut data, block_size, atlas_width, 4, [120, 100, 80]); // Wood Side
+        Self::generate_leaves_fancy(&mut data, block_size, atlas_width, 5);              // Leaves
+        Self::generate_noise(&mut data, block_size, atlas_width, 6, [240, 245, 250], 5);  // Snow
+        Self::generate_noise(&mut data, block_size, atlas_width, 7, [215, 205, 175], 8);  // Sand
+        Self::generate_bedrock(&mut data, block_size, atlas_width, 8);                   // Bedrock
+        Self::generate_liquid(&mut data, block_size, atlas_width, 9, [80, 120, 180]);    // Water
 
         // --- 2. ORES (Stone base + colored flecks) ---
         Self::generate_ore(&mut data, block_size, atlas_width, 10, [20, 20, 20]);    // Coal
@@ -368,8 +358,7 @@ fn generate_birch_side(data: &mut [u8], size: u32, w: u32, idx: u32) {
         Self::place_texture(data, size, w, idx, &p);
     }
 
-    #[allow(dead_code)]
-    fn generate_spruce_wood(data: &mut [u8], size: u32, w: u32, idx: u32) {
+fn generate_spruce_wood(data: &mut [u8], size: u32, w: u32, idx: u32) {
         let mut p = vec![0u8; (size * size * 4) as usize];
         for y in 0..size {
             for x in 0..size {

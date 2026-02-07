@@ -397,13 +397,17 @@ if key == KeyCode::Escape && pressed {
                                 window_clone.set_cursor_visible(false); 
                             }
                         }
-                    } else if key == KeyCode::KeyE && pressed && !is_paused {
+} else if key == KeyCode::KeyE && pressed && !is_paused {
                         player.inventory_open = !player.inventory_open;
                         player.crafting_open = false; 
                         if player.inventory_open { 
-                            player.keys.forward = false; player.keys.backward = false; player.keys.left = false; player.keys.right = false;
-                            let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined); window_clone.set_cursor_visible(true); 
-                        } else { let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); window_clone.set_cursor_visible(false); }
+                            player.keys.reset(); // STOP INFINITE MOVE GLITCH
+                            let _ = window_clone.set_cursor_grab(CursorGrabMode::None); 
+                            window_clone.set_cursor_visible(true); 
+                        } else { 
+                            let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); 
+                            window_clone.set_cursor_visible(false); 
+                        }
                     } else if key == KeyCode::KeyQ && pressed && !is_paused && !player.inventory_open {
                         let drop_all = modifiers.shift_key(); 
                         if let Some(stack) = player.inventory.drop_item(drop_all) {
@@ -535,10 +539,12 @@ if !spawn_found { player.respawn(); player.position = glam::Vec3::new(0.0, 80.0,
                             
                             if left_click && !player.inventory_open {
                                 if let Some(hit) = current_target {
-                                    if Some(hit) != breaking_pos {
-                                        if breaking_pos.is_some() && break_grace_timer > 0.0 { break_grace_timer -= dt; } 
-                                        else { breaking_pos = Some(hit); break_progress = 0.0; break_grace_timer = 0.5; }
-                                    } else { break_grace_timer = 0.5; }
+if Some(hit) != breaking_pos {
+                        // DIABOLICAL FIX: Reset immediately when looking at a new block
+                        breaking_pos = Some(hit); 
+                        break_progress = 0.0; 
+                        break_grace_timer = 0.0; 
+                    }
                                     
                                     if Some(hit) == breaking_pos {
                                         let blk = world.get_block(hit); 
@@ -595,7 +601,13 @@ renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.
                     if let Err(_) = renderer.render_main_menu(&main_menu, win_size.0, win_size.1) { renderer.resize(win_size.0, win_size.1); }
                 }
             }
-            Event::AboutToWait => window.request_redraw(),
+Event::AboutToWait => {
+                // Ensure cursor stays locked if we are playing and not in menus
+                if game_state == GameState::Playing && !is_paused && !player.inventory_open {
+                    let _ = window.set_cursor_grab(CursorGrabMode::Locked);
+                }
+                window.request_redraw();
+            },
             _ => {}
         }
     }).unwrap();

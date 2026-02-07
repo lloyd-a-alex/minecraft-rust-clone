@@ -221,11 +221,11 @@ fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Ve
 
         for c in text.to_uppercase().chars() {
             if c == ' ' { x += final_scale; continue; }
-            let idx = if c >= 'A' && c <= 'Z' { 200 + (c as u32 - 'A' as u32) } 
+let idx = if c >= 'A' && c <= 'Z' { 200 + (c as u32 - 'A' as u32) } 
                       else if c >= '0' && c <= '9' { 200 + 26 + (c as u32 - '0' as u32) } 
-                      else if c == '-' { 236 } 
-                      else if c == '>' { 237 } 
-                      else { 200 }; 
+                      else if c == '-' { 200 + 36 } 
+                      else if c == '>' { 200 + 37 } 
+                      else { 200 };
             
             self.add_ui_quad(v, i, off, x, y, final_scale, final_scale * aspect, idx);
             x += final_scale;
@@ -442,7 +442,8 @@ for m in self.chunk_meshes.values() { pass.set_vertex_buffer(0, m.vertex_buffer.
 if let Some(stack) = &player.inventory.slots[i] {
                     let (t, _, _) = stack.item.get_texture_indices();
                     self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, by+0.02*aspect, sw-0.04, sh-0.04*aspect, t);
-                    if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x+0.01, by+0.01, 0.03, &mut uv, &mut ui, &mut uoff); }
+                    // Shifted text so it doesn't overlap slots
+                    if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x + 0.065, by + 0.02, 0.035, &mut uv, &mut ui, &mut uoff); }
                     
                     // DURABILITY BAR
                     if stack.item.is_tool() {
