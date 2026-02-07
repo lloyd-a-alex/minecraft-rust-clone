@@ -574,9 +574,8 @@ self.set_block_world(pos, BlockType::Air);
         let mut visited = HashSet::new(); 
         let mut steps = 0;
         let max_steps = 50; // Reduced from 200 to prevent lag
-        while let Some(pos) = queue.pop_front() {
+while let Some(pos) = queue.pop_front() {
             if steps > max_steps { 
-                log::debug!("Water update reached max steps ({})", max_steps);
                 break; 
             }
             if !visited.insert(pos) { continue; }

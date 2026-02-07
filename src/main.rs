@@ -108,50 +108,11 @@ let mut player = Player::new();
             },
             Event::WindowEvent { event: WindowEvent::ModifiersChanged(m), .. } => modifiers = m.state(),
             
-            // --- MOUSE INPUT ---
+// --- MOUSE INPUT ---
             Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } => {
                 let pressed = state == ElementState::Pressed;
                 
                 if game_state == GameState::Menu && pressed && button == MouseButton::Left {
-                    let ndc_x = (cursor_pos.0 as f32 / win_size.0 as f32) * 2.0 - 1.0;
-                    let ndc_y = 1.0 - (cursor_pos.1 as f32 / win_size.1 as f32) * 2.0;
-                    
-                    let mut action = None;
-                    for btn in &main_menu.buttons { if btn.rect.contains(ndc_x, ndc_y) { action = Some(&btn.action); break; } }
-                    
-if let Some(act) = action {
-                        match act {
-                            MenuAction::Singleplayer => {
-                                world = World::new(master_seed);
-                                renderer.rebuild_all_chunks(&world);
-                                game_state = GameState::Playing;
-                                spawn_found = false;
-                            },
-                            MenuAction::Host => {
-                                log::info!("Starting online hosting...");
-                                if let Some(addr) = ngrok_utils::start_ngrok_tunnel("7878") { log::info!("✅ SERVER LIVE: {}", addr); } 
-                                network_mgr = Some(NetworkManager::host("7878".to_string(), master_seed));
-                                world = World::new(master_seed);
-                                renderer.rebuild_all_chunks(&world);
-                                game_state = GameState::Playing;
-                                spawn_found = false;
-                            },
-                            MenuAction::Join => {
-                                network_mgr = Some(NetworkManager::join("127.0.0.1:7878".to_string()));
-                                game_state = GameState::Playing;
-                                spawn_found = false;
-                            },
-                            MenuAction::Stress => {
-                                let exe = std::env::current_exe().unwrap();
-                                for _ in 0..5 { std::process::Command::new(&exe).arg("--join-localhost").spawn().unwrap(); }
-                                network_mgr = Some(NetworkManager::host("7878".to_string(), master_seed));
-                                game_state = GameState::Playing;
-                                spawn_found = false;
-                            },
-                            MenuAction::Quit => elwt.exit(),
-                        }
-
-if game_state == GameState::Menu && pressed && button == MouseButton::Left {
                     let ndc_x = (cursor_pos.0 as f32 / win_size.0 as f32) * 2.0 - 1.0;
                     let ndc_y = 1.0 - (cursor_pos.1 as f32 / win_size.1 as f32) * 2.0;
                     
@@ -199,7 +160,7 @@ if game_state == GameState::Menu && pressed && button == MouseButton::Left {
                                 for x in -r..=r {
                                     for z in -r..=r {
                                         if x.abs() != r && z.abs() != r { continue; }
-                                        for y in (0..CHUNK_SIZE_Y as i32 - 1).rev() {
+                                        for y in (0..world::CHUNK_SIZE_Y as i32 - 1).rev() {
                                             let b = world.get_block(BlockPos { x, y, z });
                                             if b.is_solid() {
                                                 if !b.is_water() {
@@ -346,7 +307,6 @@ if game_state == GameState::Menu && pressed && button == MouseButton::Left {
                             let targeted_block = world.get_block(hit);
                             let held_item = player.inventory.get_selected_item().unwrap_or(BlockType::Air);
 
-                            // 1. Interaction Logic (Bucket/Farming/UI)
                             if held_item == BlockType::BucketEmpty && targeted_block == BlockType::Water {
                                 world.place_block(hit, BlockType::Air);
                                 player.inventory.slots[player.inventory.selected_hotbar_slot] = Some(player::ItemStack::new(BlockType::BucketWater, 1));
@@ -364,7 +324,6 @@ if game_state == GameState::Menu && pressed && button == MouseButton::Left {
                                 let _ = window_clone.set_cursor_grab(CursorGrabMode::None); 
                                 window_clone.set_cursor_visible(true);
                             } else {
-                                // 2. Block Placement Logic
                                 let p_min = player.position - glam::Vec3::new(player.radius, player.height * 0.5, player.radius);
                                 let p_max = player.position + glam::Vec3::new(player.radius, player.height * 0.5, player.radius);
                                 let b_min = glam::Vec3::new(place.x as f32, place.y as f32, place.z as f32);
@@ -378,7 +337,6 @@ if game_state == GameState::Menu && pressed && button == MouseButton::Left {
                                     if let Some(blk) = player.inventory.get_selected_item() {
                                         if !blk.is_tool() && !blk.is_item() {
                                             let mut actual_blk = blk;
-                                            // Double Chest Logic
                                             if blk == BlockType::Chest {
                                                 for (dx, dz) in &[(1,0), (-1,0), (0,1), (0,-1)] {
                                                     let neighbor_pos = BlockPos { x: place.x + dx, y: place.y, z: place.z + dz };
