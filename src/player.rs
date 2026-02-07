@@ -160,8 +160,9 @@ pub struct Player {
     pub inventory_open: bool,
 pub crafting_open: bool,
 pub is_dead: bool,
-    pub bob_timer: f32,
+pub bob_timer: f32,
     pub spawn_timer: f32,
+    pub cave_sound_timer: f32,
 }
 
 #[derive(Default)] 
@@ -203,8 +204,9 @@ Player {
             inventory_open: false,
 crafting_open: false,
 is_dead: false,
-            bob_timer: 0.0,
+bob_timer: 0.0,
             spawn_timer: 0.0,
+            cave_sound_timer: 15.0,
         }
     }
     pub fn respawn(&mut self) { self.position = Vec3::new(0.0, 80.0, 0.0); self.velocity = Vec3::ZERO; self.health = self.max_health; self.is_dead = false; self.invincible_timer = 3.0; }
@@ -234,7 +236,20 @@ KeyCode::Digit9 => self.inventory.select_slot(8),
 pub fn update(&mut self, world: &crate::world::World, dt: f32, audio: &crate::AudioSystem, in_cave: bool) {
         let was_on_ground = self.on_ground;
         if self.is_dead || self.inventory_open { return; }
-        let dt = dt.min(0.1); if self.invincible_timer > 0.0 { self.invincible_timer -= dt; }
+let dt = dt.min(0.1); if self.invincible_timer > 0.0 { self.invincible_timer -= dt; }
+
+        // --- CAVE AMBIENCE ---
+        if in_cave {
+            self.cave_sound_timer -= dt;
+            if self.cave_sound_timer <= 0.0 {
+                audio.play("spooky", true);
+                // Use walk_time as a pseudo-random seed to vary next timing
+                let mut rng = crate::world::SimpleRng::new(self.walk_time as u64 + 1);
+                self.cave_sound_timer = 45.0 + rng.next_f32() * 120.0; // Play every 45-165 seconds
+            }
+        } else {
+            self.cave_sound_timer = 15.0; // Grace period when entering
+        }
 
         // --- SURVIVAL MECHANICS ---
 let feet_bp = BlockPos { x: self.position.x.floor() as i32, y: self.position.y.floor() as i32, z: self.position.z.floor() as i32 };

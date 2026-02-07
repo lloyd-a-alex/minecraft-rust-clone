@@ -24,7 +24,8 @@ pub fn play(&self, sound_type: &str, in_cave: bool) {
         let sink = Sink::try_new(&self.stream_handle).unwrap();
         let mut dur = match sound_type {
             "click" | "pickup" => 0.05,
-            "land" => 0.2,
+"land" => 0.2,
+            "spooky" => 4.5,
             _ => 0.12,
         };
         
@@ -45,7 +46,8 @@ pub fn play(&self, sound_type: &str, in_cave: bool) {
             "land" => Self::gen_noise(dur, 100.0 * freq_mult, 50.0 * freq_mult, in_cave),
             "click" => Self::gen_noise(dur, 1200.0, 1000.0, false),
             "drop" => Self::gen_noise(dur, 600.0 * freq_mult, 400.0 * freq_mult, in_cave),
-            "pickup" => Self::gen_noise(dur, 800.0, 1400.0, false),
+"pickup" => Self::gen_noise(dur, 800.0, 1400.0, false),
+            "spooky" => Self::gen_noise(dur, 65.0, 40.0, true),
             _ => Self::gen_noise(dur, 200.0 * freq_mult, 100.0 * freq_mult, in_cave),
         };
         sink.append(Decoder::new(Cursor::new(data)).unwrap());

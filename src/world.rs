@@ -4,10 +4,10 @@ use crate::player::Player;
 use glam::Vec3;
 use serde::{Serialize, Deserialize};
 
-struct SimpleRng { state: u64 }
+pub struct SimpleRng { pub state: u64 }
 impl SimpleRng {
-    fn new(seed: u64) -> Self { Self { state: seed } }
-    fn next_f32(&mut self) -> f32 {
+    pub fn new(seed: u64) -> Self { Self { state: seed } }
+    pub fn next_f32(&mut self) -> f32 {
         self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1);
         ((self.state >> 33) ^ self.state) as u32 as f32 / u32::MAX as f32
     }
@@ -225,8 +225,8 @@ pub struct RemotePlayer { pub id: u32, pub position: Vec3, pub rotation: f32 }
 pub struct World {
     pub chunks: HashMap<(i32, i32), Chunk>,
     pub entities: Vec<ItemEntity>,
-    pub remote_players: Vec<RemotePlayer>,
-    seed: u32,
+pub remote_players: Vec<RemotePlayer>,
+    pub seed: u32,
 }
 
 impl World {
