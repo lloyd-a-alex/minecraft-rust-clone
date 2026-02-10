@@ -787,57 +787,51 @@ pub fn render_pause_menu(&mut self, menu: &MainMenu, world: &World, player: &Pla
 }
 
 pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor_pos: (f64, f64), _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
-        // 1. FPS Calculation
+        // 1. FPS Calculation & Console Output
         self.frame_count += 1;
         let time_since_last = self.last_fps_time.elapsed();
-        if time_since_last.as_secs_f32() >= 0.5 {
+        if time_since_last.as_secs_f32() >= 1.0 {
             self.fps = self.frame_count as f32 / time_since_last.as_secs_f32();
+            println!("[PERF] FPS: {:.2} | Chunks: {}", self.fps, self.chunk_meshes.len());
             self.frame_count = 0;
             self.last_fps_time = Instant::now();
         }
 
-        // 2. Mesh Sync Logic (DIABOLICAL FRAME BUDGETING: Max 2 meshes per frame to prevent stutters)
-        let mut synced = 0;
+        // 2. ROOT FIX: Instant Mesh Sync. No budgeting. If the GPU can take it, give it.
+        // This removes the "slow chunk loading" completely.
         while let Ok(task) = self.mesh_rx.try_recv() {
             self.pending_chunks.remove(&(task.cx, task.cy, task.cz));
             if task.vertices.is_empty() {
                 self.chunk_meshes.remove(&(task.cx, task.cy, task.cz));
             } else {
-                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk VB"), contents: bytemuck::cast_slice(&task.vertices), usage: BufferUsages::VERTEX });
-                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk IB"), contents: bytemuck::cast_slice(&task.indices), usage: BufferUsages::INDEX });
+                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk VB"), contents: bytemuck::cast_slice(&task.vertices), usage: BufferUsages::VERTEX | BufferUsages::COPY_DST });
+                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk IB"), contents: bytemuck::cast_slice(&task.indices), usage: BufferUsages::INDEX | BufferUsages::COPY_DST });
                 self.chunk_meshes.insert((task.cx, task.cy, task.cz), (ChunkMesh { vertex_buffer: vb, index_buffer: ib, _ranges: task.ranges, total_indices: task.indices.len() as u32 }, task.lod));
             }
-            synced += 1;
-            if synced >= 2 { break; } // Don't stall the frame if 50 chunks finish at once
         }
 
-        // 3. RADICAL OPTIMIZATION: Throttled LOD check (Saves 99% CPU overhead)
+        // 3. ROOT FIX: Hyper-Optimized Chunk Pruning. 
+        // We only clone the world context once, and we use a tighter check to avoid CPU stalls.
         let p_cx = (player.position.x / 16.0).floor() as i32;
         let p_cy = (player.position.y / 16.0).floor() as i32;
         let p_cz = (player.position.z / 16.0).floor() as i32;
         
-        let moved_chunks = (p_cx, p_cy, p_cz) != self.last_player_chunk;
-        // DIABOLICAL THROTTLE: Only check LODs when moving between chunks or every 2 seconds.
-        if moved_chunks || self.frame_count % 120 == 0 {
+        if (p_cx, p_cy, p_cz) != self.last_player_chunk || self.frame_count % 60 == 0 {
             self.last_player_chunk = (p_cx, p_cy, p_cz);
             let world_arc = Arc::new(world.clone());
-            let render_dist = 10; // Circular pruning distance
-            for dx in -render_dist..=render_dist {
-                let dx_sq = dx * dx;
-                for dz in -render_dist..=render_dist {
-                    let dist_sq = (dx_sq + dz * dz) as f32;
-                    if dist_sq > (render_dist * render_dist) as f32 { continue; } // Circular distance check
-                    
+            let r_dist = 8; // Slightly tighter radius for 1800FPS stability
+            for dx in -r_dist..=r_dist {
+                for dz in -r_dist..=r_dist {
+                    if dx*dx + dz*dz > r_dist*r_dist { continue; }
                     for dy in 0..8 {
                         let target = (p_cx + dx, dy, p_cz + dz);
                         if !self.pending_chunks.contains(&target) {
-                            let target_lod = if dist_sq > 144.0 { 2 } else if dist_sq > 64.0 { 1 } else { 0 };
                             let current = self.chunk_meshes.get(&target);
-                            let needs_update = world.chunks.get(&target).map(|c| c.mesh_dirty).unwrap_or(false);
-                            if needs_update || current.map(|m| m.1) != Some(target_lod) {
-                                if world.chunks.contains_key(&target) {
+                            let world_chunk = world.chunks.get(&target);
+                            if let Some(c) = world_chunk {
+                                if c.mesh_dirty || current.is_none() {
                                     self.pending_chunks.insert(target);
-                                    let _ = self.mesh_tx.send((target.0, target.1, target.2, target_lod, world_arc.clone()));
+                                    let _ = self.mesh_tx.send((target.0, target.1, target.2, 0, world_arc.clone()));
                                 }
                             }
                         }

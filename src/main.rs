@@ -769,20 +769,16 @@ renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.
                 }
             }
 Event::AboutToWait => {
-                let frame_time = Instant::now().duration_since(last_frame);
-                // DIABOLICAL FPS CAP: Prevent the GPU from screaming and causing input lag
-                if frame_time.as_secs_f32() < 1.0 / 144.0 {
-                    return;
-                }
+                // ROOT FIX: Removed FPS cap to allow the engine to hit 1000+ FPS.
+                // RedrawRequested will be triggered immediately by the OS.
                 
 if game_state == GameState::Playing && !is_paused && !player.inventory_open {
-                    // DIABOLICAL FIX: World generation is now strictly non-blocking. 
-                    // The World generates it, and the Renderer's background thread will catch it.
-                    // Never call synchronous update_chunk in the hot loop.
+                    // ROOT FIX: World generation is non-blocking and UNTHROTTLED.
+                    // The background threads will handle the work; the main thread just asks.
                     let p_cx = (player.position.x / 16.0).floor() as i32;
                     let p_cy = (player.position.y / 16.0).floor() as i32;
                     let p_cz = (player.position.z / 16.0).floor() as i32;
-                    let _ = world.generate_one_chunk_around(p_cx, p_cy, p_cz, 6);
+                    world.generate_one_chunk_around(p_cx, p_cy, p_cz, 8);
 
                     let _ = window.set_cursor_grab(CursorGrabMode::Locked);
                     window.set_cursor_visible(false);

@@ -297,8 +297,8 @@ pub fn generate_terrain_around(&mut self, cx: i32, cz: i32, radius: i32) -> Vec<
     }
 
 pub fn update_occlusion(&mut self, _px: i32, _py: i32, _pz: i32) {
-        // DIABOLICAL FIX: Total removal of occlusion set to prevent visual hollowing
-        self.occluded_chunks.clear();
+        // ROOT FIX: Occlusion is now handled by the Frustum Culler in the Renderer.
+        // We do nothing here to keep the World structure lightweight.
     }
 
     fn generate_single_chunk(&mut self, cx: i32, cy: i32, cz: i32, noise_gen: &NoiseGenerator) {
