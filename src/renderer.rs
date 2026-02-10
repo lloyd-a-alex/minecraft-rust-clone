@@ -33,7 +33,7 @@ impl Vertex {
 }
 
 pub struct TextureRange {
-    pub _tex_index: u32,
+    pub tex_index: u32,
     pub index_start: u32,
     pub index_count: u32,
 }
@@ -220,8 +220,7 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
 // DIABOLICAL THREADED LOD MESH GENERATOR
         let (task_tx, task_rx) = unbounded::<(i32, i32, i32, u32, Arc<World>)>();
         let (result_tx, result_rx) = unbounded::<MeshTask>();
-
-        // RADICAL FIX: Single-threaded mesh generation to eliminate race conditions and coordinate chaos
+// RADICAL FIX: Single-threaded mesh generation to eliminate race conditions and coordinate chaos
         // The threaded worker had catastrophic bugs with dimensions and coordinate mapping
         let _worker_thread = {
             let t_rx = task_rx.clone();
@@ -241,179 +240,100 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
                         let bx = (cx * 16) as f32;
                         let by = (cy * 16) as f32;
                         let bz = (cz * 16) as f32;
-                        let step = 1 << lod; // LOD 0 = 1, LOD 1 = 2, LOD 2 = 4
+                        let step = 1 << lod;
                         
-                        // RADICAL FIX: Consistent 16x16x16 chunk dimensions for ALL axes
                         for axis in 0..3 {
-                            let (dims_u, dims_v) = (16usize, 16usize);
-                            let dims_main = 16usize;
-                            
-                            for d in (0..dims_main).step_by(step as usize) {
+                            for d in (0..16usize).step_by(step as usize) {
                                 for dir in 0..2 {
                                     let face_id = match axis { 
-                                        0 => if dir==0 {0} else {1}, // Y: Top/Bottom
-                                        1 => if dir==0 {2} else {3}, // X: Right/Left  
-                                        _ => if dir==0 {4} else {5}  // Z: Front/Back
+                                        0 => if dir==0 {0} else {1},
+                                        1 => if dir==0 {2} else {3},
+                                        _ => if dir==0 {4} else {5}
                                     };
                                     
-                                    let mut mask = vec![BlockType::Air; dims_u * dims_v];
+                                    let mask_dim = 16 / step as usize;
+                                    let mut mask = vec![BlockType::Air; mask_dim * mask_dim];
                                     
-                                    // Build mask for this slice
-                                    for u in (0..dims_u).step_by(step as usize) {
-                                        for v in (0..dims_v).step_by(step as usize) {
-                                            // RADICAL FIX: Consistent coordinate mapping
+                                    for u_m in 0..mask_dim {
+                                        for v_m in 0..mask_dim {
+                                            let u = u_m * step as usize;
+                                            let v = v_m * step as usize;
                                             let (lx, ly, lz) = match axis {
-                                                0 => (u, d, v),      // Y-axis slice: x=u, y=d, z=v
-                                                1 => (d, u, v),      // X-axis slice: x=d, y=u, z=v
-                                                _ => (u, v, d)       // Z-axis slice: x=u, y=v, z=d
+                                                0 => (u, d, v), 1 => (d, u, v), _ => (u, v, d)
                                             };
                                             
-                                            if lx >= 16 || ly >= 16 || lz >= 16 {
-                                                continue; // Safety bounds check
-                                            }
-                                            
                                             let blk = chunk.get_block(lx, ly, lz);
-                                            if !blk.is_solid() {
-                                                continue;
-                                            }
+                                            if !blk.is_solid() { continue; }
                                             
-                                            // Check neighbor visibility
                                             let (nx, ny, nz) = match face_id { 
-                                                0 => (lx as i32, ly as i32 + 1, lz as i32), // Top
-                                                1 => (lx as i32, ly as i32 - 1, lz as i32), // Bottom
-                                                2 => (lx as i32 + 1, ly as i32, lz as i32), // Right
-                                                3 => (lx as i32 - 1, ly as i32, lz as i32), // Left
-                                                4 => (lx as i32, ly as i32, lz as i32 + 1), // Front
-                                                5 => (lx as i32, ly as i32, lz as i32 - 1), // Back
+                                                0 => (lx as i32, ly as i32 + step as i32, lz as i32), 
+                                                1 => (lx as i32, ly as i32 - 1, lz as i32), 
+                                                2 => (lx as i32 + step as i32, ly as i32, lz as i32), 
+                                                3 => (lx as i32 - 1, ly as i32, lz as i32), 
+                                                4 => (lx as i32, ly as i32, lz as i32 + step as i32), 
+                                                5 => (lx as i32, ly as i32, lz as i32 - 1), 
                                                 _ => (0, 0, 0)
                                             };
                                             
-                                            // RADICAL FIX: Check neighbor in current chunk or adjacent chunks
                                             let neighbor = if nx >= 0 && nx < 16 && ny >= 0 && ny < 16 && nz >= 0 && nz < 16 {
                                                 chunk.get_block(nx as usize, ny as usize, nz as usize)
                                             } else {
-                                                // Check world neighbor - simplified, treat as air for visibility
                                                 BlockType::Air
                                             };
                                             
-                                            let visible = !neighbor.is_solid() || (neighbor.is_transparent() && neighbor != blk);
-                                            if visible { 
-                                                mask[(v / step as usize) * (dims_u / step as usize) + (u / step as usize)] = blk; 
+                                            if !neighbor.is_solid() || (neighbor.is_transparent() && neighbor != blk) { 
+                                                mask[v_m * mask_dim + u_m] = blk; 
                                             }
                                         }
                                     }
                                     
-                                    // Greedy meshing on the mask
-                                    let mask_w = dims_u / step as usize;
-                                    let mask_h = dims_v / step as usize;
                                     let mut n = 0;
-                                    
-                                    while n < mask_w * mask_h {
+                                    while n < mask.len() {
                                         let blk = mask[n];
                                         if blk != BlockType::Air {
-                                            // Find width
                                             let mut w = 1;
-                                            while (n % mask_w + w) < mask_w && mask[n + w] == blk {
-                                                w += 1;
-                                            }
-                                            
-                                            // Find height
+                                            while (n + w) % mask_dim != 0 && mask[n + w] == blk { w += 1; }
                                             let mut h = 1;
-                                            'h_loop: while (n / mask_w + h) < mask_h {
-                                                for k in 0..w {
-                                                    if mask[n + k + h * mask_w] != blk { 
-                                                        break 'h_loop; 
-                                                    }
-                                                }
+                                            'h_loop: while (n / mask_dim + h) < mask_dim {
+                                                for k in 0..w { if mask[n + k + h * mask_dim] != blk { break 'h_loop; } }
                                                 h += 1;
                                             }
                                             
-                                            // Calculate world position
-                                            let mask_u = n % mask_w;
-                                            let mask_v = n / mask_w;
-                                            let world_u = (mask_u * step as usize) as f32;
-                                            let world_v = (mask_v * step as usize) as f32;
-                                            let world_d = d as f32;
-                                            let world_w = (w * step as usize) as f32;
-                                            let world_h = (h * step as usize) as f32;
+                                            let u_g = (n % mask_dim) as f32 * step as f32;
+                                            let v_g = (n / mask_dim) as f32 * step as f32;
+                                            let world_w = w as f32 * step as f32;
+                                            let world_h = h as f32 * step as f32;
+                                            let d_f = d as f32;
+                                            let s_f = step as f32;
                                             
-                                            // RADICAL FIX: Consistent world coordinate generation
                                             let (wx, wy, wz) = match axis {
-                                                0 => (bx + world_u, by + world_d + 1.0, bz + world_v), // Y-face at top
-                                                1 => (bx + world_d + 1.0, by + world_u, bz + world_v), // X-face at right
-                                                _ => (bx + world_u, by + world_v, bz + world_d + 1.0)  // Z-face at front
+                                                0 => (bx + u_g, by + d_f, bz + v_g),
+                                                1 => (bx + d_f, by + u_g, bz + v_g),
+                                                _ => (bx + u_g, by + v_g, bz + d_f)
                                             };
                                             
-                                            // Generate face with correct orientation
-                                            let tex_index = match face_id { 
-                                                0 => blk.get_texture_top(), 
-                                                1 => blk.get_texture_bottom(), 
-                                                _ => blk.get_texture_side() 
-                                            };
+                                            let tex_index = match face_id { 0 => blk.get_texture_top(), 1 => blk.get_texture_bottom(), _ => blk.get_texture_side() };
                                             
-                                            // RADICAL FIX: Correct face vertex generation with proper winding
-                                            let positions = match face_id {
-                                                0 => [ // Top face (Y+), CCW when looking down
-                                                    [wx, wy, wz + world_h],
-                                                    [wx + world_w, wy, wz + world_h],
-                                                    [wx + world_w, wy, wz],
-                                                    [wx, wy, wz],
-                                                ],
-                                                1 => [ // Bottom face (Y-), CCW when looking up
-                                                    [wx, wy - 1.0, wz],
-                                                    [wx + world_w, wy - 1.0, wz],
-                                                    [wx + world_w, wy - 1.0, wz + world_h],
-                                                    [wx, wy - 1.0, wz + world_h],
-                                                ],
-                                                2 => [ // Right face (X+), CCW when looking left
-                                                    [wx, wy - world_w, wz + world_h],
-                                                    [wx, wy, wz + world_h],
-                                                    [wx, wy, wz],
-                                                    [wx, wy - world_w, wz],
-                                                ],
-                                                3 => [ // Left face (X-), CCW when looking right
-                                                    [wx - 1.0, wy, wz],
-                                                    [wx - 1.0, wy, wz + world_h],
-                                                    [wx - 1.0, wy - world_w, wz + world_h],
-                                                    [wx - 1.0, wy - world_w, wz],
-                                                ],
-                                                4 => [ // Front face (Z+), CCW when looking back
-                                                    [wx + world_w, wy, wz],
-                                                    [wx, wy, wz],
-                                                    [wx, wy + world_h, wz],
-                                                    [wx + world_w, wy + world_h, wz],
-                                                ],
-                                                5 => [ // Back face (Z-), CCW when looking forward
-                                                    [wx, wy, wz - 1.0],
-                                                    [wx + world_w, wy, wz - 1.0],
-                                                    [wx + world_w, wy + world_h, wz - 1.0],
-                                                    [wx, wy + world_h, wz - 1.0],
-                                                ],
-                                                _ => [[0.0; 3]; 4],
+                                            // CORRECTED CCW WINDING ORDERS FOR LOD MESHES
+                                            let (positions, uv) = match face_id {
+                                                0 => ([[wx, wy+s_f, wz+world_h], [wx+world_w, wy+s_f, wz+world_h], [wx+world_w, wy+s_f, wz], [wx, wy+s_f, wz]], [[0.0, world_h], [world_w, world_h], [world_w, 0.0], [0.0, 0.0]]),
+                                                1 => ([[wx, wy, wz], [wx+world_w, wy, wz], [wx+world_w, wy, wz+world_h], [wx, wy, wz+world_h]], [[0.0, 0.0], [world_w, 0.0], [world_w, world_h], [0.0, world_h]]),
+                                                2 => ([[wx+s_f, wy, wz], [wx+s_f, wy+world_w, wz], [wx+s_f, wy+world_w, wz+world_h], [wx+s_f, wy, wz+world_h]], [[0.0, 0.0], [world_w, 0.0], [world_w, world_h], [0.0, world_h]]),
+                                                3 => ([[wx, wy, wz+world_h], [wx, wy+world_w, wz+world_h], [wx, wy+world_w, wz], [wx, wy, wz]], [[0.0, world_h], [world_w, world_h], [world_w, 0.0], [0.0, 0.0]]),
+                                                4 => ([[wx, wy, wz+s_f], [wx+world_w, wy, wz+s_f], [wx+world_w, wy+world_h, wz+s_f], [wx, wy+world_h, wz+s_f]], [[0.0, 0.0], [world_w, 0.0], [world_w, world_h], [0.0, world_h]]),
+                                                5 => ([[wx+world_w, wy, wz], [wx, wy, wz], [wx, wy+world_h, wz], [wx+world_w, wy+world_h, wz]], [[world_w, 0.0], [0.0, 0.0], [0.0, world_h], [world_w, world_h]]),
+                                                _ => ([[0.0; 3]; 4], [[0.0; 2]; 4]),
                                             };
                                             
                                             let base_i = i_cnt;
-                                            vertices.extend_from_slice(&[
-                                                Vertex { position: positions[0], tex_coords: [0.0, 0.0], ao: 1.0, tex_index, light: 15.0 },
-                                                Vertex { position: positions[1], tex_coords: [world_w, 0.0], ao: 1.0, tex_index, light: 15.0 },
-                                                Vertex { position: positions[2], tex_coords: [world_w, world_h], ao: 1.0, tex_index, light: 15.0 },
-                                                Vertex { position: positions[3], tex_coords: [0.0, world_h], ao: 1.0, tex_index, light: 15.0 },
-                                            ]);
-                                            
-                                            // DIABOLICAL FIX: Unified CCW Winding order to match main mesher
-                                            indices.extend_from_slice(&[
-                                                base_i, base_i + 1, base_i + 2,
-                                                base_i, base_i + 2, base_i + 3
-                                            ]);
-                                            
+                                            vertices.push(Vertex { position: positions[0], tex_coords: uv[0], ao: 1.0, tex_index, light: 15.0 });
+                                            vertices.push(Vertex { position: positions[1], tex_coords: uv[1], ao: 1.0, tex_index, light: 15.0 });
+                                            vertices.push(Vertex { position: positions[2], tex_coords: uv[2], ao: 1.0, tex_index, light: 15.0 });
+                                            vertices.push(Vertex { position: positions[3], tex_coords: uv[3], ao: 1.0, tex_index, light: 15.0 });
+                                            indices.extend_from_slice(&[base_i, base_i + 1, base_i + 2, base_i, base_i + 2, base_i + 3]);
                                             i_cnt += 4;
                                             
-                                            // Clear mask for merged blocks
-                                            for l in 0..h { 
-                                                for k in 0..w { 
-                                                    mask[n + k + l * mask_w] = BlockType::Air; 
-                                                } 
-                                            }
+                                            for l in 0..h { for k in 0..w { mask[n + k + l * mask_dim] = BlockType::Air; } }
                                         }
                                         n += 1;
                                     }
@@ -422,28 +342,14 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
                         }
                     }
 
-                    // DIABOLICAL FIX: Ensure ranges match the unified index buffer exactly
                     let mut final_ranges = Vec::new();
-                    if !indices.is_empty() {
-                        final_ranges.push(TextureRange { 
-                            _tex_index: 0, 
-                            index_start: 0, 
-                            index_count: indices.len() as u32 
-                        });
-                    }
-
-                    let _ = r_tx.send(MeshTask { 
-                        cx, cy, cz, lod, 
-                        vertices, 
-                        indices, 
-                        ranges: final_ranges 
-                    });
+                    if !indices.is_empty() { final_ranges.push(TextureRange { tex_index: 0, index_start: 0, index_count: indices.len() as u32 }); }
+                    let _ = r_tx.send(MeshTask { cx, cy, cz, lod, vertices, indices, ranges: final_ranges });
                 }
             });
-        }
+        };
 
-
-        Self { 
+        Self {
             particles: Vec::new(), _ui_v_cache: Vec::new(), _ui_i_cache: Vec::new(), _ui_needs_update: true, surface, device, queue, config, pipeline, ui_pipeline, depth_texture, bind_group, camera_bind_group, camera_buffer, time_bind_group, time_buffer, start_time: Instant::now(), 
             chunk_meshes: HashMap::new(),
             entity_vertex_buffer, entity_index_buffer, 
@@ -489,7 +395,7 @@ pub fn rebuild_all_chunks(&mut self, world: &World) {
         if !vertices.is_empty() {
             let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Cloud VB"), contents: bytemuck::cast_slice(&vertices), usage: BufferUsages::VERTEX });
             let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Cloud IB"), contents: bytemuck::cast_slice(&indices), usage: BufferUsages::INDEX });
-            self.chunk_meshes.insert((999, 999, 999), (ChunkMesh { vertex_buffer: vb, index_buffer: ib, ranges: vec![TextureRange { _tex_index: 228, index_start: 0, index_count: indices.len() as u32 }], total_indices: indices.len() as u32 }, 0));
+            self.chunk_meshes.insert((999, 999, 999), (ChunkMesh { vertex_buffer: vb, index_buffer: ib, ranges: vec![TextureRange { tex_index: 228, index_start: 0, index_count: indices.len() as u32 }], total_indices: indices.len() as u32 }, 0));
         }
     }
 
@@ -701,26 +607,24 @@ fn _add_cross_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, 
             _ => block.get_texture_side()
         };
         
-        let (u0, v0, u1, v1) = (0.0, 0.0, w, h);
-
-        let positions = match face {
-            0 => [[x, y + 1.0, z], [x + w, y + 1.0, z], [x + w, y + 1.0, z + h], [x, y + 1.0, z + h]], // Top
-            1 => [[x, y, z], [x, y, z + h], [x + w, y, z + h], [x + w, y, z]], // Bottom
-            2 => [[x + 1.0, y, z], [x + 1.0, y, z + h], [x + 1.0, y + w, z + h], [x + 1.0, y + w, z]], // Right
-            3 => [[x, y, z], [x, y + w, z], [x, y + w, z + h], [x, y, z + h]], // Left
-            4 => [[x, y, z + 1.0], [x + w, y, z + 1.0], [x + w, y + h, z + 1.0], [x, y + h, z + 1.0]], // Front
-            5 => [[x, y, z], [x, y + h, z], [x + w, y + h, z], [x + w, y, z]], // Back
-            _ => [[0.0; 3]; 4],
+        // POSITIONS ARE NOW CCW LOOKING AT THE FACE FROM THE OUTSIDE
+        // UV COORDS ARE Standard [0,0], [w,0], [w,h], [0,h] for fragment-shader tiling
+        let (positions, uv) = match face {
+            0 => ([[x, y + 1.0, z + h], [x + w, y + 1.0, z + h], [x + w, y + 1.0, z], [x, y + 1.0, z]], [[0.0, h], [w, h], [w, 0.0], [0.0, 0.0]]), // Top
+            1 => ([[x, y, z], [x + w, y, z], [x + w, y, z + h], [x, y, z + h]], [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]]), // Bottom
+            2 => ([[x + 1.0, y, z], [x + 1.0, y + w, z], [x + 1.0, y + w, z + h], [x + 1.0, y, z + h]], [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]]), // Right
+            3 => ([[x, y, z + h], [x, y + w, z + h], [x, y + w, z], [x, y, z]], [[0.0, h], [w, h], [w, 0.0], [0.0, 0.0]]), // Left
+            4 => ([[x, y, z + 1.0], [x + w, y, z + 1.0], [x + w, y + h, z + 1.0], [x, y + h, z + 1.0]], [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]]), // Front
+            5 => ([[x + w, y, z], [x, y, z], [x, y + h, z], [x + w, y + h, z]], [[w, 0.0], [0.0, 0.0], [0.0, h], [w, h]]), // Back
+            _ => ([[0.0; 3]; 4], [[0.0; 2]; 4]),
         };
 
         let base_i = *i_count;
-        v.extend_from_slice(&[
-            Vertex { position: positions[0], tex_coords: [u0, v0], ao: 1.0, tex_index, light: 15.0 },
-            Vertex { position: positions[1], tex_coords: [u1, v0], ao: 1.0, tex_index, light: 15.0 },
-            Vertex { position: positions[2], tex_coords: [u1, v1], ao: 1.0, tex_index, light: 15.0 },
-            Vertex { position: positions[3], tex_coords: [u0, v1], ao: 1.0, tex_index, light: 15.0 },
-        ]);
-        // Standard CCW Winding: 0,1,2 and 0,2,3
+        v.push(Vertex { position: positions[0], tex_coords: uv[0], ao: 1.0, tex_index, light: 15.0 });
+        v.push(Vertex { position: positions[1], tex_coords: uv[1], ao: 1.0, tex_index, light: 15.0 });
+        v.push(Vertex { position: positions[2], tex_coords: uv[2], ao: 1.0, tex_index, light: 15.0 });
+        v.push(Vertex { position: positions[3], tex_coords: uv[3], ao: 1.0, tex_index, light: 15.0 });
+        
         i.extend_from_slice(&[base_i, base_i + 1, base_i + 2, base_i, base_i + 2, base_i + 3]);
         *i_count += 4;
     }
@@ -872,54 +776,7 @@ pub fn render_pause_menu(&mut self, menu: &MainMenu, world: &World, player: &Pla
 }
 
 pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor_pos: (f64, f64), _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
-        // DIABOLICAL MESH SYNC & LOD MANAGEMENT
-        while let Ok(task) = self.mesh_rx.try_recv() {
-            self.pending_chunks.remove(&(task.cx, task.cy, task.cz));
-if task.vertices.is_empty() {
-                self.chunk_meshes.remove(&(task.cx, task.cy, task.cz));
-            } else {
-                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk VB"), contents: bytemuck::cast_slice(&task.vertices), usage: BufferUsages::VERTEX });
-                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk IB"), contents: bytemuck::cast_slice(&task.indices), usage: BufferUsages::INDEX });
-                self.chunk_meshes.insert((task.cx, task.cy, task.cz), (ChunkMesh { 
-                    vertex_buffer: vb, 
-                    index_buffer: ib, 
-                    ranges: task.ranges, 
-                    total_indices: task.indices.len() as u32 
-                }, task.lod));
-            }
-        }
-
-let p_cx = (player.position.x / 16.0).floor() as i32;
-        let _p_cy = (player.position.y / 16.0).floor() as i32;
-        let p_cz = (player.position.z / 16.0).floor() as i32;
-        let world_arc = Arc::new(world.clone());
-
-        // MASSIVE RENDER DISTANCE: 32 Chunks (512 blocks) with LOD
-        let render_dist = 32;
-        for dx in -render_dist..=render_dist {
-            for dz in -render_dist..=render_dist {
-                for dy in 0..8 { // 8 vertical chunks (128 height)
-                    let target = (p_cx + dx, dy, p_cz + dz);
-                    let dist_sq = (dx*dx + dz*dz) as f32;
-                    
-                    let target_lod = if dist_sq > 256.0 { 2 } else if dist_sq > 64.0 { 1 } else { 0 };
-
-                    if !self.pending_chunks.contains(&target) {
-                        let current_lod = self.chunk_meshes.get(&target).map(|m| m.1);
-                        let needs_update = world.chunks.get(&target).map(|c| c.mesh_dirty).unwrap_or(false);
-                        
-                        if needs_update || current_lod != Some(target_lod) {
-                            if world.chunks.contains_key(&target) {
-                                self.pending_chunks.insert(target);
-                                let _ = self.mesh_tx.send((target.0, target.1, target.2, target_lod, world_arc.clone()));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-// DIABOLICAL MESH SYNC
+        // 1. Mesh Sync Logic
         while let Ok(task) = self.mesh_rx.try_recv() {
             self.pending_chunks.remove(&(task.cx, task.cy, task.cz));
             if task.vertices.is_empty() {
@@ -931,54 +788,55 @@ let p_cx = (player.position.x / 16.0).floor() as i32;
             }
         }
 
+        // 2. LOD & Render Distance Management
         let world_arc = Arc::new(world.clone());
         let p_cx = (player.position.x / 16.0).floor() as i32;
-        let p_cy = (player.position.y / 16.0).floor() as i32;
         let p_cz = (player.position.z / 16.0).floor() as i32;
         
-        // DIABOLICAL FIX: Fully Disable Occlusion Culling to restore visual solidity
-        unsafe {
-            let world_mut = (world as *const World as *mut World).as_mut().unwrap();
-            world_mut.occluded_chunks.clear();
-        }
-
-        for dx in -8..=8 {
-            for dz in -8..=8 {
+        let render_dist = 16;
+        for dx in -render_dist..=render_dist {
+            for dz in -render_dist..=render_dist {
                 for dy in 0..8 {
                     let target = (p_cx + dx, dy, p_cz + dz);
                     if !self.pending_chunks.contains(&target) {
+                        let dist_sq = (dx*dx + dz*dz) as f32;
+                        let target_lod = if dist_sq > 400.0 { 2 } else if dist_sq > 144.0 { 1 } else { 0 };
+                        
+                        let current = self.chunk_meshes.get(&target);
                         let needs_update = world.chunks.get(&target).map(|c| c.mesh_dirty).unwrap_or(false);
-                        if needs_update {
-                            self.pending_chunks.insert(target);
-                            let _ = self.mesh_tx.send((target.0, target.1, target.2, 0, world_arc.clone()));
+                        
+                        if needs_update || current.map(|m| m.1) != Some(target_lod) {
+                            if world.chunks.contains_key(&target) {
+                                self.pending_chunks.insert(target);
+                                let _ = self.mesh_tx.send((target.0, target.1, target.2, target_lod, world_arc.clone()));
+                            }
                         }
                     }
                 }
             }
         }
 
+        // 3. Setup Surface and Uniforms
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&TextureViewDescriptor::default());
-        let view_proj = player.build_view_projection_matrix(self.config.width as f32 / self.config.height as f32);
+        let aspect = self.config.width as f32 / self.config.height as f32;
+        let view_proj = player.build_view_projection_matrix(aspect);
         self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[view_proj]));
-let time = self.start_time.elapsed().as_secs_f32();
-        let eye_bp = BlockPos { x: player.position.x.floor() as i32, y: (player.position.y + player.height * 0.4).floor() as i32, z: player.position.z.floor() as i32 };
-let is_underwater = if world.get_block(eye_bp).is_water() { 1.0f32 } else { 0.0f32 };
         
-// BIOME FOG LOGIC
+        let time = self.start_time.elapsed().as_secs_f32();
+        let eye_bp = BlockPos { x: player.position.x.floor() as i32, y: (player.position.y + player.height * 0.4).floor() as i32, z: player.position.z.floor() as i32 };
+        let is_underwater = if world.get_block(eye_bp).is_water() { 1.0f32 } else { 0.0f32 };
+        
         let noise_gen = crate::noise_gen::NoiseGenerator::new(world.seed); 
         let (cont, eros, _weird, temp) = noise_gen.get_height_params(eye_bp.x, eye_bp.z);
         let humid = noise_gen.get_noise_octaves(eye_bp.x as f64 * 0.01, 44.0, eye_bp.z as f64 * 0.01, 3) as f32;
         let biome = noise_gen.get_biome(cont, eros, temp, humid, eye_bp.y);
         let fog_color = match biome {
-            "swamp" => [0.3, 0.4, 0.2, 1.0],
-            "desert" => [0.8, 0.7, 0.5, 1.0],
-            "ice_plains" => [0.9, 0.9, 1.0, 1.0],
-            _ => [0.5, 0.8, 0.9, 1.0], // Default sky blue
+            "swamp" => [0.3, 0.4, 0.2, 1.0], "desert" => [0.8, 0.7, 0.5, 1.0], "ice_plains" => [0.9, 0.9, 1.0, 1.0], _ => [0.5, 0.8, 0.9, 1.0],
         };
-
         self.queue.write_buffer(&self.time_buffer, 0, bytemuck::cast_slice(&[fog_color[0], fog_color[1], fog_color[2], fog_color[3], time, is_underwater, 0.0, 0.0]));
 
+        // 4. Entity Buffer Preparation
         let mut ent_v = Vec::new(); let mut ent_i = Vec::new(); let mut ent_off = 0;
         for rp in &world.remote_players {
             for f in 0..6 { self.add_rotated_quad(&mut ent_v, &mut ent_i, &mut ent_off, [rp.position.x, rp.position.y, rp.position.z], rp.rotation, -0.3, 0.0, -0.3, 0.6, f, 13); }
@@ -987,7 +845,7 @@ let is_underwater = if world.get_block(eye_bp).is_water() { 1.0f32 } else { 0.0f
         }
         for e in &world.entities {
             let (t, _, _) = e.item_type.get_texture_indices();
-            let rot = time * 1.5 + e.bob_offset; let by = ((time * 4.0 + e.bob_offset).sin() * 0.05) + 0.12; // Toned down shake
+            let rot = time * 1.5 + e.bob_offset; let by = ((time * 4.0 + e.bob_offset).sin() * 0.05) + 0.12;
             for f in 0..6 { self.add_rotated_quad(&mut ent_v, &mut ent_i, &mut ent_off, [e.position.x, e.position.y+by, e.position.z], rot, -0.125, -0.125, -0.125, 0.25, f, t); }
         }
         if !ent_v.is_empty() {
@@ -995,115 +853,91 @@ let is_underwater = if world.get_block(eye_bp).is_water() { 1.0f32 } else { 0.0f
             self.entity_index_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Ent IB"), contents: bytemuck::cast_slice(&ent_i), usage: BufferUsages::INDEX });
         }
 
-        let mut encoder = self.device.create_command_encoder(&CommandEncoderDescriptor { label: Some("Encoder") });
+        // 5. 3D Pass
+        let mut encoder = self.device.create_command_encoder(&CommandEncoderDescriptor { label: Some("Render Encoder") });
         {
-            let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { label: Some("3D Pass"), color_attachments: &[Some(RenderPassColorAttachment { view: &view, resolve_target: None, ops: Operations { load: LoadOp::Clear(Color { r: 0.5, g: 0.8, b: 0.9, a: 1.0 }), store: StoreOp::Store } })], depth_stencil_attachment: Some(RenderPassDepthStencilAttachment { view: &self.depth_texture, depth_ops: Some(Operations { load: LoadOp::Clear(1.0), store: StoreOp::Store }), stencil_ops: None }), timestamp_writes: None, occlusion_query_set: None });
-pass.set_pipeline(&self.pipeline); 
+            let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { 
+                label: Some("3D Pass"), 
+                color_attachments: &[Some(RenderPassColorAttachment { view: &view, resolve_target: None, ops: Operations { load: LoadOp::Clear(Color { r: fog_color[0] as f64, g: fog_color[1] as f64, b: fog_color[2] as f64, a: 1.0 }), store: StoreOp::Store } })], 
+                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment { view: &self.depth_texture, depth_ops: Some(Operations { load: LoadOp::Clear(1.0), store: StoreOp::Store }), stencil_ops: None }), 
+                timestamp_writes: None, occlusion_query_set: None 
+            });
+            
+            pass.set_pipeline(&self.pipeline); 
             pass.set_bind_group(0, &self.bind_group, &[]); 
             pass.set_bind_group(1, &self.camera_bind_group, &[]); 
             pass.set_bind_group(2, &self.time_bind_group, &[]);
 
-// --- DIABOLICAL GPU COMPUTE CULLING & INDIRECT PASS ---
-            // Note: For true Indirect Drawing, we must consolidate all chunk geometry into one MEGA-BUFFER.
-            // Since we use separate buffers, we will use multi-draw indirect for each range.
-            let mut cull_data = Vec::with_capacity(self.chunk_meshes.len());
-            for (&(cx, cy, cz), (mesh, _)) in &self.chunk_meshes {
+            // Draw World
+            for (&(cx, _cy, _cz), (mesh, _)) in &self.chunk_meshes {
                 if cx == 999 { continue; }
-                if world.occluded_chunks.contains(&(cx, cy, cz)) { continue; }
-                
-                for range in &mesh.ranges {
-                    cull_data.push(ChunkCullData { 
-                        pos: [(cx * 16 + 8) as f32, (cy * 16 + 8) as f32, (cz * 16 + 8) as f32, 14.0],
-                        index_count: range.index_count,
-                        base_vertex: 0,
-                        base_index: range.index_start,
-                        _pad: 0,
-                    });
-                }
-            }
-
-            if !cull_data.is_empty() {
-                // 1. Update Input Data
-                self.queue.write_buffer(&self.chunk_data_buffer, 0, bytemuck::cast_slice(&cull_data));
-                self.queue.write_buffer(&self.indirect_count_buffer, 0, bytemuck::cast_slice(&[0u32; 1])); // Reset atomic counter
-
-// 2. Compute Pass (GPU decides what to draw)
-                let mut c_encoder = self.device.create_command_encoder(&CommandEncoderDescriptor { label: Some("Cull Encoder") });
-                {
-                    let mut cpass = c_encoder.begin_compute_pass(&ComputePassDescriptor { label: Some("Cull Pass"), timestamp_writes: None });
-                    cpass.set_pipeline(&self.compute_pipeline);
-                    // DIABOLICAL BIND GROUP SYNC: All indices must be bound to satisfy the Pipeline Layout
-                    cpass.set_bind_group(0, &self.bind_group, &[]); 
-                    cpass.set_bind_group(1, &self.camera_bind_group, &[]);
-                    cpass.set_bind_group(2, &self.time_bind_group, &[]);
-                    cpass.set_bind_group(3, &self.cull_bind_group, &[]);
-                    cpass.dispatch_workgroups((cull_data.len() as u32 + 63) / 64, 1, 1);
-                }
-                self.queue.submit(std::iter::once(c_encoder.finish()));
-            }
-
-            // RADICAL FIX: Simple chunk rendering without broken GPU culling
-            for (&(cx, cy, cz), (mesh, _)) in &self.chunk_meshes {
-                if cx == 999 { continue; } // Skip clouds
                 pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
                 pass.set_index_buffer(mesh.index_buffer.slice(..), IndexFormat::Uint32);
                 pass.draw_indexed(0..mesh.total_indices, 0, 0..1);
             }
 
+            // Draw Clouds
+            if let Some((m, _)) = self.chunk_meshes.get(&(999, 999, 999)) {
+                pass.set_vertex_buffer(0, m.vertex_buffer.slice(..));
+                pass.set_index_buffer(m.index_buffer.slice(..), IndexFormat::Uint32);
+                pass.draw_indexed(0..m.total_indices, 0, 0..1);
+            }
 
-        if !uv.is_empty() {
-            let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("UI VB"), contents: bytemuck::cast_slice(&uv), usage: BufferUsages::VERTEX });
-            let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("UI IB"), contents: bytemuck::cast_slice(&ui), usage: BufferUsages::INDEX });
-            let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { label: Some("UI Pass"), color_attachments: &[Some(RenderPassColorAttachment { view: &view, resolve_target: None, ops: Operations { load: LoadOp::Load, store: StoreOp::Store } })], depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None });
-            pass.set_pipeline(&self.ui_pipeline); pass.set_bind_group(0, &self.bind_group, &[]); pass.set_vertex_buffer(0, vb.slice(..)); pass.set_index_buffer(ib.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..ui.len() as u32, 0, 0..1);
+            // Draw Entities
+            if !ent_v.is_empty() { 
+                pass.set_vertex_buffer(0, self.entity_vertex_buffer.slice(..)); 
+                pass.set_index_buffer(self.entity_index_buffer.slice(..), IndexFormat::Uint32); 
+                pass.draw_indexed(0..ent_i.len() as u32, 0, 0..1); 
+            }
         }
-        self.queue.submit(std::iter::once(encoder.finish()));
-output.present();
-Ok(())
-}
+
+        // 6. UI Logic & Render Pass
+        let mut uv = Vec::new(); let mut ui = Vec::new(); let mut uoff = 0;
+        
+        // Breaking Cracks
+        if self.break_progress > 0.0 {
+            let crack_tex = 210 + (self.break_progress * 9.0) as u32;
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.05, -0.05 * aspect, 0.1, 0.1 * aspect, crack_tex);
+        }
+
+        // Crosshair
+        if !player.inventory_open && !is_paused { 
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.01, -0.01 * aspect, 0.02, 0.02 * aspect, 240); 
+        }
+
+        // Hotbar
+        let sw = 0.12; let sh = sw * aspect; let sx = -(sw * 9.0) / 2.0; let by = -0.9;
+        
+        // Bubbles
+        if player.air < player.max_air {
+            let bubble_count = (player.air / player.max_air * 10.0).ceil() as i32;
+            let bx_bubbles = sx + sw * 5.0; let by_bubbles = by + sh + 0.08 * aspect;
+            for i in 0..10 { if i < bubble_count { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bx_bubbles + i as f32 * 0.045, by_bubbles, 0.04, 0.04 * aspect, 243); } }
+        }
+
         if player.inventory_open {
-             self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240); // Dim BG
+             self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240);
              self.draw_text("INVENTORY", -0.2, 0.8, 0.08, &mut uv, &mut ui, &mut uoff);
         }
 
-if !is_paused || player.inventory_open {
+        if !is_paused || player.inventory_open {
             for i in 0..9 {
                 let x = sx + (i as f32 * sw);
-                if i == player.inventory.selected_hotbar_slot { 
-                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x - 0.005, by - 0.005 * aspect, sw + 0.01, sh + 0.01 * aspect, 241); 
-                }
+                if i == player.inventory.selected_hotbar_slot { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x - 0.005, by - 0.005 * aspect, sw + 0.01, sh + 0.01 * aspect, 241); }
                 self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, by, sw, sh, 240);
-                
                 if let Some(stack) = &player.inventory.slots[i] {
                     let (t, _, _) = stack.item.get_texture_indices();
                     self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, by+0.02*aspect, sw-0.04, sh-0.04*aspect, t);
-                    // Shifted text so it doesn't overlap slots
-if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x + 0.07, by + 0.02, 0.04, &mut uv, &mut ui, &mut uoff); }
-                    
-                    // DURABILITY BAR
-                    if stack.item.is_tool() {
-                        let max_dur = stack.item.get_max_durability();
-                        if stack.durability < max_dur {
-                            let ratio = stack.durability as f32 / max_dur as f32;
-                            let bar_w = sw * 0.7 * ratio;
-                            let bar_x = x + (sw * 0.15);
-                            let bar_y = by + 0.05 * aspect;
-                            // Color logic: Green -> Yellow -> Red
-                            let tex = if ratio > 0.5 { 244 } else if ratio > 0.2 { 245 } else { 246 }; // Use different UI bar colors
-                            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bar_x, bar_y, bar_w, 0.01 * aspect, tex);
-                        }
-                    }
+                    if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x + 0.07, by + 0.02, 0.04, &mut uv, &mut ui, &mut uoff); }
                 }
             }
             if !player.inventory_open {
                 for i in 0..10 { if player.health > (i as f32)*2.0 { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, sx + i as f32 * 0.05, by+sh+0.02*aspect, 0.045, 0.045*aspect, 242); } }
-                if self.break_progress > 0.0 { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.1, -0.1, 0.2 * self.break_progress, 0.02*aspect, 244); }
             }
         }
 
         if player.inventory_open {
             let iby = by + sh * 1.5;
-            // Main Grid
             for r in 0..3 { for c in 0..9 {
                 let idx = 9 + r * 9 + c; let x = sx + c as f32 * sw; let y = iby + r as f32 * sh;
                 self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, y, sw, sh, 240);
@@ -1113,7 +947,6 @@ if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x + 0.07, by + 
                     if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x+0.01, y+0.01, 0.03, &mut uv, &mut ui, &mut uoff); } 
                 }
             }}
-            // Crafting
             let cx = 0.3; let cy = 0.5;
             self.draw_text(if player.crafting_open { "CRAFTING TABLE" } else { "CRAFTING" }, 0.3, 0.7, 0.05, &mut uv, &mut ui, &mut uoff);
             let grid_size = if player.crafting_open { 3 } else { 2 };
@@ -1127,7 +960,6 @@ if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x + 0.07, by + 
                     if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x+0.01, y+0.01, 0.03, &mut uv, &mut ui, &mut uoff); }
                 }
             }}
-            // Output
             let ox = cx + 3.0*sw; let oy = cy - 0.5*sh;
             self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ox, oy, sw, sh, 240); 
             self.draw_text("->", cx + 2.1*sw, oy+0.05, 0.04, &mut uv, &mut ui, &mut uoff);
@@ -1136,231 +968,29 @@ if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x + 0.07, by + 
                 self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ox+0.02, oy+0.02*aspect, sw-0.04, sh-0.04*aspect, t); 
                 if stack.count > 1 { self.draw_text(&format!("{}", stack.count), ox+0.01, oy+0.01, 0.03, &mut uv, &mut ui, &mut uoff); } 
             }
-            // Render Held Item & Tooltip
-            let (mx, my) = cursor_pos; let ndc_x = (mx as f32 / self.config.width as f32)*2.0-1.0; let ndc_y = -((my as f32 / self.config.height as f32)*2.0-1.0);
-            if let Some(stack) = &player.inventory.cursor_item {
-                let (t, _, _) = stack.item.get_texture_indices();
-                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ndc_x - sw/2.0, ndc_y - sh/2.0, sw, sh, t);
-                if stack.count > 1 { self.draw_text(&format!("{}", stack.count), ndc_x - sw/2.0, ndc_y - sh/2.0, 0.03, &mut uv, &mut ui, &mut uoff); }
-            } else {
-                // Tooltip
-                for i in 0..9 {
-                    let x = sx + (i as f32 * sw); 
-                    if ndc_x >= x && ndc_x < x+sw && ndc_y >= by && ndc_y < by+sh {
-                        if let Some(s) = &player.inventory.slots[i] {
-                            self.draw_text(s.item.get_display_name(), ndc_x + 0.02, ndc_y - 0.02, 0.025, &mut uv, &mut ui, &mut uoff);
-                        }
-                    }
-                }
-            }
-        }
-
-
-        // Draw clouds
-        if let Some((m, _)) = self.chunk_meshes.get(&(999, 999, 999)) {
-            pass.set_vertex_buffer(0, m.vertex_buffer.slice(..));
-            pass.set_index_buffer(m.index_buffer.slice(..), IndexFormat::Uint32);
-            pass.draw_indexed(0..m.total_indices, 0, 0..1);
-        }
-
-        // Draw entities
-        if !ent_v.is_empty() { 
-            pass.set_vertex_buffer(0, self.entity_vertex_buffer.slice(..)); 
-            pass.set_index_buffer(self.entity_index_buffer.slice(..), IndexFormat::Uint32); 
-            pass.draw_indexed(0..ent_i.len() as u32, 0, 0..1); 
-        }
-        }
-
-        // UI RENDERING
-        let mut uv = Vec::new(); 
-        let mut ui = Vec::new(); 
-        let mut uoff = 0;
-        let aspect = self.config.width as f32 / self.config.height as f32;
-
-        // Breaking cracks
-        if self.break_progress > 0.0 {
-            let crack_tex = 210 + (self.break_progress * 9.0) as u32;
-            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.05, -0.05 * aspect, 0.1, 0.1 * aspect, crack_tex);
-        }
-
-        // Crosshair
-        if !player.inventory_open && !is_paused { 
-            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.015, -0.015 * aspect, 0.03, 0.03 * aspect, 240); 
-        }
-
-        // Hotbar
-        let sw = 0.12; 
-        let sh = sw * aspect; 
-        let sx = -(sw * 9.0) / 2.0; 
-        let by = -0.9;
-
-        // Air bubbles
-        const UI_BUBBLE: u32 = 243;
-        if player.air < player.max_air {
-            let bubble_count = (player.air / player.max_air * 10.0).ceil() as i32;
-            let bx_bubbles = sx + sw * 5.0; 
-            let by_bubbles = by + sh + 0.08 * aspect;
-            for i in 0..10 {
-                if i < bubble_count {
-                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bx_bubbles + i as f32 * 0.045, by_bubbles, 0.04, 0.04 * aspect, UI_BUBBLE);
-                }
-            }
-        }
-
-        if player.inventory_open {
-             self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240);
-             self.draw_text("INVENTORY", -0.2, 0.8, 0.08, &mut uv, &mut ui, &mut uoff);
-        }
-
-        if !is_paused || player.inventory_open {
-            for i in 0..9 {
-                let x = sx + (i as f32 * sw);
-                if i == player.inventory.selected_hotbar_slot { 
-                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x - 0.005, by - 0.005 * aspect, sw + 0.01, sh + 0.01 * aspect, 241); 
-                }
-                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, by, sw, sh, 240);
-                
-                if let Some(stack) = &player.inventory.slots[i] {
-                    let (t, _, _) = stack.item.get_texture_indices();
-                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, by+0.02*aspect, sw-0.04, sh-0.04*aspect, t);
-                    if stack.count > 1 { 
-                        self.draw_text(&format!("{}", stack.count), x + 0.07, by + 0.02, 0.04, &mut uv, &mut ui, &mut uoff); 
-                    }
-                    
-                    // Durability bar
-                    if stack.item.is_tool() {
-                        let max_dur = stack.item.get_max_durability();
-                        if stack.durability < max_dur {
-                            let ratio = stack.durability as f32 / max_dur as f32;
-                            let bar_w = sw * 0.7 * ratio;
-                            let bar_x = x + (sw * 0.15);
-                            let bar_y = by + 0.05 * aspect;
-                            let tex = if ratio > 0.5 { 244 } else if ratio > 0.2 { 245 } else { 246 };
-                            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bar_x, bar_y, bar_w, 0.01 * aspect, tex);
-                        }
-                    }
-                }
-            }
-            
-            if !player.inventory_open {
-                for i in 0..10 { 
-                    if player.health > (i as f32)*2.0 { 
-                        self.add_ui_quad(&mut uv, &mut ui, &mut uoff, sx + i as f32 * 0.05, by+sh+0.02*aspect, 0.045, 0.045*aspect, 242); 
-                    } 
-                }
-                if self.break_progress > 0.0 { 
-                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.1, -0.1, 0.2 * self.break_progress, 0.02*aspect, 244); 
-                }
-            }
-        }
-
-        if player.inventory_open {
-            let iby = by + sh * 1.5;
-            // Main Grid
-            for r in 0..3 { 
-                for c in 0..9 {
-                    let idx = 9 + r * 9 + c; 
-                    let x = sx + c as f32 * sw; 
-                    let y = iby + r as f32 * sh;
-                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, y, sw, sh, 240);
-                    if let Some(stack) = &player.inventory.slots[idx] { 
-                        let (t, _, _) = stack.item.get_texture_indices(); 
-                        self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, y+0.02*aspect, sw-0.04, sh-0.04*aspect, t); 
-                        if stack.count > 1 { 
-                            self.draw_text(&format!("{}", stack.count), x+0.01, y+0.01, 0.03, &mut uv, &mut ui, &mut uoff); 
-                        } 
-                    }
-                }
-            }
-            
-            // Crafting
-            let cx = 0.3; 
-            let cy = 0.5;
-            self.draw_text(if player.crafting_open { "CRAFTING TABLE" } else { "CRAFTING" }, 0.3, 0.7, 0.05, &mut uv, &mut ui, &mut uoff);
-            let grid_size = if player.crafting_open { 3 } else { 2 };
-            for r in 0..grid_size { 
-                for c in 0..grid_size {
-                    let x = cx + c as f32 * sw; 
-                    let y = cy - r as f32 * sh;
-                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, y, sw, sh, 240);
-                    let idx = if player.crafting_open { r*3+c } else { match r*2+c { 0=>0, 1=>1, 2=>3, 3=>4, _=>0 } };
-                    if let Some(stack) = &player.inventory.crafting_grid[idx] { 
-                        let (t, _, _) = stack.item.get_texture_indices(); 
-                        self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, y+0.02*aspect, sw-0.04, sh-0.04*aspect, t); 
-                        if stack.count > 1 { 
-                            self.draw_text(&format!("{}", stack.count), x+0.01, y+0.01, 0.03, &mut uv, &mut ui, &mut uoff); 
-                        }
-                    }
-                }
-            }
-            
-            // Output
-            let ox = cx + 3.0*sw; 
-            let oy = cy - 0.5*sh;
-            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ox, oy, sw, sh, 240); 
-            self.draw_text("->", cx + 2.1*sw, oy+0.05, 0.04, &mut uv, &mut ui, &mut uoff);
-            if let Some(stack) = &player.inventory.crafting_output { 
-                let (t, _, _) = stack.item.get_texture_indices(); 
-                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ox+0.02, oy+0.02*aspect, sw-0.04, sh-0.04*aspect, t); 
-                if stack.count > 1 { 
-                    self.draw_text(&format!("{}", stack.count), ox+0.01, oy+0.01, 0.03, &mut uv, &mut ui, &mut uoff); 
-                } 
-            }
-            
-            // Held Item & Tooltip
             let (mx, my) = cursor_pos; 
             let ndc_x = (mx as f32 / self.config.width as f32)*2.0-1.0; 
             let ndc_y = -((my as f32 / self.config.height as f32)*2.0-1.0);
             if let Some(stack) = &player.inventory.cursor_item {
                 let (t, _, _) = stack.item.get_texture_indices();
                 self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ndc_x - sw/2.0, ndc_y - sh/2.0, sw, sh, t);
-                if stack.count > 1 { 
-                    self.draw_text(&format!("{}", stack.count), ndc_x - sw/2.0, ndc_y - sh/2.0, 0.03, &mut uv, &mut ui, &mut uoff); 
-                }
-            } else {
-                // Tooltip
-                for i in 0..9 {
-                    let x = sx + (i as f32 * sw); 
-                    if ndc_x >= x && ndc_x < x+sw && ndc_y >= by && ndc_y < by+sh {
-                        if let Some(s) = &player.inventory.slots[i] {
-                            self.draw_text(s.item.get_display_name(), ndc_x + 0.02, ndc_y - 0.02, 0.025, &mut uv, &mut ui, &mut uoff);
-                        }
-                    }
-                }
+                if stack.count > 1 { self.draw_text(&format!("{}", stack.count), ndc_x - sw/2.0, ndc_y - sh/2.0, 0.03, &mut uv, &mut ui, &mut uoff); }
             }
         }
 
         if !uv.is_empty() {
-            let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { 
-                label: Some("UI VB"), 
-                contents: bytemuck::cast_slice(&uv), 
-                usage: BufferUsages::VERTEX 
-            });
-            let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { 
-                label: Some("UI IB"), 
-                contents: bytemuck::cast_slice(&ui), 
-                usage: BufferUsages::INDEX 
-            });
+            let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("UI VB"), contents: bytemuck::cast_slice(&uv), usage: BufferUsages::VERTEX });
+            let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("UI IB"), contents: bytemuck::cast_slice(&ui), usage: BufferUsages::INDEX });
             let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { 
-                label: Some("UI Pass"), 
-                color_attachments: &[Some(RenderPassColorAttachment { 
-                    view: &view, 
-                    resolve_target: None, 
-                    ops: Operations { load: LoadOp::Load, store: StoreOp::Store } 
-                })], 
-                depth_stencil_attachment: None, 
-                timestamp_writes: None, 
-                occlusion_query_set: None 
+                label: Some("UI Pass"), color_attachments: &[Some(RenderPassColorAttachment { view: &view, resolve_target: None, ops: Operations { load: LoadOp::Load, store: StoreOp::Store } })], 
+                depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None 
             });
-            pass.set_pipeline(&self.ui_pipeline); 
-            pass.set_bind_group(0, &self.bind_group, &[]); 
-            pass.set_vertex_buffer(0, vb.slice(..)); 
-            pass.set_index_buffer(ib.slice(..), IndexFormat::Uint32); 
-            pass.draw_indexed(0..ui.len() as u32, 0, 0..1);
+            pass.set_pipeline(&self.ui_pipeline); pass.set_bind_group(0, &self.bind_group, &[]); pass.set_vertex_buffer(0, vb.slice(..)); pass.set_index_buffer(ib.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..ui.len() as u32, 0, 0..1);
         }
-        
-self.queue.submit(std::iter::once(encoder.finish()));
+
+        self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
         Ok(())
     }
+}
 

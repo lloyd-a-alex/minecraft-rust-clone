@@ -28,6 +28,7 @@ struct VertexOutput {
     @location(1) ao: f32,
     @location(2) depth: f32,
     @location(3) light: f32,
+    @location(4) tex_index: u32,
 };
 
 @vertex
@@ -37,29 +38,10 @@ fn vs_main(model: VertexInput) -> VertexOutput {
     out.ao = model.ao;
     out.depth = out.clip_position.w;
     
-    // Calculate light level (0.0 to 1.0)
     let light_level = f32(model.light) / 15.0;
     out.light = max(0.1, light_level);
-
-    // DIABOLICAL FRACTAL TILING
-    // We use fract() to repeat the texture across large merged greedy meshes
-    let atlas_size = 32.0; 
-    let u_step = 1.0 / atlas_size;
-    let col = f32(model.tex_index % 32u);
-    let row = f32(model.tex_index / 32u);
-    
-// DIABOLICAL FIX: Exact Atlas Indexing with Greedy Scaling
-    let u_step = 1.0 / 32.0;
-    let v_step = 1.0 / 32.0;
-    
-    // model.tex_coords is [world_w, world_h] from the greedy mesher
-    let local_u = fract(model.tex_coords.x);
-    let local_v = fract(model.tex_coords.y);
-
-    out.tex_coords = vec2<f32>(
-        (col + local_u) * u_step,
-        (row + local_v) * v_step
-    );
+    out.tex_index = model.tex_index;
+    out.tex_coords = model.tex_coords; // Pass raw world-scale coordinates for tiling
     return out;
 }
 
@@ -70,14 +52,29 @@ var s_diffuse: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    var base_color = textureSample(t_diffuse, s_diffuse, in.tex_coords);
+    // DIABOLICAL FRAGMENT TILING: Calculate atlas UVs here to support large greedy quads
+    let atlas_size = 32.0; 
+    let u_step = 1.0 / atlas_size;
+    let v_step = 1.0 / atlas_size;
+    let col = f32(in.tex_index % 32u);
+    let row = f32(in.tex_index / 32u);
+
+    // Apply fract() to tile within the 16x16 block texture
+    let local_uv = fract(in.tex_coords);
+    // Precision clamp to prevent atlas bleeding at edges
+    let u_clamped = mix(0.005, 0.995, local_uv.x);
+    let v_clamped = mix(0.005, 0.995, local_uv.y);
+
+    let atlas_uv = vec2<f32>(
+        (col + u_clamped) * u_step,
+        (row + v_clamped) * v_step
+    );
+
+    var base_color = textureSample(t_diffuse, s_diffuse, atlas_uv);
     if (base_color.a < 0.1) { discard; }
     
-    // DIABOLICAL TRANSLUCENCY: If it's water, force alpha to 0.6
-    // Assuming water is using tex_index 9 from your texture.rs
-    // Check vs_main's out.light to pass tex_index if needed, or use a color check
-// DIABOLICAL PRECISION: Only apply water transparency to the specific atlas tile for water
-    if (in.light < 0.99 && base_color.b > 0.5 && base_color.r < 0.4) {
+    // Proper Water Transparency
+    if (in.tex_index == 9u) {
         base_color.a = 0.7;
     }
     
@@ -104,7 +101,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         lit_color = mix(lit_color, vec3<f32>(0.0, 0.2, 0.8), 0.4);
     }
 
-    return vec4<f32>(lit_color, 1.0);
+    return vec4<f32>(lit_color, base_color.a);
 }
 // [ADD TO THE VERY END OF FILE]
 
@@ -115,17 +112,18 @@ fn vs_ui(model: VertexInput) -> VertexOutput {
     out.clip_position = vec4<f32>(model.position, 1.0);
     out.depth = 0.0;
     out.ao = 1.0;
+    out.tex_index = model.tex_index;
     
     // Texture Atlas Logic (Same as vs_main)
     let atlas_size = 32.0;
-let u_idx = f32(model.tex_index % 32u);
+    let u_idx = f32(model.tex_index % 32u);
     let v_idx = f32(model.tex_index / 32u);
     let u_step = 1.0 / atlas_size;
     let v_step = 1.0 / atlas_size;
     let u = (u_idx + model.tex_coords.x) * u_step;
     let v = (v_idx + model.tex_coords.y) * v_step;
     
-out.tex_coords = vec2<f32>(u, v);
+    out.tex_coords = vec2<f32>(u, v);
     out.light = 1.0;
     return out;
 }
