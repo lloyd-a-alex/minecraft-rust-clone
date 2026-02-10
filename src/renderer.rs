@@ -792,7 +792,15 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
         let time_since_last = self.last_fps_time.elapsed();
         if time_since_last.as_secs_f32() >= 1.0 {
             self.fps = self.frame_count as f32 / time_since_last.as_secs_f32();
-            println!("[PERF] FPS: {:.2} | Chunks: {}", self.fps, self.chunk_meshes.len());
+            
+            // RADICAL DEBUG LOGGING: Everything needed to diagnose jitter and jumping
+            println!("--------------------------------------------------");
+            println!("[PERF] FPS: {:.1} | Chunks: {}", self.fps, self.chunk_meshes.len());
+            println!("[PHYS] Pos: ({:.2}, {:.2}, {:.2})", player.position.x, player.position.y, player.position.z);
+            println!("[PHYS] Vel: ({:.3}, {:.3}, {:.3})", player.velocity.x, player.velocity.y, player.velocity.z);
+            println!("[PHYS] Grounded: {} | Flying: {} | Sprint: {}", player.on_ground, player.is_flying, player.is_sprinting);
+            println!("--------------------------------------------------");
+            
             self.frame_count = 0;
             self.last_fps_time = Instant::now();
         }

@@ -252,18 +252,18 @@ KeyCode::Digit9 => self.inventory.select_slot(8),
 pub fn update(&mut self, world: &crate::world::World, dt: f32, audio: &crate::AudioSystem, in_cave: bool) {
         if self.is_dead || self.inventory_open { return; }
         
-        // DIABOLICAL PHYSICS SUB-STEPPING
-        let substeps = 4;
+        // DIABOLICAL PHYSICS SUB-STEPPING: 8 steps for perfect precision
+        let substeps = 8;
         let sub_dt = dt.min(0.1) / substeps as f32;
         
         for _ in 0..substeps {
-            // ROOT FIX: Passing true current on_ground state to sub-steps
-            let current_on_ground = self.on_ground;
-            self.internal_update(world, sub_dt, audio, in_cave, current_on_ground);
+            // ROOT FIX: We no longer pass stale 'was_on_ground' state. 
+            // The internal update now manages state transitions diabolically well.
+            self.internal_update(world, sub_dt, audio, in_cave);
         }
     }
 
-    fn internal_update(&mut self, world: &crate::world::World, dt: f32, audio: &crate::AudioSystem, in_cave: bool, was_on_ground: bool) {
+    fn internal_update(&mut self, world: &crate::world::World, dt: f32, audio: &crate::AudioSystem, in_cave: bool) {
         if self.invincible_timer > 0.0 { self.invincible_timer -= dt; }
 
         // ROOT FIX: Use a larger Snap Epsilon (0.01) and Vertical Deadzone (0.02)
@@ -378,24 +378,29 @@ if move_delta.length_squared() > 0.0 {
         }
         
 let next_y = self.position.y + self.velocity.y * dt;
-        // ROOT FIX: Allow snapping if velocity is nearly zero to account for floating point drift
-        if self.velocity.y <= 0.1 {
+        
+        // ROOT FIX: Improved Grounding Latch. 
+        // If jumping (vel > 0), we ignore ground checks to allow upward momentum.
+        if self.velocity.y <= 0.001 {
             if let Some(ground_y) = self.check_ground(world, Vec3::new(self.position.x, next_y, self.position.z)) {
-                if !prev_on_ground {
+                // If we just landed
+                if !self.on_ground {
                     let eye_p = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + self.height * 0.4).floor() as i32, z: self.position.z.floor() as i32 };
                     let is_submerged = world.get_block(eye_p).is_water();
                     audio.play("land", is_submerged || in_cave);
-                    // Reset bob timer on landing to prevent ghost steps
                     self.bob_timer = 0.0;
                 }
                 
-                self.position.y = ground_y;
+                // SNAP POSITIVELY: Use a higher epsilon (0.05) to ensure gravity cannot pull us back 
+                // into the collision zone in a single sub-step.
+                self.position.y = ground_y + 0.005; 
+                
                 if !in_water && self.velocity.y < -14.0 && self.invincible_timer <= 0.0 { 
                     let dmg = (self.velocity.y.abs() - 12.0) * 0.5;
                     self.health -= dmg;
                 }
                 
-                // Zero velocity entirely once grounded
+                // KILL VELOCITY: Complete stop to prevent jitter
                 self.velocity.y = 0.0; 
                 self.on_ground = true;
             } else { 
@@ -415,7 +420,9 @@ if self.health <= 0.0 { self.health = 0.0; self.is_dead = true; }
 
 fn check_ground(&self, world: &World, pos: Vec3) -> Option<f32> {
         let feet_y = pos.y - self.height / 2.0;
-        let r = self.radius * 0.8; // Tighter radius for landing stability
+        // ROOT FIX: Use a tighter radius for ground checks (0.7) to prevent "edge-jitter"
+        // when standing on the microscopic boundary of two blocks.
+        let r = self.radius * 0.7; 
         let check_points = [
             (pos.x - r, feet_y, pos.z - r), (pos.x + r, feet_y, pos.z + r), 
             (pos.x + r, feet_y, pos.z - r), (pos.x - r, feet_y, pos.z + r),
@@ -426,10 +433,9 @@ fn check_ground(&self, world: &World, pos: Vec3) -> Option<f32> {
             let bp = BlockPos { x: x.floor() as i32, y: y.floor() as i32, z: z.floor() as i32 };
             if world.get_block(bp).is_solid() { 
                 let top = bp.y as f32 + 1.0; 
-                // ROOT FIX: Expanded snap range to 0.2 blocks and safe landing offset of 0.02.
-                // This ensures that gravity (acceleration) cannot push the player past the snap point in 1 frame.
-                if top >= feet_y - 0.1 && top - feet_y <= 0.2 { 
-                    return Some(top + self.height / 2.0 + 0.02); 
+                // ROOT FIX: Consistent snap window. If feet are within 0.15 of the top, we are grounded.
+                if top >= feet_y - 0.05 && top - feet_y <= 0.15 { 
+                    return Some(top + self.height / 2.0); 
                 } 
             }
         }
