@@ -153,9 +153,9 @@ struct DrawIndexedIndirect {
     first_instance: u32,
 };
 
-@group(0) @binding(1) var<storage, read> chunks: array<ChunkCullData>;
-@group(0) @binding(2) var<storage, read_write> draw_commands: array<DrawIndexedIndirect>;
-@group(0) @binding(3) var<storage, read_write> draw_counter: atomic<u32>;
+@group(3) @binding(0) var<storage, read> chunks: array<ChunkCullData>;
+@group(3) @binding(1) var<storage, read_write> draw_commands: array<DrawIndexedIndirect>;
+@group(3) @binding(2) var<storage, read_write> draw_counter: atomic<u32>;
 
 @compute @workgroup_size(64)
 fn compute_cull(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -172,15 +172,14 @@ fn compute_cull(@builtin(global_invocation_id) id: vec3<u32>) {
     let p3 = vec4<f32>(m[0].w - m[0].y, m[1].w - m[1].y, m[2].w - m[2].y, m[3].w - m[3].y);
     let p4 = vec4<f32>(m[0].w + m[0].z, m[1].w + m[1].z, m[2].w + m[2].z, m[3].w + m[3].z);
     let p5 = vec4<f32>(m[0].w - m[0].z, m[1].w - m[1].z, m[2].w - m[2].z, m[3].w - m[3].z);
-    let planes = array<vec4<f32>, 6>(p0, p1, p2, p3, p4, p5);
 
     var visible = true;
-    for (var i = 0u; i < 6u; i = i + 1u) {
-        if (dot(planes[i].xyz, center) + planes[i].w < -radius) {
-            visible = false;
-            break;
-        }
-    }
+    if (dot(p0.xyz, center) + p0.w < -radius) { visible = false; }
+    if (visible && dot(p1.xyz, center) + p1.w < -radius) { visible = false; }
+    if (visible && dot(p2.xyz, center) + p2.w < -radius) { visible = false; }
+    if (visible && dot(p3.xyz, center) + p3.w < -radius) { visible = false; }
+    if (visible && dot(p4.xyz, center) + p4.w < -radius) { visible = false; }
+    if (visible && dot(p5.xyz, center) + p5.w < -radius) { visible = false; }
 
     if (visible) {
         // DIABOLICAL ATOMIC APPEND: Write the draw command directly to the storage buffer

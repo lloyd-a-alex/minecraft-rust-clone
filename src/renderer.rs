@@ -159,13 +159,12 @@ let depth_texture = device.create_texture(&TextureDescriptor { size: Extent3d { 
         let indirect_draw_buffer = device.create_buffer(&BufferDescriptor { label: Some("Indirect Draw Buffer"), size: (10000 * std::mem::size_of::<DrawIndexedIndirect>()) as u64, usage: BufferUsages::STORAGE | BufferUsages::INDIRECT | BufferUsages::COPY_DST, mapped_at_creation: false });
         let indirect_count_buffer = device.create_buffer(&BufferDescriptor { label: Some("Indirect Count Buffer"), size: 256, usage: BufferUsages::STORAGE | BufferUsages::INDIRECT | BufferUsages::COPY_DST, mapped_at_creation: false });
 
-        let cull_bg_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+let cull_bg_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("Cull Layout"),
             entries: &[
-                BindGroupLayoutEntry { binding: 0, visibility: ShaderStages::COMPUTE, ty: BindingType::Buffer { ty: BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
-                BindGroupLayoutEntry { binding: 1, visibility: ShaderStages::COMPUTE, ty: BindingType::Buffer { ty: BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+                BindGroupLayoutEntry { binding: 0, visibility: ShaderStages::COMPUTE, ty: BindingType::Buffer { ty: BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+                BindGroupLayoutEntry { binding: 1, visibility: ShaderStages::COMPUTE, ty: BindingType::Buffer { ty: BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
                 BindGroupLayoutEntry { binding: 2, visibility: ShaderStages::COMPUTE, ty: BindingType::Buffer { ty: BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
-                BindGroupLayoutEntry { binding: 3, visibility: ShaderStages::COMPUTE, ty: BindingType::Buffer { ty: BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             ],
         });
 
@@ -173,14 +172,17 @@ let depth_texture = device.create_texture(&TextureDescriptor { size: Extent3d { 
             label: Some("Cull BG"),
             layout: &cull_bg_layout,
             entries: &[
-                BindGroupEntry { binding: 0, resource: camera_buffer.as_entire_binding() },
-                BindGroupEntry { binding: 1, resource: chunk_data_buffer.as_entire_binding() },
-                BindGroupEntry { binding: 2, resource: indirect_draw_buffer.as_entire_binding() },
-                BindGroupEntry { binding: 3, resource: indirect_count_buffer.as_entire_binding() },
+                BindGroupEntry { binding: 0, resource: chunk_data_buffer.as_entire_binding() },
+                BindGroupEntry { binding: 1, resource: indirect_draw_buffer.as_entire_binding() },
+                BindGroupEntry { binding: 2, resource: indirect_count_buffer.as_entire_binding() },
             ],
         });
 
-        let compute_pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor { label: Some("Compute Layout"), bind_group_layouts: &[&cull_bg_layout], push_constant_ranges: &[] });
+        let compute_pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor { 
+            label: Some("Compute Layout"), 
+            bind_group_layouts: &[&bind_group_layout, &camera_bg_layout, &time_bg_layout, &cull_bg_layout], 
+            push_constant_ranges: &[] 
+        });
         let compute_pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor { label: Some("Cull Pipeline"), layout: Some(&compute_pipeline_layout), module: &compute_shader, entry_point: "compute_cull" });
 let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("Entity IB"), size: 1024, usage: BufferUsages::INDEX | BufferUsages::COPY_DST, mapped_at_creation: false });
 
@@ -367,13 +369,10 @@ let mut chunk_v = Vec::new();
             let bz = (cz * 16) as f32;
 
             // DIABOLICAL GREEDY MESHING
-            // Iterate over 3 axes: 0=Y (Up/Down), 1=X (East/West), 2=Z (North/South)
+// Iterate over 3 axes: 0=Y (Up/Down), 1=X (East/West), 2=Z (North/South)
             for axis in 0..3 {
                 let (_u_axis, _v_axis) = match axis { 0 => (2, 1), 1 => (2, 0), _ => (1, 0) };
-                let (dims_main, dims_u, dims_v) = match axis { 
-                    0 => (128, 16, 16), // Y axis: slices are XZ (16x16)
-                    _ => (16, 128, 16)  // X or Z axis: slices are YZ or XY (128x16)
-                };
+                let (dims_main, dims_u, dims_v) = (16, 16, 16);
 
                 // For each slice along the main axis
                 for d in 0..dims_main {
@@ -874,7 +873,8 @@ pass.set_pipeline(&self.pipeline);
                 {
                     let mut cpass = c_encoder.begin_compute_pass(&ComputePassDescriptor { label: Some("Cull Pass"), timestamp_writes: None });
                     cpass.set_pipeline(&self.compute_pipeline);
-                    cpass.set_bind_group(0, &self.cull_bind_group, &[]);
+                    cpass.set_bind_group(1, &self.camera_bind_group, &[]);
+                    cpass.set_bind_group(3, &self.cull_bind_group, &[]);
                     cpass.dispatch_workgroups((cull_data.len() as u32 + 63) / 64, 1, 1);
                 }
                 self.queue.submit(std::iter::once(c_encoder.finish()));
