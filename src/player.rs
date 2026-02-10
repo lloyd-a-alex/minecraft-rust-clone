@@ -268,7 +268,8 @@ pub fn update(&mut self, world: &crate::world::World, dt: f32, audio: &crate::Au
 
         // ROOT FIX: Use a larger Snap Epsilon (0.01) and Vertical Deadzone (0.02)
         // This stops the 1mm oscillation where gravity and ground-snapping fight each other.
-        let prev_on_ground = was_on_ground;
+        // Capturing current state to handle landing/falling transitions
+        let _prev_on_ground = self.on_ground;
 
         // --- CAVE AMBIENCE ---
         if in_cave {
