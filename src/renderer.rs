@@ -221,7 +221,9 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
         let (task_tx, task_rx) = unbounded::<(i32, i32, i32, u32, Arc<World>)>();
         let (result_tx, result_rx) = unbounded::<MeshTask>();
 
-        for _ in 0..std::thread::available_parallelism().unwrap().get().max(2) - 1 {
+        // RADICAL FIX: Single-threaded mesh generation to eliminate race conditions and coordinate chaos
+        // The threaded worker had catastrophic bugs with dimensions and coordinate mapping
+        let _worker_thread = {
             let t_rx = task_rx.clone();
             let r_tx = result_tx.clone();
             std::thread::spawn(move || {
@@ -231,83 +233,197 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
                     let mut i_cnt = 0;
                     
                     if let Some(chunk) = world.chunks.get(&(cx, cy, cz)) {
-if chunk.is_empty {
+                        if chunk.is_empty {
                             let _ = r_tx.send(MeshTask { cx, cy, cz, lod, vertices: Vec::new(), indices: Vec::new(), ranges: Vec::new() });
                             continue;
                         }
 
-let bx = (cx * 16) as f32;
-                        let _by = (cy * 16) as f32;
+                        let bx = (cx * 16) as f32;
+                        let by = (cy * 16) as f32;
                         let bz = (cz * 16) as f32;
                         let step = 1 << lod; // LOD 0 = 1, LOD 1 = 2, LOD 2 = 4
                         
+                        // RADICAL FIX: Consistent 16x16x16 chunk dimensions for ALL axes
                         for axis in 0..3 {
-                            let (dims_u, dims_v) = match axis { 0 => (16, 16), _ => (128, 16) };
-                            for d in 0..(if axis == 0 { 128 } else { 16 }) {
+                            let (dims_u, dims_v) = (16usize, 16usize);
+                            let dims_main = 16usize;
+                            
+                            for d in (0..dims_main).step_by(step as usize) {
                                 for dir in 0..2 {
-                                    let face_id = match axis { 0 => if dir==0 {0} else {1}, 1 => if dir==0 {2} else {3}, _ => if dir==0 {4} else {5} };
-                                    let mut mask = vec![BlockType::Air; (16 * 128) as usize]; // Conservative size
-for u in (0..dims_u).step_by(step as usize) {
+                                    let face_id = match axis { 
+                                        0 => if dir==0 {0} else {1}, // Y: Top/Bottom
+                                        1 => if dir==0 {2} else {3}, // X: Right/Left  
+                                        _ => if dir==0 {4} else {5}  // Z: Front/Back
+                                    };
+                                    
+                                    let mut mask = vec![BlockType::Air; dims_u * dims_v];
+                                    
+                                    // Build mask for this slice
+                                    for u in (0..dims_u).step_by(step as usize) {
                                         for v in (0..dims_v).step_by(step as usize) {
-// DIABOLICAL FIX: Corrected Axis Mapping for Threaded Worker
-                                            let (x, y, z) = match axis {
-                                                0 => (u as i32, d as i32, v as i32), // Y-axis slice
-                                                1 => (d as i32, u as i32, v as i32), // X-axis slice
-                                                _ => (u as i32, v as i32, d as i32), // Z-axis slice
+                                            // RADICAL FIX: Consistent coordinate mapping
+                                            let (lx, ly, lz) = match axis {
+                                                0 => (u, d, v),      // Y-axis slice: x=u, y=d, z=v
+                                                1 => (d, u, v),      // X-axis slice: x=d, y=u, z=v
+                                                _ => (u, v, d)       // Z-axis slice: x=u, y=v, z=d
                                             };
-                                            let blk = chunk.get_block(x as usize, y as usize, z as usize);
-                                            if blk.is_solid() {
-                                                let (nx, ny, nz) = match face_id { 0 => (x, y+1, z), 1 => (x, y-1, z), 2 => (x+1, y, z), 3 => (x-1, y, z), 4 => (x, y, z+1), 5 => (x, y, z-1), _ => (0,0,0) };
-                                                let neighbor = if nx >= 0 && nx < 16 && ny >= 0 && ny < 128 && nz >= 0 && nz < 16 { chunk.get_block(nx as usize, ny as usize, nz as usize) } else { BlockType::Air };
-                                                let visible = !neighbor.is_solid() || (neighbor.is_transparent() && neighbor != blk);
-                                                if visible { mask[(v * dims_u + u) as usize] = blk; }
+                                            
+                                            if lx >= 16 || ly >= 16 || lz >= 16 {
+                                                continue; // Safety bounds check
+                                            }
+                                            
+                                            let blk = chunk.get_block(lx, ly, lz);
+                                            if !blk.is_solid() {
+                                                continue;
+                                            }
+                                            
+                                            // Check neighbor visibility
+                                            let (nx, ny, nz) = match face_id { 
+                                                0 => (lx as i32, ly as i32 + 1, lz as i32), // Top
+                                                1 => (lx as i32, ly as i32 - 1, lz as i32), // Bottom
+                                                2 => (lx as i32 + 1, ly as i32, lz as i32), // Right
+                                                3 => (lx as i32 - 1, ly as i32, lz as i32), // Left
+                                                4 => (lx as i32, ly as i32, lz as i32 + 1), // Front
+                                                5 => (lx as i32, ly as i32, lz as i32 - 1), // Back
+                                                _ => (0, 0, 0)
+                                            };
+                                            
+                                            // RADICAL FIX: Check neighbor in current chunk or adjacent chunks
+                                            let neighbor = if nx >= 0 && nx < 16 && ny >= 0 && ny < 16 && nz >= 0 && nz < 16 {
+                                                chunk.get_block(nx as usize, ny as usize, nz as usize)
+                                            } else {
+                                                // Check world neighbor - simplified, treat as air for visibility
+                                                BlockType::Air
+                                            };
+                                            
+                                            let visible = !neighbor.is_solid() || (neighbor.is_transparent() && neighbor != blk);
+                                            if visible { 
+                                                mask[(v / step as usize) * (dims_u / step as usize) + (u / step as usize)] = blk; 
                                             }
                                         }
                                     }
+                                    
+                                    // Greedy meshing on the mask
+                                    let mask_w = dims_u / step as usize;
+                                    let mask_h = dims_v / step as usize;
                                     let mut n = 0;
-                                    while n < (dims_u * dims_v) as usize {
+                                    
+                                    while n < mask_w * mask_h {
                                         let blk = mask[n];
                                         if blk != BlockType::Air {
-                                            let mut w = 1; while (n + w) % dims_u as usize != 0 && mask[n + w] == blk { w += 1; }
-                                            let mut h = 1; 'h_loop: while (n / dims_u as usize + h) < dims_v as usize { for k in 0..w { if mask[n + k + h * dims_u as usize] != blk { break 'h_loop; } } h += 1; }
-                                            let u = (n % dims_u as usize) as i32; let v = (n / dims_u as usize) as i32;
-                                            // DIABOLICAL FIX: Corrected Axis Mapping for Threaded Worker
-                                            let (x, y, z) = match axis {
-                                                0 => (v as i32, d as i32, u as i32), // Y-axis slice
-                                                1 => (d as i32, u as i32, v as i32), // X-axis slice
-                                                _ => (v as i32, u as i32, d as i32), // Z-axis slice
-                                            };
-                                            let (world_w, world_h) = (w as f32, h as f32);
+                                            // Find width
+                                            let mut w = 1;
+                                            while (n % mask_w + w) < mask_w && mask[n + w] == blk {
+                                                w += 1;
+                                            }
                                             
-                                            // Manual add_face_greedy call for thread safety
-                                            let tex_index = match face_id { 0 => blk.get_texture_top(), 1 => blk.get_texture_bottom(), _ => blk.get_texture_side() };
-let positions = match face_id {
-                                                0 => [[bx+x as f32, y as f32 + 1.0, bz+z as f32], [bx+x as f32, y as f32 + 1.0, bz+z as f32 + world_h], [bx+x as f32 + world_w, y as f32 + 1.0, bz+z as f32 + world_h], [bx+x as f32 + world_w, y as f32 + 1.0, bz+z as f32]], // Top
-                                                1 => [[bx+x as f32, y as f32, bz+z as f32 + world_h], [bx+x as f32, y as f32, bz+z as f32], [bx+x as f32 + world_w, y as f32, bz+z as f32], [bx+x as f32 + world_w, y as f32, bz+z as f32 + world_h]], // Bottom
-                                                2 => [[bx+x as f32 + 1.0, y as f32, bz+z as f32], [bx+x as f32 + 1.0, y as f32 + world_h, bz+z as f32], [bx+x as f32 + 1.0, y as f32 + world_h, bz+z as f32 + world_w], [bx+x as f32 + 1.0, y as f32, bz+z as f32 + world_w]], // Right
-                                                3 => [[bx+x as f32, y as f32, bz+z as f32 + world_w], [bx+x as f32, y as f32 + world_h, bz+z as f32 + world_w], [bx+x as f32, y as f32 + world_h, bz+z as f32], [bx+x as f32, y as f32, bz+z as f32]], // Left
-                                                4 => [[bx+x as f32, y as f32, bz+z as f32 + 1.0], [bx+x as f32 + world_w, y as f32, bz+z as f32 + 1.0], [bx+x as f32 + world_w, y as f32 + world_h, bz+z as f32 + 1.0], [bx+x as f32, y as f32 + world_h, bz+z as f32 + 1.0]], // Front
-                                                5 => [[bx+x as f32 + world_w, y as f32, bz+z as f32], [bx+x as f32, y as f32, bz+z as f32], [bx+x as f32, y as f32 + world_h, bz+z as f32], [bx+x as f32 + world_w, y as f32 + world_h, bz+z as f32]], // Back
+                                            // Find height
+                                            let mut h = 1;
+                                            'h_loop: while (n / mask_w + h) < mask_h {
+                                                for k in 0..w {
+                                                    if mask[n + k + h * mask_w] != blk { 
+                                                        break 'h_loop; 
+                                                    }
+                                                }
+                                                h += 1;
+                                            }
+                                            
+                                            // Calculate world position
+                                            let mask_u = n % mask_w;
+                                            let mask_v = n / mask_w;
+                                            let world_u = (mask_u * step as usize) as f32;
+                                            let world_v = (mask_v * step as usize) as f32;
+                                            let world_d = d as f32;
+                                            let world_w = (w * step as usize) as f32;
+                                            let world_h = (h * step as usize) as f32;
+                                            
+                                            // RADICAL FIX: Consistent world coordinate generation
+                                            let (wx, wy, wz) = match axis {
+                                                0 => (bx + world_u, by + world_d + 1.0, bz + world_v), // Y-face at top
+                                                1 => (bx + world_d + 1.0, by + world_u, bz + world_v), // X-face at right
+                                                _ => (bx + world_u, by + world_v, bz + world_d + 1.0)  // Z-face at front
+                                            };
+                                            
+                                            // Generate face with correct orientation
+                                            let tex_index = match face_id { 
+                                                0 => blk.get_texture_top(), 
+                                                1 => blk.get_texture_bottom(), 
+                                                _ => blk.get_texture_side() 
+                                            };
+                                            
+                                            // RADICAL FIX: Correct face vertex generation with proper winding
+                                            let positions = match face_id {
+                                                0 => [ // Top face (Y+), CCW when looking down
+                                                    [wx, wy, wz + world_h],
+                                                    [wx + world_w, wy, wz + world_h],
+                                                    [wx + world_w, wy, wz],
+                                                    [wx, wy, wz],
+                                                ],
+                                                1 => [ // Bottom face (Y-), CCW when looking up
+                                                    [wx, wy - 1.0, wz],
+                                                    [wx + world_w, wy - 1.0, wz],
+                                                    [wx + world_w, wy - 1.0, wz + world_h],
+                                                    [wx, wy - 1.0, wz + world_h],
+                                                ],
+                                                2 => [ // Right face (X+), CCW when looking left
+                                                    [wx, wy - world_w, wz + world_h],
+                                                    [wx, wy, wz + world_h],
+                                                    [wx, wy, wz],
+                                                    [wx, wy - world_w, wz],
+                                                ],
+                                                3 => [ // Left face (X-), CCW when looking right
+                                                    [wx - 1.0, wy, wz],
+                                                    [wx - 1.0, wy, wz + world_h],
+                                                    [wx - 1.0, wy - world_w, wz + world_h],
+                                                    [wx - 1.0, wy - world_w, wz],
+                                                ],
+                                                4 => [ // Front face (Z+), CCW when looking back
+                                                    [wx + world_w, wy, wz],
+                                                    [wx, wy, wz],
+                                                    [wx, wy + world_h, wz],
+                                                    [wx + world_w, wy + world_h, wz],
+                                                ],
+                                                5 => [ // Back face (Z-), CCW when looking forward
+                                                    [wx, wy, wz - 1.0],
+                                                    [wx + world_w, wy, wz - 1.0],
+                                                    [wx + world_w, wy + world_h, wz - 1.0],
+                                                    [wx, wy + world_h, wz - 1.0],
+                                                ],
                                                 _ => [[0.0; 3]; 4],
                                             };
+                                            
                                             let base_i = i_cnt;
                                             vertices.extend_from_slice(&[
                                                 Vertex { position: positions[0], tex_coords: [0.0, world_h], ao: 1.0, tex_index, light: 15.0 },
-                                                Vertex { position: positions[1], tex_coords: [0.0, 0.0], ao: 1.0, tex_index, light: 15.0 },
+                                                Vertex { position: positions[1], tex_coords: [world_w, world_h], ao: 1.0, tex_index, light: 15.0 },
                                                 Vertex { position: positions[2], tex_coords: [world_w, 0.0], ao: 1.0, tex_index, light: 15.0 },
-                                                Vertex { position: positions[3], tex_coords: [world_w, world_h], ao: 1.0, tex_index, light: 15.0 },
+                                                Vertex { position: positions[3], tex_coords: [0.0, 0.0], ao: 1.0, tex_index, light: 15.0 },
                                             ]);
-                                            indices.extend_from_slice(&[base_i, base_i + 1, base_i + 2, base_i + 2, base_i + 3, base_i]);
+                                            
+                                            // RADICAL FIX: Correct triangle winding order
+                                            indices.extend_from_slice(&[
+                                                base_i, base_i + 1, base_i + 2,
+                                                base_i, base_i + 2, base_i + 3
+                                            ]);
+                                            
                                             i_cnt += 4;
-                                            for l in 0..h { for k in 0..w { mask[n + k + l * dims_u as usize] = BlockType::Air; } }
+                                            
+                                            // Clear mask
+                                            for l in 0..h { 
+                                                for k in 0..w { 
+                                                    mask[n + k + l * mask_w] = BlockType::Air; 
+                                                } 
+                                            }
                                         }
                                         n += 1;
                                     }
                                 }
                             }
                         }
-}
-// DIABOLICAL FIX: Simplified batching to prevent index corruption and spikes
+                    }
+
+
+                    // RADICAL FIX: Proper range batching
                     let mut final_ranges = Vec::new();
                     if !indices.is_empty() {
                         final_ranges.push(TextureRange { 
@@ -319,13 +435,14 @@ let positions = match face_id {
 
                     let _ = r_tx.send(MeshTask { 
                         cx, cy, cz, lod, 
-                        vertices: vertices, 
-                        indices: indices, 
+                        vertices, 
+                        indices, 
                         ranges: final_ranges 
                     });
                 }
             });
         }
+
 
         Self { 
             particles: Vec::new(), _ui_v_cache: Vec::new(), _ui_i_cache: Vec::new(), _ui_needs_update: true, surface, device, queue, config, pipeline, ui_pipeline, depth_texture, bind_group, camera_bind_group, camera_buffer, time_bind_group, time_buffer, start_time: Instant::now(), 
@@ -377,105 +494,121 @@ pub fn rebuild_all_chunks(&mut self, world: &World) {
         }
     }
 
-pub fn update_chunk(&mut self, cx: i32, cy: i32, cz: i32, world: &World) {
+    // RADICAL FIX: Completely rewritten update_chunk with proper coordinate handling
+    pub fn update_chunk(&mut self, cx: i32, cy: i32, cz: i32, world: &World) {
         if let Some(chunk) = world.chunks.get(&(cx, cy, cz)) {
             if chunk.is_empty {
                 self.chunk_meshes.remove(&(cx, cy, cz));
                 return;
             }
-let mut chunk_v = Vec::new();
+            
+            let mut chunk_v = Vec::new();
             let mut chunk_i = Vec::new();
             let mut i_cnt = 0u32;
             
             let bx = (cx * 16) as f32;
+            let by = (cy * 16) as f32;
             let bz = (cz * 16) as f32;
 
-            // DIABOLICAL GREEDY MESHING
-// Iterate over 3 axes: 0=Y (Up/Down), 1=X (East/West), 2=Z (North/South)
+            // RADICAL FIX: Consistent 16x16x16 greedy meshing for all axes
             for axis in 0..3 {
-                let (_u_axis, _v_axis) = match axis { 0 => (2, 1), 1 => (2, 0), _ => (1, 0) };
-                let (dims_main, dims_u, dims_v) = (16, 16, 16);
+                let dims_u = 16usize;
+                let dims_v = 16usize;
+                let dims_main = 16usize;
 
-                // For each slice along the main axis
                 for d in 0..dims_main {
-                    // Two directions per axis (e.g., Top vs Bottom)
                     for dir in 0..2 { 
-                        let face_id = match axis { 0 => if dir==0 {0} else {1}, 1 => if dir==0 {2} else {3}, _ => if dir==0 {4} else {5} };
+                        let face_id = match axis { 
+                            0 => if dir==0 {0} else {1}, // Y: Top/Bottom
+                            1 => if dir==0 {2} else {3}, // X: Right/Left
+                            _ => if dir==0 {4} else {5}  // Z: Front/Back
+                        };
                         
-// 1. Generate Mask for this Slice
-                        let mut mask = vec![BlockType::Air; (dims_u * dims_v) as usize];
+                        let mut mask = vec![BlockType::Air; dims_u * dims_v];
+                        
+                        // Build visibility mask
                         for u_idx in 0..dims_u {
                             for v_idx in 0..dims_v {
-// DIABOLICAL FIX: Map u,v,d to local x,y,z - Synchronized with worker thread
-                                let (x, y, z) = match axis {
-                                    0 => (u_idx, d, v_idx), // Y-Axis
-                                    1 => (d, u_idx, v_idx), // X-Axis
-                                    _ => (u_idx, v_idx, d)  // Z-Axis
+                                // RADICAL FIX: Consistent coordinate mapping
+                                let (lx, ly, lz) = match axis {
+                                    0 => (u_idx, d, v_idx),      // Y-slice: x=u, y=d, z=v
+                                    1 => (d, u_idx, v_idx),      // X-slice: x=d, y=u, z=v
+                                    _ => (u_idx, v_idx, d)       // Z-slice: x=u, y=v, z=d
                                 };
                                 
-                                let blk = chunk.get_block(x as usize, y as usize, z as usize);
-                                if blk.is_solid() || blk.is_liquid() {
-                                    // Check neighbor visibility
-                                    let (nx, ny, nz) = match face_id {
-                                        0 => (x, y+1, z), 1 => (x, y-1, z),
-                                        2 => (x+1, y, z), 3 => (x-1, y, z),
-                                        4 => (x, y, z+1), 5 => (x, y, z-1),
-                                        _ => (0,0,0)
-                                    };
-                                    
-let neighbor = if nx >= 0 && nx < 16 && ny >= 0 && ny < 128 && nz >= 0 && nz < 16 {
-                                        chunk.get_block(nx as usize, ny as usize, nz as usize)
-                                    } else {
-                                        let gx = cx*16 + nx; let gz = cz*16 + nz;
-                                        world.get_block(BlockPos{x:gx, y:ny, z:gz})
-                                    };
+                                let blk = chunk.get_block(lx, ly, lz);
+                                if !blk.is_solid() && !blk.is_liquid() {
+                                    continue;
+                                }
+                                
+                                // Check neighbor
+                                let (nx, ny, nz) = match face_id {
+                                    0 => (lx as i32, ly as i32 + 1, lz as i32),
+                                    1 => (lx as i32, ly as i32 - 1, lz as i32),
+                                    2 => (lx as i32 + 1, ly as i32, lz as i32),
+                                    3 => (lx as i32 - 1, ly as i32, lz as i32),
+                                    4 => (lx as i32, ly as i32, lz as i32 + 1),
+                                    5 => (lx as i32, ly as i32, lz as i32 - 1),
+                                    _ => (0, 0, 0)
+                                };
+                                
+                                // RADICAL FIX: Proper neighbor checking with world lookup
+                                let neighbor = if nx >= 0 && nx < 16 && ny >= 0 && ny < 16 && nz >= 0 && nz < 16 {
+                                    chunk.get_block(nx as usize, ny as usize, nz as usize)
+                                } else {
+                                    // Look up in world for proper boundary culling
+                                    let wx = cx * 16 + nx;
+                                    let wy = cy * 16 + ny;
+                                    let wz = cz * 16 + nz;
+                                    world.get_block(BlockPos { x: wx, y: wy, z: wz })
+                                };
 
-                                    // HYPER-CULLING: Only show face if neighbor is air or transparent
-                                    // AND ensure we don't cull faces between different transparent blocks (like water/glass)
-                                    let visible = !neighbor.is_solid() || (neighbor.is_transparent() && neighbor != blk);
-
-                                    if visible { mask[(v_idx * dims_u + u_idx) as usize] = blk; }
+                                let visible = !neighbor.is_solid() || (neighbor.is_transparent() && neighbor != blk);
+                                if visible { 
+                                    mask[v_idx * dims_u + u_idx] = blk; 
                                 }
                             }
                         }
 
-                        // 2. Greedy Merge Mask
+                        // Greedy merge
                         let mut n = 0;
                         while n < mask.len() {
                             let blk = mask[n];
                             if blk != BlockType::Air {
-                                // Compute width
                                 let mut w = 1;
-                                while (n + w) % dims_u as usize != 0 && mask[n + w] == blk { w += 1; }
+                                while (n + w) % dims_u != 0 && mask[n + w] == blk { 
+                                    w += 1; 
+                                }
                                 
-                                // Compute height
                                 let mut h = 1;
-                                'h_loop: while (n / dims_u as usize + h) < dims_v as usize {
+                                'h_loop: while (n / dims_u + h) < dims_v {
                                     for k in 0..w {
-                                        if mask[n + k + h * dims_u as usize] != blk { break 'h_loop; }
+                                        if mask[n + k + h * dims_u] != blk { 
+                                            break 'h_loop; 
+                                        }
                                     }
                                     h += 1;
                                 }
 
-// 3. Add Quad
-                                let u_greedy = (n % dims_u as usize) as i32;
-                                let v_greedy = (n / dims_u as usize) as i32;
+                                let u_greedy = (n % dims_u) as i32;
+                                let v_greedy = (n / dims_u) as i32;
                                 
-// DIABOLICAL COORDINATE RE-MAPPING: Restored sanity to greedy positions
-                                let (x, y, z) = match axis {
-                                    0 => (u_greedy, d, v_greedy), // Y-Axis
-                                    1 => (d, u_greedy, v_greedy), // X-Axis
-                                    _ => (u_greedy, v_greedy, d)  // Z-Axis
+                                // RADICAL FIX: Consistent world position calculation
+                                let (wx, wy, wz) = match axis {
+                                    0 => (bx + u_greedy as f32, by + d as f32, bz + v_greedy as f32),
+                                    1 => (bx + d as f32, by + u_greedy as f32, bz + v_greedy as f32),
+                                    _ => (bx + u_greedy as f32, by + v_greedy as f32, bz + d as f32)
                                 };
                                 
-                                let (world_w, world_h) = (w as f32, h as f32);
+                                let world_w = w as f32;
+                                let world_h = h as f32;
 
-                                // Ensure face_id is used correctly with greedy dims
-                                self.add_face_greedy(&mut chunk_v, &mut chunk_i, &mut i_cnt, bx + x as f32, y as f32, bz + z as f32, world_w, world_h, face_id, blk);
+                                self.add_face_greedy_fixed(&mut chunk_v, &mut chunk_i, &mut i_cnt, wx, wy, wz, world_w, world_h, face_id, blk);
 
-                                // Clear used mask
                                 for l in 0..h {
-                                    for k in 0..w { mask[n + k + l * dims_u as usize] = BlockType::Air; }
+                                    for k in 0..w { 
+                                        mask[n + k + l * dims_u] = BlockType::Air; 
+                                    }
                                 }
                             }
                             n += 1;
@@ -484,15 +617,30 @@ let neighbor = if nx >= 0 && nx < 16 && ny >= 0 && ny < 128 && nz >= 0 && nz < 1
                 }
             }
 
-if !chunk_v.is_empty() {
-                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk VB"), contents: bytemuck::cast_slice(&chunk_v), usage: BufferUsages::VERTEX });
-                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk IB"), contents: bytemuck::cast_slice(&chunk_i), usage: BufferUsages::INDEX });
-                self.chunk_meshes.insert((cx, cy, cz), (ChunkMesh { vertex_buffer: vb, index_buffer: ib, ranges: Vec::new(), total_indices: chunk_i.len() as u32 }, 0));
+            if !chunk_v.is_empty() {
+                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { 
+                    label: Some("Chunk VB"), 
+                    contents: bytemuck::cast_slice(&chunk_v), 
+                    usage: BufferUsages::VERTEX 
+                });
+                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { 
+                    label: Some("Chunk IB"), 
+                    contents: bytemuck::cast_slice(&chunk_i), 
+                    usage: BufferUsages::INDEX 
+                });
+                self.chunk_meshes.insert((cx, cy, cz), (ChunkMesh { 
+                    vertex_buffer: vb, 
+                    index_buffer: ib, 
+                    ranges: Vec::new(), 
+                    total_indices: chunk_i.len() as u32 
+                }, 0));
             } else {
                 self.chunk_meshes.remove(&(cx, cy, cz));
             }
         }
     }
+
+
 
 fn add_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, x: i32, y: i32, z: i32, face: u8, tex: u32, h: f32, light: f32) {
         let x = x as f32; let y = y as f32; let z = z as f32;
@@ -893,132 +1041,6 @@ pass.set_pipeline(&self.pipeline);
                 self.queue.submit(std::iter::once(c_encoder.finish()));
 
                 // 3. Render Pass (GPU draws exactly what it calculated)
-                // For this implementation, we draw chunks that passed the compute test.
-                // In a production mega-engine, we would use a single Vertex/Index buffer to call one draw.
-                // Here we iterate the visible results.
-// DIABOLICAL INDIRECT EXECUTION: GPU-side Culling
-                // NOTE: Because we use separate buffers per chunk, we MUST use a fallback loop 
-                // until the Mega-Buffer consolidation is complete. The previous indirect call 
-                // failed because it lacked a bound Vertex Buffer. 
-// DIABOLICAL FIX: Draw everything in range to prevent "Hollowing" artifacts
-                for (&(cx, cy, cz), (mesh, _)) in &self.chunk_meshes {
-                    if cx == 999 { continue; }
-                    pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-                    pass.set_index_buffer(mesh.index_buffer.slice(..), IndexFormat::Uint32);
-                    pass.draw_indexed(0..mesh.total_indices, 0, 0..1);
-                }
-            }
-
-            // Draw clouds separately
-            if let Some((m, _)) = self.chunk_meshes.get(&(999, 999, 999)) {
-                pass.set_vertex_buffer(0, m.vertex_buffer.slice(..));
-                pass.set_index_buffer(m.index_buffer.slice(..), IndexFormat::Uint32);
-                pass.draw_indexed(0..m.total_indices, 0, 0..1);
-            }
-            if !ent_v.is_empty() { 
-                pass.set_vertex_buffer(0, self.entity_vertex_buffer.slice(..)); 
-                pass.set_index_buffer(self.entity_index_buffer.slice(..), IndexFormat::Uint32); 
-                pass.draw_indexed(0..ent_i.len() as u32, 0, 0..1); 
-            }
-        }
-
-// UI
-        let mut uv = Vec::new(); let mut ui = Vec::new(); let mut uoff = 0;
-        let aspect = self.config.width as f32 / self.config.height as f32;
-
-        // DIABOLICAL BREAKING CRACKS: Now correctly scoped in the UI section
-        if self.break_progress > 0.0 {
-            let crack_tex = 210 + (self.break_progress * 9.0) as u32;
-            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.05, -0.05 * aspect, 0.1, 0.1 * aspect, crack_tex);
-        }
-
-        // DIABOLICAL LAYOUT CONSTANTS (Defined early for scope access)
-        let sw = 0.12; 
-        let sh = sw * aspect; 
-        let sx = -(sw * 9.0) / 2.0; 
-        let by = -0.9;
-        
-        if !player.inventory_open && !is_paused { 
-            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.015, -0.015 * aspect, 0.03, 0.03 * aspect, 240); 
-        }
-
-        // --- DRAW AIR BUBBLES ---
-        const UI_BUBBLE: u32 = 243;
-        if player.air < player.max_air {
-            let bubble_count = (player.air / player.max_air * 10.0).ceil() as i32;
-            let bx_bubbles = sx + sw * 5.0; 
-            let by_bubbles = by + sh + 0.08 * aspect;
-            for i in 0..10 {
-                if i < bubble_count {
-                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bx_bubbles + i as f32 * 0.045, by_bubbles, 0.04, 0.04 * aspect, UI_BUBBLE);
-                }
-            }
-        }
-
-        // --- DRAW HOTBAR ---
-        
-        if player.inventory_open {
-             self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240); // Dim BG
-             self.draw_text("INVENTORY", -0.2, 0.8, 0.08, &mut uv, &mut ui, &mut uoff);
-        }
-
-if !is_paused || player.inventory_open {
-            for i in 0..9 {
-                let x = sx + (i as f32 * sw);
-                if i == player.inventory.selected_hotbar_slot { 
-                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x - 0.005, by - 0.005 * aspect, sw + 0.01, sh + 0.01 * aspect, 241); 
-                }
-                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, by, sw, sh, 240);
-                
-                if let Some(stack) = &player.inventory.slots[i] {
-                    let (t, _, _) = stack.item.get_texture_indices();
-                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, by+0.02*aspect, sw-0.04, sh-0.04*aspect, t);
-                    // Shifted text so it doesn't overlap slots
-if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x + 0.07, by + 0.02, 0.04, &mut uv, &mut ui, &mut uoff); }
-                    
-                    // DURABILITY BAR
-                    if stack.item.is_tool() {
-                        let max_dur = stack.item.get_max_durability();
-                        if stack.durability < max_dur {
-                            let ratio = stack.durability as f32 / max_dur as f32;
-                            let bar_w = sw * 0.7 * ratio;
-                            let bar_x = x + (sw * 0.15);
-                            let bar_y = by + 0.05 * aspect;
-                            // Color logic: Green -> Yellow -> Red
-                            let tex = if ratio > 0.5 { 244 } else if ratio > 0.2 { 245 } else { 246 }; // Use different UI bar colors
-                            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bar_x, bar_y, bar_w, 0.01 * aspect, tex);
-                        }
-                    }
-                }
-            }
-            if !player.inventory_open {
-                for i in 0..10 { if player.health > (i as f32)*2.0 { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, sx + i as f32 * 0.05, by+sh+0.02*aspect, 0.045, 0.045*aspect, 242); } }
-                if self.break_progress > 0.0 { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.1, -0.1, 0.2 * self.break_progress, 0.02*aspect, 244); }
-            }
-        }
-
-        if player.inventory_open {
-            let iby = by + sh * 1.5;
-            // Main Grid
-            for r in 0..3 { for c in 0..9 {
-                let idx = 9 + r * 9 + c; let x = sx + c as f32 * sw; let y = iby + r as f32 * sh;
-                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, y, sw, sh, 240);
-                if let Some(stack) = &player.inventory.slots[idx] { 
-                    let (t, _, _) = stack.item.get_texture_indices(); 
-                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, y+0.02*aspect, sw-0.04, sh-0.04*aspect, t); 
-                    if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x+0.01, y+0.01, 0.03, &mut uv, &mut ui, &mut uoff); } 
-                }
-            }}
-            // Crafting
-            let cx = 0.3; let cy = 0.5;
-            self.draw_text(if player.crafting_open { "CRAFTING TABLE" } else { "CRAFTING" }, 0.3, 0.7, 0.05, &mut uv, &mut ui, &mut uoff);
-            let grid_size = if player.crafting_open { 3 } else { 2 };
-            for r in 0..grid_size { for c in 0..grid_size {
-                let x = cx + c as f32 * sw; let y = cy - r as f32 * sh;
-                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, y, sw, sh, 240);
-                let idx = if player.crafting_open { r*3+c } else { match r*2+c { 0=>0, 1=>1, 2=>3, 3=>4, _=>0 } };
-                if let Some(stack) = &player.inventory.crafting_grid[idx] { 
-                    let (t, _, _) = stack.item.get_texture_indices(); 
                     self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, y+0.02*aspect, sw-0.04, sh-0.04*aspect, t); 
                     if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x+0.01, y+0.01, 0.03, &mut uv, &mut ui, &mut uoff); }
                 }
