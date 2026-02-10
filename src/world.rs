@@ -245,7 +245,7 @@ pub struct RemotePlayer { pub id: u32, pub position: Vec3, pub rotation: f32 }
 #[derive(Clone)]
 pub struct World {
     pub chunks: HashMap<(i32, i32, i32), Chunk>,
-    pub entities: Vec<Entity>,
+    pub entities: Vec<ItemEntity>, // ROOT FIX: Use ItemEntity which is defined in this file
     pub mesh_dirty: bool,
     pub remote_players: Vec<RemotePlayer>,
     pub seed: u32,
@@ -253,7 +253,14 @@ pub struct World {
 
 impl World {
     pub fn new(seed: u32) -> Self {
-        let mut world = World { chunks: HashMap::new(), entities: Vec::new(), remote_players: Vec::new(), seed };
+        // ROOT FIX: Include mesh_dirty in the initializer
+        let mut world = World { 
+            chunks: HashMap::new(), 
+            entities: Vec::new(), 
+            mesh_dirty: true,
+            remote_players: Vec::new(), 
+            seed 
+        };
         world.generate_terrain_around(0, 0, 6); // Initial seed around origin
         world
     }
