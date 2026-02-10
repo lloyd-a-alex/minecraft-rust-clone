@@ -433,14 +433,14 @@ player.inventory.craft();
                             if held_item == BlockType::BucketEmpty && targeted_block == BlockType::Water {
                                 world.place_block(hit, BlockType::Air);
                                 player.inventory.slots[player.inventory.selected_hotbar_slot] = Some(player::ItemStack::new(BlockType::BucketWater, 1));
-                                renderer.update_chunk(hit.x / 16, hit.z / 16, &world);
+                                renderer.update_chunk(hit.x.div_euclid(16), hit.y.div_euclid(16), hit.z.div_euclid(16), &world);
                             } else if held_item == BlockType::BucketWater {
                                 world.place_block(place, BlockType::Water);
                                 player.inventory.slots[player.inventory.selected_hotbar_slot] = Some(player::ItemStack::new(BlockType::BucketEmpty, 1));
-                                renderer.update_chunk(place.x / 16, place.z / 16, &world);
+                                renderer.update_chunk(place.x.div_euclid(16), place.y.div_euclid(16), place.z.div_euclid(16), &world);
                             } else if held_item.get_tool_class() == "hoe" && (targeted_block == BlockType::Grass || targeted_block == BlockType::Dirt) {
                                 world.place_block(hit, BlockType::FarmlandDry);
-                                renderer.update_chunk(hit.x / 16, hit.z / 16, &world);
+                                renderer.update_chunk(place.x.div_euclid(16), place.y.div_euclid(16), place.z.div_euclid(16), &world);
                             } else if targeted_block == BlockType::CraftingTable {
                                 player.inventory_open = true; 
                                 player.crafting_open = true;
@@ -466,7 +466,7 @@ player.inventory.craft();
                                                     if world.get_block(neighbor_pos) == BlockType::Chest {
                                                         world.place_block(neighbor_pos, BlockType::ChestLeft);
                                                         actual_blk = BlockType::ChestRight;
-                                                        renderer.update_chunk(neighbor_pos.x / 16, neighbor_pos.z / 16, &world);
+                                                        renderer.update_chunk(neighbor_pos.x.div_euclid(16), neighbor_pos.y.div_euclid(16), neighbor_pos.z.div_euclid(16), &world);
                                                         break;
                                                     }
                                                 }
@@ -477,7 +477,7 @@ let c = world.place_block(place, actual_blk);
                                             audio.play("place", is_submerged);
                                             player.inventory.remove_one_from_hand();
                                             if let Some(net) = &network_mgr { net.send_packet(Packet::BlockUpdate { pos: place, block: actual_blk }); }
-                                            for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
+                                            for (cx, cz) in c { for cy in 0..8 { renderer.update_chunk(cx, cy, cz, &world); } }
                                         }
                                     }
                                 }
@@ -587,7 +587,7 @@ if game_state == GameState::Playing {
                     let r_dist = 6;
                     for dx in -r_dist..=r_dist {
                         for dz in -r_dist..=r_dist {
-                            let target = (p_cx + dx, p_cz + dz);
+let target = (p_cx + dx, 0, p_cz + dz); // Check base chunk for existence
                             if !world.chunks.contains_key(&target) {
                                 // Add world generation logic here if desired
                             }
@@ -640,7 +640,7 @@ if !spawn_found { player.position = glam::Vec3::new(0.0, 80.0, 0.0); player.velo
                                     if let Some(p) = world.remote_players.iter_mut().find(|p| p.id == id) { p.position = glam::Vec3::new(x,y,z); p.rotation = ry; } 
                                     else { world.remote_players.push(world::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); }
                                 },
-                                Packet::BlockUpdate { pos, block } => { let c = world.place_block(pos, block); for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); } },
+                                Packet::BlockUpdate { pos, block } => { let c = world.place_block(pos, block); for (cx, cz) in c { for cy in 0..8 { renderer.update_chunk(cx, cy, cz, &world); } } },
                                 _ => {}
                             }
                         }
@@ -731,7 +731,7 @@ let head_p = BlockPos { x: player.position.x as i32, y: (player.position.y + 1.5
                                             audio.play(s_type, is_submerged || is_cave);
                                             let c = world.break_block(hit);
                                             if let Some(net) = &network_mgr { net.send_packet(Packet::BlockUpdate { pos: hit, block: BlockType::Air }); }
-                                            for (cx, cz) in c { renderer.update_chunk(cx, cz, &world); }
+                                            for (cx, cz) in c { for cy in 0..8 { renderer.update_chunk(cx, cy, cz, &world); } }
                                             breaking_pos = None; break_progress = 0.0;
                                         }
                                     }

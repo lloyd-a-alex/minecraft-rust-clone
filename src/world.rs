@@ -53,6 +53,10 @@ Wheat0 = 85, Wheat1 = 86, Wheat2 = 87, Wheat3 = 88, Wheat4 = 89, Wheat5 = 90, Wh
 
 impl BlockType {
     pub fn get_water_level(&self) -> u8 { if *self == BlockType::Water { 8 } else { 0 } }
+    pub fn is_liquid(&self) -> bool { matches!(self, BlockType::Water | BlockType::Lava) }
+    pub fn get_texture_top(&self) -> u32 { self.get_texture_indices().0 }
+    pub fn get_texture_bottom(&self) -> u32 { self.get_texture_indices().1 }
+    pub fn get_texture_side(&self) -> u32 { self.get_texture_indices().2 }
 pub fn is_transparent(&self) -> bool { 
         matches!(self, BlockType::Air | BlockType::Water | BlockType::Lava | BlockType::Leaves | BlockType::SpruceLeaves | BlockType::BirchLeaves | 
                        BlockType::Torch | BlockType::Fire | BlockType::Glass | BlockType::Rose | BlockType::Dandelion | 
@@ -210,7 +214,8 @@ pub fn get_tool_class(&self) -> &'static str {
     }
 }
 
-pub struct Chunk { 
+#[derive(Clone)]
+pub struct Chunk {
     pub blocks: Box<[[[BlockType; CHUNK_SIZE_Z]; CHUNK_SIZE_Y]; CHUNK_SIZE_X]>,
     pub light: Box<[[[u8; CHUNK_SIZE_Z]; CHUNK_SIZE_Y]; CHUNK_SIZE_X]>,
     pub is_empty: bool,
@@ -232,9 +237,12 @@ impl Chunk {
     pub fn set_block(&mut self, x: usize, y: usize, z: usize, block: BlockType) { if x < CHUNK_SIZE_X && y < CHUNK_SIZE_Y && z < CHUNK_SIZE_Z { self.blocks[x][y][z] = block; } }
 }
 #[allow(dead_code)]
+#[derive(Clone, Copy)]
 pub struct ItemEntity { pub position: Vec3, pub velocity: Vec3, pub item_type: BlockType, pub count: u8, pub pickup_delay: f32, pub lifetime: f32, pub rotation: f32, pub bob_offset: f32 }
+#[derive(Clone, Copy)]
 pub struct RemotePlayer { pub id: u32, pub position: Vec3, pub rotation: f32 }
 
+#[derive(Clone)]
 pub struct World {
     pub chunks: HashMap<(i32, i32, i32), Chunk>, // (CX, CY, CZ)
     pub seed: u32,
@@ -250,7 +258,7 @@ impl World {
         world
     }
 
-pub fn generate_one_chunk_around(&mut self, cx: i32, cy: i32, cz: i32, radius: i32) -> Option<(i32, i32, i32)> {
+pub fn generate_one_chunk_around(&mut self, cx: i32, _cy: i32, cz: i32, radius: i32) -> Option<(i32, i32, i32)> {
         let noise_gen = NoiseGenerator::new(self.seed);
         for r in 0..=radius {
             for x in -r..=r {
@@ -288,7 +296,7 @@ pub fn generate_terrain_around(&mut self, cx: i32, cz: i32, radius: i32) -> Vec<
         newly_generated
     }
 
-pub fn update_occlusion(&mut self, px_chunk: i32, py_chunk: i32, pz_chunk: i32) {
+pub fn update_occlusion(&mut self, px_chunk: i32, _py_chunk: i32, pz_chunk: i32) {
         let mut visible_set = HashSet::new();
         let mut queue = VecDeque::new();
         
@@ -421,7 +429,7 @@ pub fn update_occlusion(&mut self, px_chunk: i32, py_chunk: i32, pz_chunk: i32) 
         self.chunks.insert((cx, cy, cz), chunk);
     }
 
-    fn get_height_at_in_chunk(&self, chunk: &Chunk, lx: usize, lz: usize) -> i32 {
+    fn _get_height_at_in_chunk(&self, chunk: &Chunk, lx: usize, lz: usize) -> i32 {
         for y in (0..CHUNK_SIZE_Y as i32).rev() {
             if chunk.get_block(lx, y as usize, lz).is_solid() { return y; }
         }

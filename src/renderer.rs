@@ -3,9 +3,9 @@ use wgpu::*;
 use winit::window::Window;
 use std::time::Instant;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use crossbeam_channel::{unbounded, Sender, Receiver};
-use crate::world::{World, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z, BlockPos, BlockType};
+use crate::world::{World, BlockPos, BlockType};
 use crate::player::Player;
 use crate::texture::TextureAtlas;
 use crate::MainMenu; // Added Rect
@@ -33,7 +33,7 @@ impl Vertex {
 }
 
 pub struct TextureRange {
-    pub tex_index: u32,
+    pub _tex_index: u32,
     pub index_start: u32,
     pub index_count: u32,
 }
@@ -57,9 +57,9 @@ pub struct MeshTask {
 
 pub struct Renderer<'a> {
     pub particles: Vec<Particle>,
-    ui_v_cache: Vec<Vertex>,
-    ui_i_cache: Vec<u32>,
-    ui_needs_update: bool,
+    _ui_v_cache: Vec<Vertex>,
+    _ui_i_cache: Vec<u32>,
+    _ui_needs_update: bool,
     surface: Surface<'a>, device: Device, queue: Queue, pub config: SurfaceConfiguration,
     pipeline: RenderPipeline, ui_pipeline: RenderPipeline,
     depth_texture: TextureView, bind_group: BindGroup,
@@ -71,7 +71,7 @@ pub start_time: Instant,
     pub break_progress: f32,
     
     // DIABOLICAL THREADING
-    mesh_tx: Sender<(i32, i32, i32, Arc<World>)>,
+    mesh_tx: Sender<(i32, i32, i32, u32, Arc<World>)>,
 mesh_rx: Receiver<MeshTask>,
     pending_chunks: HashSet<(i32, i32, i32)>,
 
@@ -199,13 +199,13 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
                     let mut i_cnt = 0;
                     
                     if let Some(chunk) = world.chunks.get(&(cx, cy, cz)) {
-                        if chunk.is_empty {
-                            let _ = r_tx.send(MeshTask { cx, cy, cz, lod, vertices: Vec::new(), indices: Vec::new() });
+if chunk.is_empty {
+                            let _ = r_tx.send(MeshTask { cx, cy, cz, lod, vertices: Vec::new(), indices: Vec::new(), ranges: Vec::new() });
                             continue;
                         }
 
-                        let bx = (cx * 16) as f32;
-                        let by = (cy * 16) as f32;
+let bx = (cx * 16) as f32;
+                        let _by = (cy * 16) as f32;
                         let bz = (cz * 16) as f32;
                         let step = 1 << lod; // LOD 0 = 1, LOD 1 = 2, LOD 2 = 4
                         
@@ -265,7 +265,6 @@ for u in (0..dims_u).step_by(step as usize) {
                         }
 }
 // DIABOLICAL FACE BATCHING BY TEXTURE
-                    let mut batched_indices = Vec::new();
                     let mut ranges = Vec::new();
                     
                     // Group vertices and indices by texture index
@@ -296,7 +295,7 @@ for u in (0..dims_u).step_by(step as usize) {
                             final_indices.push(idx + v_offset);
                         }
                         
-                        ranges.push(TextureRange { tex_index, index_start: start, index_count: count });
+                        ranges.push(TextureRange { _tex_index: tex_index, index_start: start, index_count: count });
                     }
 
                     let _ = r_tx.send(MeshTask { cx, cy, cz, lod, vertices: final_vertices, indices: final_indices, ranges });
@@ -305,8 +304,8 @@ for u in (0..dims_u).step_by(step as usize) {
         }
 
         Self { 
-            particles: Vec::new(), ui_v_cache: Vec::new(), ui_i_cache: Vec::new(), ui_needs_update: true, surface, device, queue, config, pipeline, ui_pipeline, depth_texture, bind_group, camera_bind_group, camera_buffer, time_bind_group, time_buffer, start_time: Instant::now(), 
-            chunk_meshes: HashMap::new(), 
+            particles: Vec::new(), _ui_v_cache: Vec::new(), _ui_i_cache: Vec::new(), _ui_needs_update: true, surface, device, queue, config, pipeline, ui_pipeline, depth_texture, bind_group, camera_bind_group, camera_buffer, time_bind_group, time_buffer, start_time: Instant::now(), 
+            chunk_meshes: HashMap::new(),
             entity_vertex_buffer, entity_index_buffer, 
             break_progress: 0.0,
 mesh_tx: task_tx,
@@ -350,7 +349,7 @@ pub fn rebuild_all_chunks(&mut self, world: &World) {
         if !vertices.is_empty() {
             let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Cloud VB"), contents: bytemuck::cast_slice(&vertices), usage: BufferUsages::VERTEX });
             let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Cloud IB"), contents: bytemuck::cast_slice(&indices), usage: BufferUsages::INDEX });
-            self.chunk_meshes.insert((999, 999), ChunkMesh { vertex_buffer: vb, index_buffer: ib, index_count: indices.len() as u32 });
+            self.chunk_meshes.insert((999, 999, 999), (ChunkMesh { vertex_buffer: vb, index_buffer: ib, ranges: vec![TextureRange { _tex_index: 228, index_start: 0, index_count: indices.len() as u32 }], total_indices: indices.len() as u32 }, 0));
         }
     }
 
@@ -360,9 +359,9 @@ pub fn update_chunk(&mut self, cx: i32, cy: i32, cz: i32, world: &World) {
                 self.chunk_meshes.remove(&(cx, cy, cz));
                 return;
             }
-            let mut v = Vec::new();
-            let mut i = Vec::new();
-            let mut i_cnt = 0;
+let mut chunk_v = Vec::new();
+            let mut chunk_i = Vec::new();
+            let mut i_cnt = 0u32;
             
             let bx = (cx * 16) as f32;
             let bz = (cz * 16) as f32;
@@ -370,7 +369,7 @@ pub fn update_chunk(&mut self, cx: i32, cy: i32, cz: i32, world: &World) {
             // DIABOLICAL GREEDY MESHING
             // Iterate over 3 axes: 0=Y (Up/Down), 1=X (East/West), 2=Z (North/South)
             for axis in 0..3 {
-                let (u_axis, v_axis) = match axis { 0 => (2, 1), 1 => (2, 0), _ => (1, 0) };
+                let (_u_axis, _v_axis) = match axis { 0 => (2, 1), 1 => (2, 0), _ => (1, 0) };
                 let (dims_main, dims_u, dims_v) = match axis { 
                     0 => (128, 16, 16), // Y axis: slices are XZ (16x16)
                     _ => (16, 128, 16)  // X or Z axis: slices are YZ or XY (128x16)
@@ -382,15 +381,15 @@ pub fn update_chunk(&mut self, cx: i32, cy: i32, cz: i32, world: &World) {
                     for dir in 0..2 { 
                         let face_id = match axis { 0 => if dir==0 {0} else {1}, 1 => if dir==0 {2} else {3}, _ => if dir==0 {4} else {5} };
                         
-                        // 1. Generate Mask for this Slice
+// 1. Generate Mask for this Slice
                         let mut mask = vec![BlockType::Air; (dims_u * dims_v) as usize];
-                        for u in 0..dims_u {
-                            for v in 0..dims_v {
+                        for u_idx in 0..dims_u {
+                            for v_idx in 0..dims_v {
                                 // Map u,v,d to local x,y,z
                                 let (x, y, z) = match axis {
-                                    0 => (v, d, u), // Y-Axis: u=z, v=x
-                                    1 => (d, u, v), // X-Axis: u=y, v=z
-                                    _ => (v, u, d)  // Z-Axis: u=y, v=x
+                                    0 => (v_idx, d, u_idx), // Y-Axis: u=z, v=x
+                                    1 => (d, u_idx, v_idx), // X-Axis: u=y, v=z
+                                    _ => (v_idx, u_idx, d)  // Z-Axis: u=y, v=x
                                 };
                                 
                                 let blk = chunk.get_block(x as usize, y as usize, z as usize);
@@ -414,7 +413,7 @@ let neighbor = if nx >= 0 && nx < 16 && ny >= 0 && ny < 128 && nz >= 0 && nz < 1
                                     // AND ensure we don't cull faces between different transparent blocks (like water/glass)
                                     let visible = !neighbor.is_solid() || (neighbor.is_transparent() && neighbor != blk);
 
-                                    if visible { mask[(v * dims_u + u) as usize] = blk; }
+                                    if visible { mask[(v_idx * dims_u + u_idx) as usize] = blk; }
                                 }
                             }
                         }
@@ -437,24 +436,20 @@ let neighbor = if nx >= 0 && nx < 16 && ny >= 0 && ny < 128 && nz >= 0 && nz < 1
                                     h += 1;
                                 }
 
-                                // 3. Add Quad
-                                let u = (n % dims_u as usize) as i32;
-                                let v = (n / dims_u as usize) as i32;
+// 3. Add Quad
+                                let u_greedy = (n % dims_u as usize) as i32;
+                                let v_greedy = (n / dims_u as usize) as i32;
                                 
                                 let (x, y, z) = match axis {
-                                    0 => (v, d, u), 
-                                    1 => (d, u, v), 
-                                    _ => (v, u, d)  
+                                    0 => (v_greedy, d, u_greedy), 
+                                    1 => (d, u_greedy, v_greedy), 
+                                    _ => (v_greedy, u_greedy, d)  
                                 };
                                 
                                 // Map width/height to world dimensions based on axis
-                                let (world_w, world_h) = match axis {
-                                    0 => (w as f32, h as f32), // Top/Bottom: w=Z, h=X
-                                    1 => (w as f32, h as f32), // Sides: w=Z, h=Y
-                                    _ => (w as f32, h as f32), // Front/Back: w=X, h=Y
-                                };
+                                let (world_w, world_h) = (w as f32, h as f32);
 
-                                self.add_face_greedy(&mut v, &mut i, &mut i_cnt, bx + x as f32, y as f32, bz + z as f32, world_w, world_h, face_id, blk);
+                                self.add_face_greedy(&mut chunk_v, &mut chunk_i, &mut i_cnt, bx + x as f32, y as f32, bz + z as f32, world_w, world_h, face_id, blk);
 
                                 // Clear used mask
                                 for l in 0..h {
@@ -467,12 +462,12 @@ let neighbor = if nx >= 0 && nx < 16 && ny >= 0 && ny < 128 && nz >= 0 && nz < 1
                 }
             }
 
-            if !v.is_empty() {
-                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk VB"), contents: bytemuck::cast_slice(&v), usage: BufferUsages::VERTEX });
-                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk IB"), contents: bytemuck::cast_slice(&i), usage: BufferUsages::INDEX });
-                self.chunk_meshes.insert((cx, cz), Mesh { vertex_buffer: vb, index_buffer: ib, index_count: i.len() as u32 });
+if !chunk_v.is_empty() {
+                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk VB"), contents: bytemuck::cast_slice(&chunk_v), usage: BufferUsages::VERTEX });
+                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk IB"), contents: bytemuck::cast_slice(&chunk_i), usage: BufferUsages::INDEX });
+                self.chunk_meshes.insert((cx, cy, cz), (ChunkMesh { vertex_buffer: vb, index_buffer: ib, ranges: Vec::new(), total_indices: chunk_i.len() as u32 }, 0));
             } else {
-                self.chunk_meshes.remove(&(cx, cz));
+                self.chunk_meshes.remove(&(cx, cy, cz));
             }
         }
     }
@@ -512,7 +507,7 @@ fn add_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, x: i32,
         i.push(*off); i.push(*off+1); i.push(*off+2); i.push(*off); i.push(*off+2); i.push(*off+3); *off += 4;
     }
 
-fn add_cross_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, x: i32, y: i32, z: i32, tex: u32, light: f32) {
+fn _add_cross_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, x: i32, y: i32, z: i32, tex: u32, light: f32) {
         let x = x as f32; let y = y as f32; let z = z as f32;
         // Diagonal 1
         v.push(Vertex{position:[x, y+1.0, z], tex_coords:[0.0,0.0], ao:1.0, tex_index:tex, light});
@@ -573,10 +568,10 @@ fn add_cross_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, x
         *i_count += 4;
     }
 
-    fn add_ui_quad(&self, uv: &mut Vec<Vertex>, ui: &mut Vec<u32>, uoff: &mut u32, x: f32, y: f32, w: f32, h: f32, tex_index: u32) {
-        v.push(Vertex{position:[x,y+h,0.0], tex_coords:[0.0,0.0], ao:1.0, tex_index:tex, light: 1.0}); v.push(Vertex{position:[x+w,y+h,0.0], tex_coords:[1.0,0.0], ao:1.0, tex_index:tex, light: 1.0});
-        v.push(Vertex{position:[x+w,y,0.0], tex_coords:[1.0,1.0], ao:1.0, tex_index:tex, light: 1.0}); v.push(Vertex{position:[x,y,0.0], tex_coords:[0.0,1.0], ao:1.0, tex_index:tex, light: 1.0});
-        i.push(*off); i.push(*off+1); i.push(*off+2); i.push(*off); i.push(*off+2); i.push(*off+3); *off += 4;
+fn add_ui_quad(&self, uv: &mut Vec<Vertex>, ui: &mut Vec<u32>, uoff: &mut u32, x: f32, y: f32, w: f32, h: f32, tex_index: u32) {
+        uv.push(Vertex{position:[x,y+h,0.0], tex_coords:[0.0,0.0], ao:1.0, tex_index, light: 1.0}); uv.push(Vertex{position:[x+w,y+h,0.0], tex_coords:[1.0,0.0], ao:1.0, tex_index, light: 1.0});
+        uv.push(Vertex{position:[x+w,y,0.0], tex_coords:[1.0,1.0], ao:1.0, tex_index, light: 1.0}); uv.push(Vertex{position:[x,y,0.0], tex_coords:[0.0,1.0], ao:1.0, tex_index, light: 1.0});
+        ui.push(*uoff); ui.push(*uoff+1); ui.push(*uoff+2); ui.push(*uoff); ui.push(*uoff+2); ui.push(*uoff+3); *uoff += 4;
     }
 
 fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32) {
@@ -737,8 +732,8 @@ if task.vertices.is_empty() {
             }
         }
 
-        let p_cx = (player.position.x / 16.0).floor() as i32;
-        let p_cy = (player.position.y / 16.0).floor() as i32;
+let p_cx = (player.position.x / 16.0).floor() as i32;
+        let _p_cy = (player.position.y / 16.0).floor() as i32;
         let p_cz = (player.position.z / 16.0).floor() as i32;
         let world_arc = Arc::new(world.clone());
 
@@ -767,8 +762,7 @@ if task.vertices.is_empty() {
             }
         }
 
-        let output = self.surface.get_current_texture()?;
-        // DIABOLICAL MESH SYNC
+// DIABOLICAL MESH SYNC
         while let Ok(task) = self.mesh_rx.try_recv() {
             self.pending_chunks.remove(&(task.cx, task.cy, task.cz));
             if task.vertices.is_empty() {
@@ -776,7 +770,7 @@ if task.vertices.is_empty() {
             } else {
                 let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk VB"), contents: bytemuck::cast_slice(&task.vertices), usage: BufferUsages::VERTEX });
                 let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk IB"), contents: bytemuck::cast_slice(&task.indices), usage: BufferUsages::INDEX });
-                self.chunk_meshes.insert((task.cx, task.cy, task.cz), ChunkMesh { vertex_buffer: vb, index_buffer: ib, index_count: task.indices.len() as u32 });
+                self.chunk_meshes.insert((task.cx, task.cy, task.cz), (ChunkMesh { vertex_buffer: vb, index_buffer: ib, ranges: task.ranges, total_indices: task.indices.len() as u32 }, task.lod));
             }
         }
 
@@ -798,7 +792,7 @@ if task.vertices.is_empty() {
                         let needs_update = world.chunks.get(&target).map(|c| c.mesh_dirty).unwrap_or(false);
                         if needs_update {
                             self.pending_chunks.insert(target);
-                            let _ = self.mesh_tx.send((target.0, target.1, target.2, world_arc.clone()));
+                            let _ = self.mesh_tx.send((target.0, target.1, target.2, 0, world_arc.clone()));
                         }
                     }
                 }
@@ -893,7 +887,7 @@ pass.set_pipeline(&self.pipeline);
                     if cx == 999 || world.occluded_chunks.contains(&(cx, cy, cz)) { continue; }
                     pass.set_vertex_buffer(0, m.vertex_buffer.slice(..));
                     pass.set_index_buffer(m.index_buffer.slice(..), IndexFormat::Uint32);
-                    for range in &m.ranges {
+for _range in &m.ranges {
                         // Multi-Draw Indirect is the final step, but this CPU-loop over GPU-validated results
                         // still provides the culling speedup without the readback stall.
                         pass.draw_indexed_indirect(&self.indirect_draw_buffer, 0); 
@@ -905,7 +899,7 @@ pass.set_pipeline(&self.pipeline);
             if let Some((m, _)) = self.chunk_meshes.get(&(999, 999, 999)) {
                 pass.set_vertex_buffer(0, m.vertex_buffer.slice(..));
                 pass.set_index_buffer(m.index_buffer.slice(..), IndexFormat::Uint32);
-                pass.draw_indexed(0..m.index_count, 0, 0..1);
+                pass.draw_indexed(0..m.total_indices, 0, 0..1);
             }
             if !ent_v.is_empty() { 
                 pass.set_vertex_buffer(0, self.entity_vertex_buffer.slice(..)); 

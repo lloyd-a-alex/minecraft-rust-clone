@@ -53,10 +53,12 @@ fn vs_main(model: VertexInput) -> VertexOutput {
     let local_u = fract(model.tex_coords.x);
     let local_v = fract(model.tex_coords.y);
 
-    out.tex_coords = vec2<f32>(
+out.tex_coords = vec2<f32>(
         (col + local_u) * u_step,
         (row + local_v) * u_step
     );
+    return out;
+}
 
 @group(0) @binding(0)
 var t_diffuse: texture_2d<f32>;
