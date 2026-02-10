@@ -766,12 +766,12 @@ Event::AboutToWait => {
                     return;
                 }
                 
-                if game_state == GameState::Playing && !is_paused && !player.inventory_open {
+if game_state == GameState::Playing && !is_paused && !player.inventory_open {
                     let p_cx = (player.position.x / 16.0).floor() as i32;
+                    let p_cy = (player.position.y / 16.0).floor() as i32;
                     let p_cz = (player.position.z / 16.0).floor() as i32;
-                    // DIABOLICAL OPTIMIZATION: Only generate if not already busy
-                    if let Some((cx, cz)) = world.generate_one_chunk_around(p_cx, p_cz, 6) {
-                        renderer.update_chunk(cx, cz, &world);
+                    if let Some((cx, cy, cz)) = world.generate_one_chunk_around(p_cx, p_cy, p_cz, 6) {
+                        renderer.update_chunk(cx, cy, cz, &world);
                     }
                     let _ = window.set_cursor_grab(CursorGrabMode::Locked);
                     window.set_cursor_visible(false);

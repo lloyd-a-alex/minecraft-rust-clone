@@ -16,7 +16,8 @@ impl SimpleRng {
 
 pub const CHUNK_SIZE_X: usize = 16;
 pub const CHUNK_SIZE_Z: usize = 16;
-pub const CHUNK_SIZE_Y: usize = 128;
+pub const CHUNK_SIZE_Y: usize = 16; // DIABOLICAL VERTICAL SUBDIVISION
+pub const WORLD_HEIGHT: i32 = 128;
 pub const WATER_LEVEL: i32 = 20;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -212,12 +213,16 @@ pub fn get_tool_class(&self) -> &'static str {
 pub struct Chunk { 
     pub blocks: Box<[[[BlockType; CHUNK_SIZE_Z]; CHUNK_SIZE_Y]; CHUNK_SIZE_X]>,
     pub light: Box<[[[u8; CHUNK_SIZE_Z]; CHUNK_SIZE_Y]; CHUNK_SIZE_X]>,
+    pub is_empty: bool,
+    pub mesh_dirty: bool,
 }
 impl Chunk {
     pub fn new() -> Self { 
         Chunk { 
             blocks: Box::new([[[BlockType::Air; CHUNK_SIZE_Z]; CHUNK_SIZE_Y]; CHUNK_SIZE_X]),
             light: Box::new([[[15u8; CHUNK_SIZE_Z]; CHUNK_SIZE_Y]; CHUNK_SIZE_X]),
+            is_empty: true,
+            mesh_dirty: true,
         } 
     }
     pub fn get_light(&self, x: usize, y: usize, z: usize) -> u8 { if x >= CHUNK_SIZE_X || y >= CHUNK_SIZE_Y || z >= CHUNK_SIZE_Z { return 15; } self.light[x][y][z] }
@@ -231,30 +236,33 @@ pub struct ItemEntity { pub position: Vec3, pub velocity: Vec3, pub item_type: B
 pub struct RemotePlayer { pub id: u32, pub position: Vec3, pub rotation: f32 }
 
 pub struct World {
-    pub chunks: HashMap<(i32, i32), Chunk>,
+    pub chunks: HashMap<(i32, i32, i32), Chunk>, // (CX, CY, CZ)
     pub seed: u32,
     pub entities: Vec<ItemEntity>,
-pub remote_players: Vec<RemotePlayer>,
+    pub remote_players: Vec<RemotePlayer>,
+    pub occluded_chunks: HashSet<(i32, i32, i32)>,
 }
 
 impl World {
-pub fn new(seed: u32) -> Self {
-        let mut world = World { chunks: HashMap::new(), entities: Vec::new(), remote_players: Vec::new(), seed };
-        world.generate_terrain_around(0, 0, 6);
+    pub fn new(seed: u32) -> Self {
+        let mut world = World { chunks: HashMap::new(), entities: Vec::new(), remote_players: Vec::new(), seed, occluded_chunks: HashSet::new() };
+        world.generate_terrain_around(0, 0, 6); // Initial seed around origin
         world
     }
 
-pub fn generate_one_chunk_around(&mut self, cx: i32, cz: i32, radius: i32) -> Option<(i32, i32)> {
+pub fn generate_one_chunk_around(&mut self, cx: i32, cy: i32, cz: i32, radius: i32) -> Option<(i32, i32, i32)> {
         let noise_gen = NoiseGenerator::new(self.seed);
-        // Spiral-out search for the first missing chunk
         for r in 0..=radius {
             for x in -r..=r {
                 for z in -r..=r {
                     let tcx = cx + x;
                     let tcz = cz + z;
-                    if !self.chunks.contains_key(&(tcx, tcz)) {
-                        self.generate_single_chunk(tcx, tcz, &noise_gen);
-                        return Some((tcx, tcz));
+                    // Check all vertical chunks for this column
+                    for y in 0..(WORLD_HEIGHT / 16 as i32) {
+                        if !self.chunks.contains_key(&(tcx, y, tcz)) {
+                            self.generate_single_chunk(tcx, y, tcz, &noise_gen);
+                            return Some((tcx, y, tcz));
+                        }
                     }
                 }
             }
@@ -262,28 +270,77 @@ pub fn generate_one_chunk_around(&mut self, cx: i32, cz: i32, radius: i32) -> Op
         None
     }
 
-    pub fn generate_terrain_around(&mut self, cx: i32, cz: i32, radius: i32) -> Vec<(i32, i32)> {
-        // Kept for backward compatibility but should be avoided in main loop
+pub fn generate_terrain_around(&mut self, cx: i32, cz: i32, radius: i32) -> Vec<(i32, i32, i32)> {
         let mut newly_generated = Vec::new();
         let noise_gen = NoiseGenerator::new(self.seed);
         for x in -radius..=radius {
             for z in -radius..=radius {
-                let (tcx, tcz) = (cx + x, cz + z);
-                if !self.chunks.contains_key(&(tcx, tcz)) {
-                    self.generate_single_chunk(tcx, tcz, &noise_gen);
-                    newly_generated.push((tcx, tcz));
+                for y in 0..(WORLD_HEIGHT / 16 as i32) {
+                    let (tcx, tcy, tcz) = (cx + x, y, cz + z);
+                    if !self.chunks.contains_key(&(tcx, tcy, tcz)) {
+                        self.generate_single_chunk(tcx, tcy, tcz, &noise_gen);
+                        newly_generated.push((tcx, tcy, tcz));
+                    }
                 }
             }
         }
+        self.update_occlusion(cx, 64/16, cz);
         newly_generated
     }
 
-fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator) {
+pub fn update_occlusion(&mut self, px_chunk: i32, py_chunk: i32, pz_chunk: i32) {
+        let mut visible_set = HashSet::new();
+        let mut queue = VecDeque::new();
+        
+        visible_set.insert((px_chunk, 0, pz_chunk));
+        queue.push_back((px_chunk, 0, pz_chunk));
+
+        let max_render_dist = 10;
+        
+        while let Some((cx, cy, cz)) = queue.pop_front() {
+            let neighbors = [(cx + 1, cy, cz), (cx - 1, cy, cz), (cx, cy, cz + 1), (cx, cy, cz - 1)];
+            
+            for (nx, ny, nz) in neighbors {
+                if self.chunks.contains_key(&(nx, ny, nz)) && !visible_set.contains(&(nx, ny, nz)) {
+                    let dx = (nx - px_chunk).abs();
+                    let dz = (nz - pz_chunk).abs();
+                    
+                    if dx <= max_render_dist && dz <= max_render_dist {
+                        let mut has_sky_access = false;
+                        if let Some(chunk) = self.chunks.get(&(nx, ny, nz)) {
+                            if !chunk.get_block(0, 15, 0).is_solid() || 
+                               !chunk.get_block(8, 15, 8).is_solid() {
+                                has_sky_access = true;
+                            }
+                        }
+
+                        if has_sky_access || (dx <= 2 && dz <= 2) {
+                            visible_set.insert((nx, ny, nz));
+                            queue.push_back((nx, ny, nz));
+                        }
+                    }
+                }
+            }
+        }
+
+        self.occluded_chunks.clear();
+        for key in self.chunks.keys() {
+            if !visible_set.contains(key) {
+                let dist_sq = (key.0 - px_chunk).pow(2) + (key.2 - pz_chunk).pow(2);
+                if dist_sq > 4 {
+                    self.occluded_chunks.insert(*key);
+                }
+            }
+        }
+    }
+
+    fn generate_single_chunk(&mut self, cx: i32, cy: i32, cz: i32, noise_gen: &NoiseGenerator) {
         let mut chunk = Chunk::new();
         let chunk_x_world = cx * 16;
+        let chunk_y_world = cy * 16;
         let chunk_z_world = cz * 16;
-        let mut rng = SimpleRng::new((cx as u64).wrapping_mul(self.seed as u64) ^ (cz as u64));
-        let mut tree_map: HashSet<(i32, i32)> = HashSet::with_capacity(32);
+        let mut rng = SimpleRng::new((cx as u64).wrapping_mul(self.seed as u64) ^ (cy as u64) ^ (cz as u64));
+        let mut tree_map: HashSet<(i32, i32)> = HashSet::new();
 
         for lx in 0..CHUNK_SIZE_X {
             for lz in 0..CHUNK_SIZE_Z {
@@ -292,8 +349,9 @@ fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator
                 let (cont, eros, weird, temp) = noise_gen.get_height_params(wx, wz);
                 let humid = noise_gen.get_noise_octaves(wx as f64 * 0.01, 123.0, wz as f64 * 0.01, 3) as f32;
                 
-                for y in 0..CHUNK_SIZE_Y {
-                    let density = noise_gen.get_density(wx, y as i32, wz, cont, eros, weird);
+                for ly in 0..CHUNK_SIZE_Y {
+                    let y = chunk_y_world + ly as i32;
+                    let density = noise_gen.get_density(wx, y, wz, cont, eros, weird);
                     let mut block = BlockType::Air;
 
                     if density > 0.0 {
@@ -315,58 +373,52 @@ fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator
                             }
                         }
                     } else if (y as i32) <= WATER_LEVEL { block = BlockType::Water; }
-                    if block != BlockType::Air { chunk.set_block(lx, y, lz, block); }
+
+                    if block != BlockType::Air { 
+                        chunk.set_block(lx, ly, lz, block); 
+                        chunk.is_empty = false;
+                    }
                 }
 
-                // DIABOLICAL TREE OPTIMIZATION: Using coordinate map instead of scanning 490 blocks!
-                let h = self.get_height_at_in_chunk(&chunk, lx, lz);
-                if h > WATER_LEVEL && h < 110 {
-                    let biome = noise_gen.get_biome(cont, eros, temp, humid, h);
+                let h_world = noise_gen.get_height(wx, wz);
+                if h_world >= chunk_y_world && h_world < chunk_y_world + 16 {
+                    let ly = (h_world - chunk_y_world) as usize;
+                    let biome = noise_gen.get_biome(cont, eros, temp, humid, h_world);
                     let r = rng.next_f32();
-                    let ground_block = chunk.get_block(lx, h as usize, lz);
-                    if matches!(ground_block, BlockType::Grass | BlockType::Dirt | BlockType::Sand | BlockType::Snow) {
-                        // Sparse Sky Check: Only 2 samples instead of 15!
-                        if noise_gen.get_density(wx, h + 5, wz, cont, eros, weird) < 0.0 && noise_gen.get_density(wx, h + 12, wz, cont, eros, weird) < 0.0 {
-                            let mut too_close = false;
-                            for dx in -4..=4 { for dz in -4..=4 { if tree_map.contains(&(lx as i32 + dx, lz as i32 + dz)) { too_close = true; break; } } if too_close { break; } }
-                            if too_close { continue; }
+                    let ground_block = chunk.get_block(lx, ly, lz);
 
-                            if (biome == "forest" || biome == "jungle") && r < 0.05 {
-                                tree_map.insert((lx as i32, lz as i32));
-                                let tree_h = 5 + (rng.next_f32() * 3.0) as i32;
-                                for i in 1..=tree_h { if h+i < 127 { chunk.set_block(lx, (h+i) as usize, lz, BlockType::Wood); } }
-                                for ly in (h + tree_h - 2)..=(h + tree_h + 1) {
-                                    if ly >= 127 { continue; }
-                                    let rad = if (ly as i32) > h + tree_h { 1 } else { 2 };
-                                    for dx in -rad..=rad { for dz in -rad..=rad {
-                                        if (dx*dx + dz*dz) > rad*rad + 1 { continue; }
-                                        let (ox, oz) = (lx as i32 + dx, lz as i32 + dz);
-                                        if ox >= 0 && ox < 16 && oz >= 0 && oz < 16 { if chunk.get_block(ox as usize, ly as usize, oz as usize) == BlockType::Air { chunk.set_block(ox as usize, ly as usize, oz as usize, BlockType::Leaves); } }
-                                    }}
+                    if matches!(ground_block, BlockType::Grass | BlockType::Dirt | BlockType::Sand | BlockType::Snow) {
+                        if noise_gen.get_density(wx, h_world + 5, wz, cont, eros, weird) < 0.0 {
+                            let mut too_close = false;
+                            for dx in -4..=4 { 
+                                for dz in -4..=4 { 
+                                    if tree_map.contains(&(lx as i32 + dx, lz as i32 + dz)) { too_close = true; break; } 
+                                } 
+                                if too_close { break; } 
+                            }
+
+                            if !too_close {
+                                if (biome == "forest" || biome == "jungle") && r < 0.05 {
+                                    tree_map.insert((lx as i32, lz as i32));
+                                    let tree_h = 5 + (rng.next_f32() * 3.0) as i32;
+                                    for i in 1..=tree_h { 
+                                        let ty = h_world + i;
+                                        if ty >= chunk_y_world && ty < chunk_y_world + 16 {
+                                            chunk.set_block(lx, (ty - chunk_y_world) as usize, lz, BlockType::Wood); 
+                                        }
+                                    }
+                                } else if r < 0.02 {
+                                    if ly + 1 < 16 {
+                                        chunk.set_block(lx, ly + 1, lz, if biome == "desert" { BlockType::DeadBush } else { BlockType::Rose });
+                                    }
                                 }
-                            } else if biome == "taiga" && r < 0.04 {
-                                tree_map.insert((lx as i32, lz as i32));
-                                let tree_h = 8 + (rng.next_f32() * 5.0) as i32;
-                                for i in 1..=tree_h { if h+i < 127 { chunk.set_block(lx, (h+i) as usize, lz, BlockType::SpruceWood); } }
-                                let mut lrad = 3;
-                                for ly in (h + 3)..=(h + tree_h + 1) {
-                                    if ly >= 127 { continue; }
-                                    for dx in -lrad..=lrad { for dz in -lrad..=lrad {
-                                        if (dx as i32).abs() + (dz as i32).abs() > lrad { continue; }
-                                        let (ox, oz) = (lx as i32 + dx, lz as i32 + dz);
-                                        if ox >= 0 && ox < 16 && oz >= 0 && oz < 16 { if chunk.get_block(ox as usize, ly as usize, oz as usize) == BlockType::Air { chunk.set_block(ox as usize, ly as usize, oz as usize, BlockType::SpruceLeaves); } }
-                                    }}
-                                    if ly % 2 == 0 { lrad = (lrad - 1).max(1); }
-                                }
-                            } else if r < 0.02 {
-                                chunk.set_block(lx, (h+1) as usize, lz, if biome == "desert" { BlockType::DeadBush } else if biome == "swamp" { BlockType::TallGrass } else { BlockType::Rose });
                             }
                         }
                     }
                 }
             }
         }
-        self.chunks.insert((cx, cz), chunk);
+        self.chunks.insert((cx, cy, cz), chunk);
     }
 
     fn get_height_at_in_chunk(&self, chunk: &Chunk, lx: usize, lz: usize) -> i32 {
@@ -381,33 +433,39 @@ fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator
         self.generate_terrain_around(0, 0, 6);
     }
 pub fn get_light_world(&self, pos: BlockPos) -> u8 {
-        let cx = pos.x.div_euclid(CHUNK_SIZE_X as i32); let cz = pos.z.div_euclid(CHUNK_SIZE_Z as i32);
-        let lx = pos.x.rem_euclid(CHUNK_SIZE_X as i32) as usize; let lz = pos.z.rem_euclid(CHUNK_SIZE_Z as i32) as usize;
-        if pos.y < 0 || pos.y >= CHUNK_SIZE_Y as i32 { return 15; }
-        if let Some(chunk) = self.chunks.get(&(cx, cz)) { chunk.get_light(lx, pos.y as usize, lz) } else { 15 }
+        let cx = pos.x.div_euclid(16); let cy = pos.y.div_euclid(16); let cz = pos.z.div_euclid(16);
+        let lx = pos.x.rem_euclid(16) as usize; let ly = pos.y.rem_euclid(16) as usize; let lz = pos.z.rem_euclid(16) as usize;
+        if pos.y < 0 || pos.y >= WORLD_HEIGHT { return 15; }
+        if let Some(chunk) = self.chunks.get(&(cx, cy, cz)) { chunk.get_light(lx, ly, lz) } else { 15 }
     }
-pub fn get_height_at(&self, x: i32, z: i32) -> i32 {
-        let cx = x.div_euclid(16);
-        let cz = z.div_euclid(16);
-        let lx = x.rem_euclid(16) as usize;
-        let lz = z.rem_euclid(16) as usize;
-        
-        if let Some(chunk) = self.chunks.get(&(cx, cz)) {
-            for y in (0..CHUNK_SIZE_Y).rev() {
-                if chunk.get_block(lx, y, lz).is_solid() { return y as i32; }
+    pub fn get_height_at(&self, x: i32, z: i32) -> i32 {
+        for cy in (0..(WORLD_HEIGHT/16)).rev() {
+            let cx = x.div_euclid(16); let cz = z.div_euclid(16);
+            if let Some(chunk) = self.chunks.get(&(cx, cy, cz)) {
+                let lx = x.rem_euclid(16) as usize;
+                let lz = z.rem_euclid(16) as usize;
+                for ly in (0..16).rev() {
+                    if chunk.get_block(lx, ly, lz).is_solid() { return cy * 16 + ly as i32; }
+                }
             }
         }
         0
     }
     pub fn get_block(&self, pos: BlockPos) -> BlockType {
-        let cx = pos.x.div_euclid(CHUNK_SIZE_X as i32); let cz = pos.z.div_euclid(CHUNK_SIZE_Z as i32);
-        let lx = pos.x.rem_euclid(CHUNK_SIZE_X as i32) as usize; let lz = pos.z.rem_euclid(CHUNK_SIZE_Z as i32) as usize;
-        if let Some(chunk) = self.chunks.get(&(cx, cz)) { chunk.get_block(lx, pos.y as usize, lz) } else { BlockType::Air }
+        let cx = pos.x.div_euclid(16); let cy = pos.y.div_euclid(16); let cz = pos.z.div_euclid(16);
+        let lx = pos.x.rem_euclid(16) as usize; let ly = pos.y.rem_euclid(16) as usize; let lz = pos.z.rem_euclid(16) as usize;
+        if pos.y < 0 || pos.y >= WORLD_HEIGHT { return BlockType::Air; }
+        if let Some(chunk) = self.chunks.get(&(cx, cy, cz)) { chunk.get_block(lx, ly, lz) } else { BlockType::Air }
     }
-    pub fn set_block_world(&mut self, pos: BlockPos, block: BlockType) {
-        let cx = pos.x.div_euclid(CHUNK_SIZE_X as i32); let cz = pos.z.div_euclid(CHUNK_SIZE_Z as i32);
-        let lx = pos.x.rem_euclid(CHUNK_SIZE_X as i32) as usize; let lz = pos.z.rem_euclid(CHUNK_SIZE_Z as i32) as usize;
-        if let Some(chunk) = self.chunks.get_mut(&(cx, cz)) { chunk.set_block(lx, pos.y as usize, lz, block); }
+pub fn set_block_world(&mut self, pos: BlockPos, block: BlockType) {
+        let cx = pos.x.div_euclid(16); let cy = pos.y.div_euclid(16); let cz = pos.z.div_euclid(16);
+        let lx = pos.x.rem_euclid(16) as usize; let ly = pos.y.rem_euclid(16) as usize; let lz = pos.z.rem_euclid(16) as usize;
+        if cy < 0 || cy >= 8 { return; }
+        if let Some(chunk) = self.chunks.get_mut(&(cx, cy, cz)) { 
+            chunk.set_block(lx, ly, lz, block); 
+            chunk.mesh_dirty = true;
+            if block != BlockType::Air { chunk.is_empty = false; }
+        }
     }
     pub fn raycast(&self, origin: Vec3, direction: Vec3, max_dist: f32) -> Option<(BlockPos, BlockPos)> {
         let mut x = origin.x.floor() as i32; let mut y = origin.y.floor() as i32; let mut z = origin.z.floor() as i32;

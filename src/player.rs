@@ -461,7 +461,8 @@ pub fn build_view_projection_matrix(&self, aspect: f32) -> [[f32; 4]; 4] {
         
         let forward = Vec3::new(yaw_cos * pitch_cos, pitch_sin, yaw_sin * pitch_cos).normalize();
         let view = Mat4::look_at_rh(eye_pos, eye_pos + forward, Vec3::Y);
-        let proj = Mat4::perspective_rh(70.0f32.to_radians(), aspect, 0.1, 1000.0);
+        // Tighter Far Plane to reduce geometry pressure
+        let proj = Mat4::perspective_rh(75.0f32.to_radians(), aspect, 0.1, 512.0);
         
         // Correcting for WGPU coordinate system (Y-down NDC)
         let correction = Mat4::from_cols_array(&[
@@ -471,6 +472,18 @@ pub fn build_view_projection_matrix(&self, aspect: f32) -> [[f32; 4]; 4] {
             0.0, 0.0, 0.5, 1.0,
         ]);
         
-        (correction * proj * view).to_cols_array_2d()
+(correction * proj * view).to_cols_array_2d()
+    }
+
+    pub fn get_frustum_planes(&self, aspect: f32) -> [[f32; 4]; 6] {
+        let m = glam::Mat4::from_cols_array_2d(&self.build_view_projection_matrix(aspect));
+        let mut planes = [[0.0f32; 4]; 6];
+        for i in 0..4 { planes[0][i] = m.col(i).w + m.col(i).x; }
+        for i in 0..4 { planes[1][i] = m.col(i).w - m.col(i).x; }
+        for i in 0..4 { planes[2][i] = m.col(i).w + m.col(i).y; }
+        for i in 0..4 { planes[3][i] = m.col(i).w - m.col(i).y; }
+        for i in 0..4 { planes[4][i] = m.col(i).w + m.col(i).z; }
+        for i in 0..4 { planes[5][i] = m.col(i).w - m.col(i).z; }
+        planes
     }
 }
