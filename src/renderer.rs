@@ -128,17 +128,47 @@ let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         let texture = device.create_texture(&TextureDescriptor { label: Some("atlas"), size: atlas_size, mip_level_count: 1, sample_count: 1, dimension: TextureDimension::D2, format: TextureFormat::Rgba8UnormSrgb, usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST, view_formats: &[] });
         queue.write_texture(ImageCopyTexture { texture: &texture, mip_level: 0, origin: Origin3d::ZERO, aspect: TextureAspect::All }, &atlas.data, ImageDataLayout { offset: 0, bytes_per_row: Some(512 * 4), rows_per_image: Some(512) }, atlas_size);
         let texture_view = texture.create_view(&TextureViewDescriptor::default());
-        let sampler = device.create_sampler(&SamplerDescriptor { mag_filter: FilterMode::Nearest, min_filter: FilterMode::Nearest, mipmap_filter: FilterMode::Nearest, ..Default::default() });
+        let sampler = device.create_sampler(&SamplerDescriptor { 
+            mag_filter: FilterMode::Nearest, 
+            min_filter: FilterMode::Nearest, 
+            mipmap_filter: FilterMode::Nearest, 
+            address_mode_u: AddressMode::Repeat,
+            address_mode_v: AddressMode::Repeat,
+            address_mode_w: AddressMode::Repeat,
+            ..Default::default() 
+        });
 
-        let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor { label: Some("texture_layout"), entries: &[BindGroupLayoutEntry { binding: 0, visibility: ShaderStages::FRAGMENT, ty: BindingType::Texture { sample_type: TextureSampleType::Float { filterable: true }, view_dimension: TextureViewDimension::D2, multisampled: false }, count: None }, BindGroupLayoutEntry { binding: 1, visibility: ShaderStages::FRAGMENT, ty: BindingType::Sampler(SamplerBindingType::Filtering), count: None }] });
+        let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("Main Layout"),
+            entries: &[
+                BindGroupLayoutEntry { binding: 0, visibility: ShaderStages::FRAGMENT | ShaderStages::COMPUTE, ty: BindingType::Texture { sample_type: TextureSampleType::Float { filterable: true }, view_dimension: TextureViewDimension::D2, multisampled: false }, count: None },
+                BindGroupLayoutEntry { binding: 1, visibility: ShaderStages::FRAGMENT | ShaderStages::COMPUTE, ty: BindingType::Sampler(SamplerBindingType::Filtering), count: None },
+            ],
+        });
         let bind_group = device.create_bind_group(&BindGroupDescriptor { label: Some("texture_bind"), layout: &bind_group_layout, entries: &[BindGroupEntry { binding: 0, resource: BindingResource::TextureView(&texture_view) }, BindGroupEntry { binding: 1, resource: BindingResource::Sampler(&sampler) }] });
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Camera Buffer"), contents: bytemuck::cast_slice(&[[0.0f32; 16]]), usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST });
-        let camera_bg_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor { label: Some("camera_layout"), entries: &[BindGroupLayoutEntry { binding: 0, visibility: ShaderStages::VERTEX, ty: BindingType::Buffer { ty: BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None }] });
+        let camera_bg_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("Camera Layout"),
+            entries: &[BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::VERTEX | ShaderStages::COMPUTE,
+                ty: BindingType::Buffer { ty: BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
+                count: None,
+            }],
+        });
         let camera_bind_group = device.create_bind_group(&BindGroupDescriptor { label: Some("camera_bind"), layout: &camera_bg_layout, entries: &[BindGroupEntry { binding: 0, resource: camera_buffer.as_entire_binding() }] });
 
         let time_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Time Buffer"), contents: bytemuck::cast_slice(&[0.0f32; 8]), usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST });
-        let time_bg_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor { label: Some("time_layout"), entries: &[BindGroupLayoutEntry { binding: 0, visibility: ShaderStages::FRAGMENT, ty: BindingType::Buffer { ty: BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None }] });
+        let time_bg_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("Time Layout"),
+            entries: &[BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT | ShaderStages::COMPUTE,
+                ty: BindingType::Buffer { ty: BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
+                count: None,
+            }],
+        });
         let time_bind_group = device.create_bind_group(&BindGroupDescriptor { label: Some("time_bind"), layout: &time_bg_layout, entries: &[BindGroupEntry { binding: 0, resource: time_buffer.as_entire_binding() }] });
 
         let shader = device.create_shader_module(include_wgsl!("shader.wgsl"));
@@ -219,11 +249,17 @@ let bx = (cx * 16) as f32;
                                     let mut mask = vec![BlockType::Air; (16 * 128) as usize]; // Conservative size
 for u in (0..dims_u).step_by(step as usize) {
                                         for v in (0..dims_v).step_by(step as usize) {
-                                            let (x, y, z) = match axis { 0 => (v, d, u), 1 => (d, u, v), _ => (v, u, d) };
+// DIABOLICAL FIX: Corrected Axis Mapping for Threaded Worker
+                                            let (x, y, z) = match axis {
+                                                0 => (u as i32, d as i32, v as i32), // Y-axis slice
+                                                1 => (d as i32, u as i32, v as i32), // X-axis slice
+                                                _ => (u as i32, v as i32, d as i32), // Z-axis slice
+                                            };
                                             let blk = chunk.get_block(x as usize, y as usize, z as usize);
                                             if blk.is_solid() {
                                                 let (nx, ny, nz) = match face_id { 0 => (x, y+1, z), 1 => (x, y-1, z), 2 => (x+1, y, z), 3 => (x-1, y, z), 4 => (x, y, z+1), 5 => (x, y, z-1), _ => (0,0,0) };
-                                                let visible = if nx >= 0 && nx < 16 && ny >= 0 && ny < 128 && nz >= 0 && nz < 16 { !chunk.get_block(nx as usize, ny as usize, nz as usize).is_solid() } else { true };
+                                                let neighbor = if nx >= 0 && nx < 16 && ny >= 0 && ny < 128 && nz >= 0 && nz < 16 { chunk.get_block(nx as usize, ny as usize, nz as usize) } else { BlockType::Air };
+                                                let visible = !neighbor.is_solid() || (neighbor.is_transparent() && neighbor != blk);
                                                 if visible { mask[(v * dims_u + u) as usize] = blk; }
                                             }
                                         }
@@ -235,18 +271,23 @@ for u in (0..dims_u).step_by(step as usize) {
                                             let mut w = 1; while (n + w) % dims_u as usize != 0 && mask[n + w] == blk { w += 1; }
                                             let mut h = 1; 'h_loop: while (n / dims_u as usize + h) < dims_v as usize { for k in 0..w { if mask[n + k + h * dims_u as usize] != blk { break 'h_loop; } } h += 1; }
                                             let u = (n % dims_u as usize) as i32; let v = (n / dims_u as usize) as i32;
-                                            let (x, y, z) = match axis { 0 => (v, d, u), 1 => (d, u, v), _ => (v, u, d) };
+                                            // DIABOLICAL FIX: Corrected Axis Mapping for Threaded Worker
+                                            let (x, y, z) = match axis {
+                                                0 => (v as i32, d as i32, u as i32), // Y-axis slice
+                                                1 => (d as i32, u as i32, v as i32), // X-axis slice
+                                                _ => (v as i32, u as i32, d as i32), // Z-axis slice
+                                            };
                                             let (world_w, world_h) = (w as f32, h as f32);
                                             
                                             // Manual add_face_greedy call for thread safety
                                             let tex_index = match face_id { 0 => blk.get_texture_top(), 1 => blk.get_texture_bottom(), _ => blk.get_texture_side() };
-                                            let positions = match face_id {
-                                                0 => [[bx+x as f32, y as f32, bz+z as f32], [bx+x as f32, y as f32, bz+z as f32 + world_h], [bx+x as f32 + world_w, y as f32, bz+z as f32 + world_h], [bx+x as f32 + world_w, y as f32, bz+z as f32]],
-                                                1 => [[bx+x as f32, y as f32, bz+z as f32 + world_h], [bx+x as f32, y as f32, bz+z as f32], [bx+x as f32 + world_w, y as f32, bz+z as f32], [bx+x as f32 + world_w, y as f32, bz+z as f32 + world_h]],
-                                                2 => [[bx+x as f32, y as f32, bz+z as f32 + world_w], [bx+x as f32, y as f32 + world_h, bz+z as f32 + world_w], [bx+x as f32, y as f32 + world_h, bz+z as f32], [bx+x as f32, y as f32, bz+z as f32]],
-                                                3 => [[bx+x as f32, y as f32, bz+z as f32], [bx+x as f32, y as f32 + world_h, bz+z as f32], [bx+x as f32, y as f32 + world_h, bz+z as f32 + world_w], [bx+x as f32, y as f32, bz+z as f32 + world_w]],
-                                                4 => [[bx+x as f32, y as f32, bz+z as f32], [bx+x as f32 + world_w, y as f32, bz+z as f32], [bx+x as f32 + world_w, y as f32 + world_h, bz+z as f32], [bx+x as f32, y as f32 + world_h, bz+z as f32]],
-                                                5 => [[bx+x as f32 + world_w, y as f32, bz+z as f32], [bx+x as f32, y as f32, bz+z as f32], [bx+x as f32, y as f32 + world_h, bz+z as f32], [bx+x as f32 + world_w, y as f32 + world_h, bz+z as f32]],
+let positions = match face_id {
+                                                0 => [[bx+x as f32, y as f32 + 1.0, bz+z as f32], [bx+x as f32, y as f32 + 1.0, bz+z as f32 + world_h], [bx+x as f32 + world_w, y as f32 + 1.0, bz+z as f32 + world_h], [bx+x as f32 + world_w, y as f32 + 1.0, bz+z as f32]], // Top
+                                                1 => [[bx+x as f32, y as f32, bz+z as f32 + world_h], [bx+x as f32, y as f32, bz+z as f32], [bx+x as f32 + world_w, y as f32, bz+z as f32], [bx+x as f32 + world_w, y as f32, bz+z as f32 + world_h]], // Bottom
+                                                2 => [[bx+x as f32 + 1.0, y as f32, bz+z as f32], [bx+x as f32 + 1.0, y as f32 + world_h, bz+z as f32], [bx+x as f32 + 1.0, y as f32 + world_h, bz+z as f32 + world_w], [bx+x as f32 + 1.0, y as f32, bz+z as f32 + world_w]], // Right
+                                                3 => [[bx+x as f32, y as f32, bz+z as f32 + world_w], [bx+x as f32, y as f32 + world_h, bz+z as f32 + world_w], [bx+x as f32, y as f32 + world_h, bz+z as f32], [bx+x as f32, y as f32, bz+z as f32]], // Left
+                                                4 => [[bx+x as f32, y as f32, bz+z as f32 + 1.0], [bx+x as f32 + world_w, y as f32, bz+z as f32 + 1.0], [bx+x as f32 + world_w, y as f32 + world_h, bz+z as f32 + 1.0], [bx+x as f32, y as f32 + world_h, bz+z as f32 + 1.0]], // Front
+                                                5 => [[bx+x as f32 + world_w, y as f32, bz+z as f32], [bx+x as f32, y as f32, bz+z as f32], [bx+x as f32, y as f32 + world_h, bz+z as f32], [bx+x as f32 + world_w, y as f32 + world_h, bz+z as f32]], // Back
                                                 _ => [[0.0; 3]; 4],
                                             };
                                             let base_i = i_cnt;
@@ -266,41 +307,22 @@ for u in (0..dims_u).step_by(step as usize) {
                             }
                         }
 }
-// DIABOLICAL FACE BATCHING BY TEXTURE
-                    let mut ranges = Vec::new();
-                    
-                    // Group vertices and indices by texture index
-                    let mut tex_map: HashMap<u32, (Vec<Vertex>, Vec<u32>)> = HashMap::new();
-                    
-                    for chunk_idx in (0..indices.len()).step_by(6) {
-                        let v_idx = indices[chunk_idx] as usize;
-                        let tex = vertices[v_idx].tex_index;
-                        let entry = tex_map.entry(tex).or_insert((Vec::new(), Vec::new()));
-                        
-                        let base = entry.0.len() as u32;
-                        for k in 0..4 {
-                            entry.0.push(vertices[indices[chunk_idx + (if k < 3 { k } else { 0 })] as usize]); 
-                        }
-                        // Re-map indices to local batch
-                        entry.1.extend_from_slice(&[base, base + 1, base + 2, base + 2, base + 3, base]);
+// DIABOLICAL FIX: Simplified batching to prevent index corruption and spikes
+                    let mut final_ranges = Vec::new();
+                    if !indices.is_empty() {
+                        final_ranges.push(TextureRange { 
+                            _tex_index: 0, 
+                            index_start: 0, 
+                            index_count: indices.len() as u32 
+                        });
                     }
 
-                    let mut final_vertices = Vec::new();
-                    let mut final_indices = Vec::new();
-                    for (tex_index, (v_list, i_list)) in tex_map {
-                        let start = final_indices.len() as u32;
-                        let count = i_list.len() as u32;
-                        
-                        let v_offset = final_vertices.len() as u32;
-                        final_vertices.extend(v_list);
-                        for idx in i_list {
-                            final_indices.push(idx + v_offset);
-                        }
-                        
-                        ranges.push(TextureRange { _tex_index: tex_index, index_start: start, index_count: count });
-                    }
-
-                    let _ = r_tx.send(MeshTask { cx, cy, cz, lod, vertices: final_vertices, indices: final_indices, ranges });
+                    let _ = r_tx.send(MeshTask { 
+                        cx, cy, cz, lod, 
+                        vertices: vertices, 
+                        indices: indices, 
+                        ranges: final_ranges 
+                    });
                 }
             });
         }
@@ -384,11 +406,11 @@ let mut chunk_v = Vec::new();
                         let mut mask = vec![BlockType::Air; (dims_u * dims_v) as usize];
                         for u_idx in 0..dims_u {
                             for v_idx in 0..dims_v {
-                                // Map u,v,d to local x,y,z
+// DIABOLICAL FIX: Map u,v,d to local x,y,z - Synchronized with worker thread
                                 let (x, y, z) = match axis {
-                                    0 => (v_idx, d, u_idx), // Y-Axis: u=z, v=x
-                                    1 => (d, u_idx, v_idx), // X-Axis: u=y, v=z
-                                    _ => (v_idx, u_idx, d)  // Z-Axis: u=y, v=x
+                                    0 => (u_idx, d, v_idx), // Y-Axis
+                                    1 => (d, u_idx, v_idx), // X-Axis
+                                    _ => (u_idx, v_idx, d)  // Z-Axis
                                 };
                                 
                                 let blk = chunk.get_block(x as usize, y as usize, z as usize);
@@ -439,15 +461,16 @@ let neighbor = if nx >= 0 && nx < 16 && ny >= 0 && ny < 128 && nz >= 0 && nz < 1
                                 let u_greedy = (n % dims_u as usize) as i32;
                                 let v_greedy = (n / dims_u as usize) as i32;
                                 
+// DIABOLICAL COORDINATE RE-MAPPING: Restored sanity to greedy positions
                                 let (x, y, z) = match axis {
-                                    0 => (v_greedy, d, u_greedy), 
-                                    1 => (d, u_greedy, v_greedy), 
-                                    _ => (v_greedy, u_greedy, d)  
+                                    0 => (u_greedy, d, v_greedy), // Y-Axis
+                                    1 => (d, u_greedy, v_greedy), // X-Axis
+                                    _ => (u_greedy, v_greedy, d)  // Z-Axis
                                 };
                                 
-                                // Map width/height to world dimensions based on axis
                                 let (world_w, world_h) = (w as f32, h as f32);
 
+                                // Ensure face_id is used correctly with greedy dims
                                 self.add_face_greedy(&mut chunk_v, &mut chunk_i, &mut i_cnt, bx + x as f32, y as f32, bz + z as f32, world_w, world_h, face_id, blk);
 
                                 // Clear used mask
@@ -522,40 +545,27 @@ fn _add_cross_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, 
         v.push(Vertex{position:[x, y, z+1.0], tex_coords:[0.0,1.0], ao:1.0, tex_index:tex, light});
         i.push(*off); i.push(*off+1); i.push(*off+2); i.push(*off); i.push(*off+2); i.push(*off+3); *off += 4;
     }
-// DIABOLICAL GREEDY MESHER HELPER
+// DIABOLICAL GREEDY MESHER HELPER: Restored absolute mathematical alignment
     fn add_face_greedy(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, i_count: &mut u32, x: f32, y: f32, z: f32, w: f32, h: f32, face: usize, block: BlockType) {
         let tex_index = match face {
-            0 => block.get_texture_top(),    // Top
-            1 => block.get_texture_bottom(), // Bottom
-            _ => block.get_texture_side()    // Sides
+            0 => block.get_texture_top(),
+            1 => block.get_texture_bottom(),
+            _ => block.get_texture_side()
         };
         
-        // Extended UVs for tiling: 0..w and 0..h
+        // w and h are the greedy dimensions in the plane of the face
         let (u0, v0, u1, v1) = (0.0, 0.0, w, h);
 
         let positions = match face {
-            0 => [ // Top (Y+)
-                [x, y, z], [x, y, z + h], [x + w, y, z + h], [x + w, y, z]
-            ],
-            1 => [ // Bottom (Y-)
-                [x, y, z + h], [x, y, z], [x + w, y, z], [x + w, y, z + h]
-            ],
-            2 => [ // Right (X+)
-                [x, y, z + w], [x, y + h, z + w], [x, y + h, z], [x, y, z]
-            ],
-            3 => [ // Left (X-)
-                [x, y, z], [x, y + h, z], [x, y + h, z + w], [x, y, z + w]
-            ],
-            4 => [ // Front (Z+)
-                [x, y, z], [x + w, y, z], [x + w, y + h, z], [x, y + h, z]
-            ],
-            5 => [ // Back (Z-)
-                [x + w, y, z], [x, y, z], [x, y + h, z], [x + w, y + h, z]
-            ],
+            0 => [[x, y + 1.0, z], [x, y + 1.0, z + h], [x + w, y + 1.0, z + h], [x + w, y + 1.0, z]], // Top (XZ plane)
+            1 => [[x, y, z + h], [x, y, z], [x + w, y, z], [x + w, y, z + h]], // Bottom (XZ plane)
+            2 => [[x + 1.0, y, z], [x + 1.0, y + w, z], [x + 1.0, y + w, z + h], [x + 1.0, y, z + h]], // Right (YZ plane)
+            3 => [[x, y, z + h], [x, y + w, z + h], [x, y + w, z], [x, y, z]], // Left (YZ plane)
+            4 => [[x, y, z + 1.0], [x + w, y, z + 1.0], [x + w, y + h, z + 1.0], [x, y + h, z + 1.0]], // Front (XY plane)
+            5 => [[x + w, y, z], [x, y, z], [x, y + h, z], [x + w, y + h, z]], // Back (XY plane)
             _ => [[0.0; 3]; 4],
         };
 
-        // Standard winding order for all faces
         let base_i = *i_count;
         v.extend_from_slice(&[
             Vertex { position: positions[0], tex_coords: [u0, v1], ao: 1.0, tex_index, light: 15.0 },
@@ -868,12 +878,15 @@ pass.set_pipeline(&self.pipeline);
                 self.queue.write_buffer(&self.chunk_data_buffer, 0, bytemuck::cast_slice(&cull_data));
                 self.queue.write_buffer(&self.indirect_count_buffer, 0, bytemuck::cast_slice(&[0u32; 1])); // Reset atomic counter
 
-                // 2. Compute Pass (GPU decides what to draw)
+// 2. Compute Pass (GPU decides what to draw)
                 let mut c_encoder = self.device.create_command_encoder(&CommandEncoderDescriptor { label: Some("Cull Encoder") });
                 {
                     let mut cpass = c_encoder.begin_compute_pass(&ComputePassDescriptor { label: Some("Cull Pass"), timestamp_writes: None });
                     cpass.set_pipeline(&self.compute_pipeline);
+                    // DIABOLICAL BIND GROUP SYNC: All indices must be bound to satisfy the Pipeline Layout
+                    cpass.set_bind_group(0, &self.bind_group, &[]); 
                     cpass.set_bind_group(1, &self.camera_bind_group, &[]);
+                    cpass.set_bind_group(2, &self.time_bind_group, &[]);
                     cpass.set_bind_group(3, &self.cull_bind_group, &[]);
                     cpass.dispatch_workgroups((cull_data.len() as u32 + 63) / 64, 1, 1);
                 }
@@ -883,15 +896,16 @@ pass.set_pipeline(&self.pipeline);
                 // For this implementation, we draw chunks that passed the compute test.
                 // In a production mega-engine, we would use a single Vertex/Index buffer to call one draw.
                 // Here we iterate the visible results.
-                for (&(cx, cy, cz), (m, _)) in &self.chunk_meshes {
-                    if cx == 999 || world.occluded_chunks.contains(&(cx, cy, cz)) { continue; }
-                    pass.set_vertex_buffer(0, m.vertex_buffer.slice(..));
-                    pass.set_index_buffer(m.index_buffer.slice(..), IndexFormat::Uint32);
-for _range in &m.ranges {
-                        // Multi-Draw Indirect is the final step, but this CPU-loop over GPU-validated results
-                        // still provides the culling speedup without the readback stall.
-                        pass.draw_indexed_indirect(&self.indirect_draw_buffer, 0); 
-                    }
+// DIABOLICAL INDIRECT EXECUTION: GPU-side Culling
+                // NOTE: Because we use separate buffers per chunk, we MUST use a fallback loop 
+                // until the Mega-Buffer consolidation is complete. The previous indirect call 
+                // failed because it lacked a bound Vertex Buffer. 
+// DIABOLICAL FIX: Draw everything in range to prevent "Hollowing" artifacts
+                for (&(cx, cy, cz), (mesh, _)) in &self.chunk_meshes {
+                    if cx == 999 { continue; }
+                    pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+                    pass.set_index_buffer(mesh.index_buffer.slice(..), IndexFormat::Uint32);
+                    pass.draw_indexed(0..mesh.total_indices, 0, 0..1);
                 }
             }
 

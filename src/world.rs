@@ -296,50 +296,9 @@ pub fn generate_terrain_around(&mut self, cx: i32, cz: i32, radius: i32) -> Vec<
         newly_generated
     }
 
-pub fn update_occlusion(&mut self, px_chunk: i32, _py_chunk: i32, pz_chunk: i32) {
-        let mut visible_set = HashSet::new();
-        let mut queue = VecDeque::new();
-        
-        visible_set.insert((px_chunk, 0, pz_chunk));
-        queue.push_back((px_chunk, 0, pz_chunk));
-
-        let max_render_dist = 10;
-        
-        while let Some((cx, cy, cz)) = queue.pop_front() {
-            let neighbors = [(cx + 1, cy, cz), (cx - 1, cy, cz), (cx, cy, cz + 1), (cx, cy, cz - 1)];
-            
-            for (nx, ny, nz) in neighbors {
-                if self.chunks.contains_key(&(nx, ny, nz)) && !visible_set.contains(&(nx, ny, nz)) {
-                    let dx = (nx - px_chunk).abs();
-                    let dz = (nz - pz_chunk).abs();
-                    
-                    if dx <= max_render_dist && dz <= max_render_dist {
-                        let mut has_sky_access = false;
-                        if let Some(chunk) = self.chunks.get(&(nx, ny, nz)) {
-                            if !chunk.get_block(0, 15, 0).is_solid() || 
-                               !chunk.get_block(8, 15, 8).is_solid() {
-                                has_sky_access = true;
-                            }
-                        }
-
-                        if has_sky_access || (dx <= 2 && dz <= 2) {
-                            visible_set.insert((nx, ny, nz));
-                            queue.push_back((nx, ny, nz));
-                        }
-                    }
-                }
-            }
-        }
-
+pub fn update_occlusion(&mut self, _px_chunk: i32, _py_chunk_raw: i32, _pz_chunk: i32) {
+        // DIABOLICAL FIX: Disabled culling logic to restore 100% chunk visibility
         self.occluded_chunks.clear();
-        for key in self.chunks.keys() {
-            if !visible_set.contains(key) {
-                let dist_sq = (key.0 - px_chunk).pow(2) + (key.2 - pz_chunk).pow(2);
-                if dist_sq > 4 {
-                    self.occluded_chunks.insert(*key);
-                }
-            }
-        }
     }
 
     fn generate_single_chunk(&mut self, cx: i32, cy: i32, cz: i32, noise_gen: &NoiseGenerator) {
