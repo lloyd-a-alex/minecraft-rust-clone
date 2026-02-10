@@ -296,8 +296,8 @@ pub fn generate_terrain_around(&mut self, cx: i32, cz: i32, radius: i32) -> Vec<
         newly_generated
     }
 
-pub fn update_occlusion(&mut self, _px_chunk: i32, _py_chunk_raw: i32, _pz_chunk: i32) {
-        // DIABOLICAL FIX: Disabled culling logic to restore 100% chunk visibility
+pub fn update_occlusion(&mut self, _px: i32, _py: i32, _pz: i32) {
+        // DIABOLICAL FIX: Total removal of occlusion set to prevent visual hollowing
         self.occluded_chunks.clear();
     }
 

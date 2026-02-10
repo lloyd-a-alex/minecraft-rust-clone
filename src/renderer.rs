@@ -394,13 +394,13 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
                                             
                                             let base_i = i_cnt;
                                             vertices.extend_from_slice(&[
-                                                Vertex { position: positions[0], tex_coords: [0.0, world_h], ao: 1.0, tex_index, light: 15.0 },
-                                                Vertex { position: positions[1], tex_coords: [world_w, world_h], ao: 1.0, tex_index, light: 15.0 },
-                                                Vertex { position: positions[2], tex_coords: [world_w, 0.0], ao: 1.0, tex_index, light: 15.0 },
-                                                Vertex { position: positions[3], tex_coords: [0.0, 0.0], ao: 1.0, tex_index, light: 15.0 },
+                                                Vertex { position: positions[0], tex_coords: [0.0, 0.0], ao: 1.0, tex_index, light: 15.0 },
+                                                Vertex { position: positions[1], tex_coords: [world_w, 0.0], ao: 1.0, tex_index, light: 15.0 },
+                                                Vertex { position: positions[2], tex_coords: [world_w, world_h], ao: 1.0, tex_index, light: 15.0 },
+                                                Vertex { position: positions[3], tex_coords: [0.0, world_h], ao: 1.0, tex_index, light: 15.0 },
                                             ]);
                                             
-                                            // RADICAL FIX: Correct triangle winding order
+                                            // DIABOLICAL FIX: Unified CCW Winding order to match main mesher
                                             indices.extend_from_slice(&[
                                                 base_i, base_i + 1, base_i + 2,
                                                 base_i, base_i + 2, base_i + 3
@@ -408,7 +408,7 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
                                             
                                             i_cnt += 4;
                                             
-                                            // Clear mask
+                                            // Clear mask for merged blocks
                                             for l in 0..h { 
                                                 for k in 0..w { 
                                                     mask[n + k + l * mask_w] = BlockType::Air; 
@@ -422,8 +422,7 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
                         }
                     }
 
-
-                    // RADICAL FIX: Proper range batching
+                    // DIABOLICAL FIX: Ensure ranges match the unified index buffer exactly
                     let mut final_ranges = Vec::new();
                     if !indices.is_empty() {
                         final_ranges.push(TextureRange { 
@@ -603,7 +602,8 @@ pub fn rebuild_all_chunks(&mut self, world: &World) {
                                 let world_w = w as f32;
                                 let world_h = h as f32;
 
-                                self.add_face_greedy_fixed(&mut chunk_v, &mut chunk_i, &mut i_cnt, wx, wy, wz, world_w, world_h, face_id, blk);
+                                self.add_face_greedy(&mut chunk_v, &mut chunk_i, &mut i_cnt, wx, wy, wz, world_w, world_h, face_id, blk);
+
 
                                 for l in 0..h {
                                     for k in 0..w { 
@@ -693,7 +693,7 @@ fn _add_cross_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, 
         v.push(Vertex{position:[x, y, z+1.0], tex_coords:[0.0,1.0], ao:1.0, tex_index:tex, light});
         i.push(*off); i.push(*off+1); i.push(*off+2); i.push(*off); i.push(*off+2); i.push(*off+3); *off += 4;
     }
-// DIABOLICAL GREEDY MESHER HELPER: Restored absolute mathematical alignment
+// DIABOLICAL GREEDY MESHER HELPER: Absolute Positional Integrity (Fixes Plane Fighting)
     fn add_face_greedy(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, i_count: &mut u32, x: f32, y: f32, z: f32, w: f32, h: f32, face: usize, block: BlockType) {
         let tex_index = match face {
             0 => block.get_texture_top(),
@@ -701,27 +701,27 @@ fn _add_cross_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, 
             _ => block.get_texture_side()
         };
         
-        // w and h are the greedy dimensions in the plane of the face
         let (u0, v0, u1, v1) = (0.0, 0.0, w, h);
 
         let positions = match face {
-            0 => [[x, y + 1.0, z], [x, y + 1.0, z + h], [x + w, y + 1.0, z + h], [x + w, y + 1.0, z]], // Top (XZ plane)
-            1 => [[x, y, z + h], [x, y, z], [x + w, y, z], [x + w, y, z + h]], // Bottom (XZ plane)
-            2 => [[x + 1.0, y, z], [x + 1.0, y + w, z], [x + 1.0, y + w, z + h], [x + 1.0, y, z + h]], // Right (YZ plane)
-            3 => [[x, y, z + h], [x, y + w, z + h], [x, y + w, z], [x, y, z]], // Left (YZ plane)
-            4 => [[x, y, z + 1.0], [x + w, y, z + 1.0], [x + w, y + h, z + 1.0], [x, y + h, z + 1.0]], // Front (XY plane)
-            5 => [[x + w, y, z], [x, y, z], [x, y + h, z], [x + w, y + h, z]], // Back (XY plane)
+            0 => [[x, y + 1.0, z], [x + w, y + 1.0, z], [x + w, y + 1.0, z + h], [x, y + 1.0, z + h]], // Top
+            1 => [[x, y, z], [x, y, z + h], [x + w, y, z + h], [x + w, y, z]], // Bottom
+            2 => [[x + 1.0, y, z], [x + 1.0, y, z + h], [x + 1.0, y + w, z + h], [x + 1.0, y + w, z]], // Right
+            3 => [[x, y, z], [x, y + w, z], [x, y + w, z + h], [x, y, z + h]], // Left
+            4 => [[x, y, z + 1.0], [x + w, y, z + 1.0], [x + w, y + h, z + 1.0], [x, y + h, z + 1.0]], // Front
+            5 => [[x, y, z], [x, y + h, z], [x + w, y + h, z], [x + w, y, z]], // Back
             _ => [[0.0; 3]; 4],
         };
 
         let base_i = *i_count;
         v.extend_from_slice(&[
-            Vertex { position: positions[0], tex_coords: [u0, v1], ao: 1.0, tex_index, light: 15.0 },
-            Vertex { position: positions[1], tex_coords: [u0, v0], ao: 1.0, tex_index, light: 15.0 },
-            Vertex { position: positions[2], tex_coords: [u1, v0], ao: 1.0, tex_index, light: 15.0 },
-            Vertex { position: positions[3], tex_coords: [u1, v1], ao: 1.0, tex_index, light: 15.0 },
+            Vertex { position: positions[0], tex_coords: [u0, v0], ao: 1.0, tex_index, light: 15.0 },
+            Vertex { position: positions[1], tex_coords: [u1, v0], ao: 1.0, tex_index, light: 15.0 },
+            Vertex { position: positions[2], tex_coords: [u1, v1], ao: 1.0, tex_index, light: 15.0 },
+            Vertex { position: positions[3], tex_coords: [u0, v1], ao: 1.0, tex_index, light: 15.0 },
         ]);
-        i.extend_from_slice(&[base_i, base_i + 1, base_i + 2, base_i + 2, base_i + 3, base_i]);
+        // Standard CCW Winding: 0,1,2 and 0,2,3
+        i.extend_from_slice(&[base_i, base_i + 1, base_i + 2, base_i, base_i + 2, base_i + 3]);
         *i_count += 4;
     }
 
@@ -936,9 +936,10 @@ let p_cx = (player.position.x / 16.0).floor() as i32;
         let p_cy = (player.position.y / 16.0).floor() as i32;
         let p_cz = (player.position.z / 16.0).floor() as i32;
         
+        // DIABOLICAL FIX: Fully Disable Occlusion Culling to restore visual solidity
         unsafe {
             let world_mut = (world as *const World as *mut World).as_mut().unwrap();
-            world_mut.update_occlusion(p_cx, p_cy, p_cz);
+            world_mut.occluded_chunks.clear();
         }
 
         for dx in -8..=8 {
@@ -1039,8 +1040,89 @@ pass.set_pipeline(&self.pipeline);
                     cpass.dispatch_workgroups((cull_data.len() as u32 + 63) / 64, 1, 1);
                 }
                 self.queue.submit(std::iter::once(c_encoder.finish()));
+            }
 
-                // 3. Render Pass (GPU draws exactly what it calculated)
+            // RADICAL FIX: Simple chunk rendering without broken GPU culling
+            for (&(cx, cy, cz), (mesh, _)) in &self.chunk_meshes {
+                if cx == 999 { continue; } // Skip clouds
+                pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+                pass.set_index_buffer(mesh.index_buffer.slice(..), IndexFormat::Uint32);
+                pass.draw_indexed(0..mesh.total_indices, 0, 0..1);
+            }
+
+
+        if !uv.is_empty() {
+            let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("UI VB"), contents: bytemuck::cast_slice(&uv), usage: BufferUsages::VERTEX });
+            let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("UI IB"), contents: bytemuck::cast_slice(&ui), usage: BufferUsages::INDEX });
+            let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { label: Some("UI Pass"), color_attachments: &[Some(RenderPassColorAttachment { view: &view, resolve_target: None, ops: Operations { load: LoadOp::Load, store: StoreOp::Store } })], depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None });
+            pass.set_pipeline(&self.ui_pipeline); pass.set_bind_group(0, &self.bind_group, &[]); pass.set_vertex_buffer(0, vb.slice(..)); pass.set_index_buffer(ib.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..ui.len() as u32, 0, 0..1);
+        }
+        self.queue.submit(std::iter::once(encoder.finish()));
+output.present();
+Ok(())
+}
+        if player.inventory_open {
+             self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240); // Dim BG
+             self.draw_text("INVENTORY", -0.2, 0.8, 0.08, &mut uv, &mut ui, &mut uoff);
+        }
+
+if !is_paused || player.inventory_open {
+            for i in 0..9 {
+                let x = sx + (i as f32 * sw);
+                if i == player.inventory.selected_hotbar_slot { 
+                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x - 0.005, by - 0.005 * aspect, sw + 0.01, sh + 0.01 * aspect, 241); 
+                }
+                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, by, sw, sh, 240);
+                
+                if let Some(stack) = &player.inventory.slots[i] {
+                    let (t, _, _) = stack.item.get_texture_indices();
+                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, by+0.02*aspect, sw-0.04, sh-0.04*aspect, t);
+                    // Shifted text so it doesn't overlap slots
+if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x + 0.07, by + 0.02, 0.04, &mut uv, &mut ui, &mut uoff); }
+                    
+                    // DURABILITY BAR
+                    if stack.item.is_tool() {
+                        let max_dur = stack.item.get_max_durability();
+                        if stack.durability < max_dur {
+                            let ratio = stack.durability as f32 / max_dur as f32;
+                            let bar_w = sw * 0.7 * ratio;
+                            let bar_x = x + (sw * 0.15);
+                            let bar_y = by + 0.05 * aspect;
+                            // Color logic: Green -> Yellow -> Red
+                            let tex = if ratio > 0.5 { 244 } else if ratio > 0.2 { 245 } else { 246 }; // Use different UI bar colors
+                            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bar_x, bar_y, bar_w, 0.01 * aspect, tex);
+                        }
+                    }
+                }
+            }
+            if !player.inventory_open {
+                for i in 0..10 { if player.health > (i as f32)*2.0 { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, sx + i as f32 * 0.05, by+sh+0.02*aspect, 0.045, 0.045*aspect, 242); } }
+                if self.break_progress > 0.0 { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.1, -0.1, 0.2 * self.break_progress, 0.02*aspect, 244); }
+            }
+        }
+
+        if player.inventory_open {
+            let iby = by + sh * 1.5;
+            // Main Grid
+            for r in 0..3 { for c in 0..9 {
+                let idx = 9 + r * 9 + c; let x = sx + c as f32 * sw; let y = iby + r as f32 * sh;
+                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, y, sw, sh, 240);
+                if let Some(stack) = &player.inventory.slots[idx] { 
+                    let (t, _, _) = stack.item.get_texture_indices(); 
+                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, y+0.02*aspect, sw-0.04, sh-0.04*aspect, t); 
+                    if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x+0.01, y+0.01, 0.03, &mut uv, &mut ui, &mut uoff); } 
+                }
+            }}
+            // Crafting
+            let cx = 0.3; let cy = 0.5;
+            self.draw_text(if player.crafting_open { "CRAFTING TABLE" } else { "CRAFTING" }, 0.3, 0.7, 0.05, &mut uv, &mut ui, &mut uoff);
+            let grid_size = if player.crafting_open { 3 } else { 2 };
+            for r in 0..grid_size { for c in 0..grid_size {
+                let x = cx + c as f32 * sw; let y = cy - r as f32 * sh;
+                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, y, sw, sh, 240);
+                let idx = if player.crafting_open { r*3+c } else { match r*2+c { 0=>0, 1=>1, 2=>3, 3=>4, _=>0 } };
+                if let Some(stack) = &player.inventory.crafting_grid[idx] { 
+                    let (t, _, _) = stack.item.get_texture_indices(); 
                     self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, y+0.02*aspect, sw-0.04, sh-0.04*aspect, t); 
                     if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x+0.01, y+0.01, 0.03, &mut uv, &mut ui, &mut uoff); }
                 }
@@ -1073,14 +1155,212 @@ pass.set_pipeline(&self.pipeline);
             }
         }
 
-        if !uv.is_empty() {
-            let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("UI VB"), contents: bytemuck::cast_slice(&uv), usage: BufferUsages::VERTEX });
-            let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("UI IB"), contents: bytemuck::cast_slice(&ui), usage: BufferUsages::INDEX });
-            let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { label: Some("UI Pass"), color_attachments: &[Some(RenderPassColorAttachment { view: &view, resolve_target: None, ops: Operations { load: LoadOp::Load, store: StoreOp::Store } })], depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None });
-            pass.set_pipeline(&self.ui_pipeline); pass.set_bind_group(0, &self.bind_group, &[]); pass.set_vertex_buffer(0, vb.slice(..)); pass.set_index_buffer(ib.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..ui.len() as u32, 0, 0..1);
+
+        // Draw clouds
+        if let Some((m, _)) = self.chunk_meshes.get(&(999, 999, 999)) {
+            pass.set_vertex_buffer(0, m.vertex_buffer.slice(..));
+            pass.set_index_buffer(m.index_buffer.slice(..), IndexFormat::Uint32);
+            pass.draw_indexed(0..m.total_indices, 0, 0..1);
         }
-        self.queue.submit(std::iter::once(encoder.finish()));
-output.present();
-Ok(())
-}
-}
+
+        // Draw entities
+        if !ent_v.is_empty() { 
+            pass.set_vertex_buffer(0, self.entity_vertex_buffer.slice(..)); 
+            pass.set_index_buffer(self.entity_index_buffer.slice(..), IndexFormat::Uint32); 
+            pass.draw_indexed(0..ent_i.len() as u32, 0, 0..1); 
+        }
+        }
+
+        // UI RENDERING
+        let mut uv = Vec::new(); 
+        let mut ui = Vec::new(); 
+        let mut uoff = 0;
+        let aspect = self.config.width as f32 / self.config.height as f32;
+
+        // Breaking cracks
+        if self.break_progress > 0.0 {
+            let crack_tex = 210 + (self.break_progress * 9.0) as u32;
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.05, -0.05 * aspect, 0.1, 0.1 * aspect, crack_tex);
+        }
+
+        // Crosshair
+        if !player.inventory_open && !is_paused { 
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.015, -0.015 * aspect, 0.03, 0.03 * aspect, 240); 
+        }
+
+        // Hotbar
+        let sw = 0.12; 
+        let sh = sw * aspect; 
+        let sx = -(sw * 9.0) / 2.0; 
+        let by = -0.9;
+
+        // Air bubbles
+        const UI_BUBBLE: u32 = 243;
+        if player.air < player.max_air {
+            let bubble_count = (player.air / player.max_air * 10.0).ceil() as i32;
+            let bx_bubbles = sx + sw * 5.0; 
+            let by_bubbles = by + sh + 0.08 * aspect;
+            for i in 0..10 {
+                if i < bubble_count {
+                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bx_bubbles + i as f32 * 0.045, by_bubbles, 0.04, 0.04 * aspect, UI_BUBBLE);
+                }
+            }
+        }
+
+        if player.inventory_open {
+             self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240);
+             self.draw_text("INVENTORY", -0.2, 0.8, 0.08, &mut uv, &mut ui, &mut uoff);
+        }
+
+        if !is_paused || player.inventory_open {
+            for i in 0..9 {
+                let x = sx + (i as f32 * sw);
+                if i == player.inventory.selected_hotbar_slot { 
+                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x - 0.005, by - 0.005 * aspect, sw + 0.01, sh + 0.01 * aspect, 241); 
+                }
+                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, by, sw, sh, 240);
+                
+                if let Some(stack) = &player.inventory.slots[i] {
+                    let (t, _, _) = stack.item.get_texture_indices();
+                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, by+0.02*aspect, sw-0.04, sh-0.04*aspect, t);
+                    if stack.count > 1 { 
+                        self.draw_text(&format!("{}", stack.count), x + 0.07, by + 0.02, 0.04, &mut uv, &mut ui, &mut uoff); 
+                    }
+                    
+                    // Durability bar
+                    if stack.item.is_tool() {
+                        let max_dur = stack.item.get_max_durability();
+                        if stack.durability < max_dur {
+                            let ratio = stack.durability as f32 / max_dur as f32;
+                            let bar_w = sw * 0.7 * ratio;
+                            let bar_x = x + (sw * 0.15);
+                            let bar_y = by + 0.05 * aspect;
+                            let tex = if ratio > 0.5 { 244 } else if ratio > 0.2 { 245 } else { 246 };
+                            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bar_x, bar_y, bar_w, 0.01 * aspect, tex);
+                        }
+                    }
+                }
+            }
+            
+            if !player.inventory_open {
+                for i in 0..10 { 
+                    if player.health > (i as f32)*2.0 { 
+                        self.add_ui_quad(&mut uv, &mut ui, &mut uoff, sx + i as f32 * 0.05, by+sh+0.02*aspect, 0.045, 0.045*aspect, 242); 
+                    } 
+                }
+                if self.break_progress > 0.0 { 
+                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.1, -0.1, 0.2 * self.break_progress, 0.02*aspect, 244); 
+                }
+            }
+        }
+
+        if player.inventory_open {
+            let iby = by + sh * 1.5;
+            // Main Grid
+            for r in 0..3 { 
+                for c in 0..9 {
+                    let idx = 9 + r * 9 + c; 
+                    let x = sx + c as f32 * sw; 
+                    let y = iby + r as f32 * sh;
+                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, y, sw, sh, 240);
+                    if let Some(stack) = &player.inventory.slots[idx] { 
+                        let (t, _, _) = stack.item.get_texture_indices(); 
+                        self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, y+0.02*aspect, sw-0.04, sh-0.04*aspect, t); 
+                        if stack.count > 1 { 
+                            self.draw_text(&format!("{}", stack.count), x+0.01, y+0.01, 0.03, &mut uv, &mut ui, &mut uoff); 
+                        } 
+                    }
+                }
+            }
+            
+            // Crafting
+            let cx = 0.3; 
+            let cy = 0.5;
+            self.draw_text(if player.crafting_open { "CRAFTING TABLE" } else { "CRAFTING" }, 0.3, 0.7, 0.05, &mut uv, &mut ui, &mut uoff);
+            let grid_size = if player.crafting_open { 3 } else { 2 };
+            for r in 0..grid_size { 
+                for c in 0..grid_size {
+                    let x = cx + c as f32 * sw; 
+                    let y = cy - r as f32 * sh;
+                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, y, sw, sh, 240);
+                    let idx = if player.crafting_open { r*3+c } else { match r*2+c { 0=>0, 1=>1, 2=>3, 3=>4, _=>0 } };
+                    if let Some(stack) = &player.inventory.crafting_grid[idx] { 
+                        let (t, _, _) = stack.item.get_texture_indices(); 
+                        self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, y+0.02*aspect, sw-0.04, sh-0.04*aspect, t); 
+                        if stack.count > 1 { 
+                            self.draw_text(&format!("{}", stack.count), x+0.01, y+0.01, 0.03, &mut uv, &mut ui, &mut uoff); 
+                        }
+                    }
+                }
+            }
+            
+            // Output
+            let ox = cx + 3.0*sw; 
+            let oy = cy - 0.5*sh;
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ox, oy, sw, sh, 240); 
+            self.draw_text("->", cx + 2.1*sw, oy+0.05, 0.04, &mut uv, &mut ui, &mut uoff);
+            if let Some(stack) = &player.inventory.crafting_output { 
+                let (t, _, _) = stack.item.get_texture_indices(); 
+                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ox+0.02, oy+0.02*aspect, sw-0.04, sh-0.04*aspect, t); 
+                if stack.count > 1 { 
+                    self.draw_text(&format!("{}", stack.count), ox+0.01, oy+0.01, 0.03, &mut uv, &mut ui, &mut uoff); 
+                } 
+            }
+            
+            // Held Item & Tooltip
+            let (mx, my) = cursor_pos; 
+            let ndc_x = (mx as f32 / self.config.width as f32)*2.0-1.0; 
+            let ndc_y = -((my as f32 / self.config.height as f32)*2.0-1.0);
+            if let Some(stack) = &player.inventory.cursor_item {
+                let (t, _, _) = stack.item.get_texture_indices();
+                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ndc_x - sw/2.0, ndc_y - sh/2.0, sw, sh, t);
+                if stack.count > 1 { 
+                    self.draw_text(&format!("{}", stack.count), ndc_x - sw/2.0, ndc_y - sh/2.0, 0.03, &mut uv, &mut ui, &mut uoff); 
+                }
+            } else {
+                // Tooltip
+                for i in 0..9 {
+                    let x = sx + (i as f32 * sw); 
+                    if ndc_x >= x && ndc_x < x+sw && ndc_y >= by && ndc_y < by+sh {
+                        if let Some(s) = &player.inventory.slots[i] {
+                            self.draw_text(s.item.get_display_name(), ndc_x + 0.02, ndc_y - 0.02, 0.025, &mut uv, &mut ui, &mut uoff);
+                        }
+                    }
+                }
+            }
+        }
+
+        if !uv.is_empty() {
+            let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { 
+                label: Some("UI VB"), 
+                contents: bytemuck::cast_slice(&uv), 
+                usage: BufferUsages::VERTEX 
+            });
+            let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { 
+                label: Some("UI IB"), 
+                contents: bytemuck::cast_slice(&ui), 
+                usage: BufferUsages::INDEX 
+            });
+            let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { 
+                label: Some("UI Pass"), 
+                color_attachments: &[Some(RenderPassColorAttachment { 
+                    view: &view, 
+                    resolve_target: None, 
+                    ops: Operations { load: LoadOp::Load, store: StoreOp::Store } 
+                })], 
+                depth_stencil_attachment: None, 
+                timestamp_writes: None, 
+                occlusion_query_set: None 
+            });
+            pass.set_pipeline(&self.ui_pipeline); 
+            pass.set_bind_group(0, &self.bind_group, &[]); 
+            pass.set_vertex_buffer(0, vb.slice(..)); 
+            pass.set_index_buffer(ib.slice(..), IndexFormat::Uint32); 
+            pass.draw_indexed(0..ui.len() as u32, 0, 0..1);
+        }
+        
+self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+        Ok(())
+    }
+

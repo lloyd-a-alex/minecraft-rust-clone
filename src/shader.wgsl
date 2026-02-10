@@ -48,15 +48,17 @@ fn vs_main(model: VertexInput) -> VertexOutput {
     let col = f32(model.tex_index % 32u);
     let row = f32(model.tex_index / 32u);
     
-    // model.tex_coords now represents "Local Tiling" (e.g., 0.0 to 16.0)
-    // We wrap it using fract() so it repeats perfectly for every block unit
-// DIABOLICAL FIX: Using raw fract for seamless greedy textures (Requires Repeat Sampler)
+// DIABOLICAL FIX: Exact Atlas Indexing with Greedy Scaling
+    let u_step = 1.0 / 32.0;
+    let v_step = 1.0 / 32.0;
+    
+    // model.tex_coords is [world_w, world_h] from the greedy mesher
     let local_u = fract(model.tex_coords.x);
     let local_v = fract(model.tex_coords.y);
 
     out.tex_coords = vec2<f32>(
         (col + local_u) * u_step,
-        (row + local_v) * u_step
+        (row + local_v) * v_step
     );
     return out;
 }
