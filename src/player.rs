@@ -266,6 +266,10 @@ pub fn update(&mut self, world: &crate::world::World, dt: f32, audio: &crate::Au
     fn internal_update(&mut self, world: &crate::world::World, dt: f32, audio: &crate::AudioSystem, in_cave: bool, was_on_ground: bool) {
         if self.invincible_timer > 0.0 { self.invincible_timer -= dt; }
 
+        // ROOT FIX: Grounding stickiness. If we were on ground, we check ground more aggressively
+        // to prevent 1mm micro-jitter from falling gravity vs snap-up.
+        let prev_on_ground = self.on_ground;
+
         // --- CAVE AMBIENCE ---
         if in_cave {
             self.cave_sound_timer -= dt;
@@ -374,22 +378,28 @@ if move_delta.length_squared() > 0.0 {
         }
         
 let next_y = self.position.y + self.velocity.y * dt;
-        if self.velocity.y <= 0.0 {
+        if self.velocity.y <= 0.01 {
             if let Some(ground_y) = self.check_ground(world, Vec3::new(self.position.x, next_y, self.position.z)) {
-if !was_on_ground {
+                if !prev_on_ground {
                     let eye_p = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + self.height * 0.4).floor() as i32, z: self.position.z.floor() as i32 };
                     let is_submerged = world.get_block(eye_p).is_water();
                     audio.play("land", is_submerged || in_cave);
                 }
+                
+                // ROOT FIX: Apply a larger epsilon for snapping and kill vertical velocity completely.
                 self.position.y = ground_y;
                 if !in_water && self.velocity.y < -14.0 && self.invincible_timer <= 0.0 { 
                     let dmg = (self.velocity.y.abs() - 12.0) * 0.5;
                     self.health -= dmg;
                 }
+                
                 self.velocity.y = 0.0; 
                 self.on_ground = true;
-            } else { self.position.y = next_y; self.on_ground = false; }
-} else {
+            } else { 
+                self.position.y = next_y; 
+                self.on_ground = false; 
+            }
+        } else {
             if let Some(ceil_y) = self.check_ceiling(world, Vec3::new(self.position.x, next_y, self.position.z)) {
                 // FIX: No teleport. Just stop upward velocity and keep Y position below the ceiling.
                 self.position.y = (ceil_y - (self.height * 0.5) - 0.01).min(self.position.y);
@@ -402,10 +412,26 @@ if self.health <= 0.0 { self.health = 0.0; self.is_dead = true; }
 
 fn check_ground(&self, world: &World, pos: Vec3) -> Option<f32> {
         let feet_y = pos.y - self.height / 2.0;
-        let check_points = [(pos.x-self.radius, feet_y, pos.z-self.radius), (pos.x+self.radius, feet_y, pos.z+self.radius), (pos.x+self.radius, feet_y, pos.z-self.radius), (pos.x-self.radius, feet_y, pos.z+self.radius)];
+        // Use slightly smaller collision radius for ground check to avoid getting stuck on wall edges
+        let r = self.radius * 0.9; 
+        let check_points = [
+            (pos.x - r, feet_y, pos.z - r), 
+            (pos.x + r, feet_y, pos.z + r), 
+            (pos.x + r, feet_y, pos.z - r), 
+            (pos.x - r, feet_y, pos.z + r),
+            (pos.x, feet_y, pos.z) // Center point check
+        ];
+
         for (x, y, z) in check_points {
             let bp = BlockPos { x: x.floor() as i32, y: y.floor() as i32, z: z.floor() as i32 };
-            if world.get_block(bp).is_solid() { let top = bp.y as f32 + 1.0; if top - feet_y <= 0.6 { return Some(top + self.height / 2.0 + 0.001); } }
+            if world.get_block(bp).is_solid() { 
+                let top = bp.y as f32 + 1.0; 
+                // ROOT FIX: Check if we are within snapping range (0.15 blocks) 
+                // and snap to a safe epsilon (0.01) to prevent fighting gravity.
+                if top >= feet_y - 0.05 && top - feet_y <= 0.15 { 
+                    return Some(top + self.height / 2.0 + 0.01); 
+                } 
+            }
         }
         None
     }

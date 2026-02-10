@@ -57,33 +57,42 @@ pub fn play(&self, sound_type: &str, in_cave: bool) {
 fn gen_noise(dur: f32, freq_start: f32, freq_end: f32, reverb: bool) -> Vec<u8> {
         let spec = hound::WavSpec { channels: 1, sample_rate: 44100, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
         let mut buf = Vec::new();
-let mut writer = hound::WavWriter::new(Cursor::new(&mut buf), spec).unwrap();
+        let mut writer = hound::WavWriter::new(Cursor::new(&mut buf), spec).unwrap();
         let samples = (dur * 44100.0) as u32;
-        let envelope_samples = 220; // ~5ms fade to prevent popping/ripping
+        
+        // ROOT FIX: Increase envelope to 15ms to stop low-frequency "thumping" and clipping
+        let envelope_samples = 661; 
 
         let mut history = vec![0i16; 8820]; 
         let history_len = history.len();
         
         for i in 0..samples {
             let t = i as f32 / 44100.0;
-            let freq = freq_start + (freq_end - freq_start) * (i as f32 / samples as f32);
-            let mut sample = (f32::sin(t * freq * 2.0 * std::f32::consts::PI) * 8000.0) as i16;
+            let progress = i as f32 / samples as f32;
+            let freq = freq_start + (freq_end - freq_start) * progress;
             
-            // APPLY ENVELOPE (Attack/Release)
+            // Generate base sine wave with a slightly lower amplitude to leave "headroom" for reverb
+            let mut sample_f = f32::sin(t * freq * 2.0 * std::f32::consts::PI) * 6000.0;
+            
+            // APPLY ENVELOPE (Attack/Release) - Linear ramp
             if i < envelope_samples {
-                sample = (sample as f32 * (i as f32 / envelope_samples as f32)) as i16;
-            } else if i > (samples - envelope_samples) {
-                sample = (sample as f32 * ((samples - i) as f32 / envelope_samples as f32)) as i16;
+                sample_f *= i as f32 / envelope_samples as f32;
+            } else if i > (samples.saturating_sub(envelope_samples)) {
+                let remaining = samples.saturating_sub(i);
+                sample_f *= remaining as f32 / envelope_samples as f32;
             }
 
+            let mut sample = sample_f as i16;
+
             if reverb {
-                // Diabolical Multi-Tap Reverb
-                let delay_samples = [1102, 2205, 4410]; // 25ms, 50ms, 100ms
-for &delay in &delay_samples {
+                // Multi-Tap Reverb with safe gain scaling to prevent "ripping"
+                let delay_samples = [1102, 2205, 4410]; 
+                for &delay in &delay_samples {
                     if i as usize >= delay {
                         let echo_idx = (i as usize - delay) % history_len;
                         let echo = history[echo_idx];
-                        sample = sample.saturating_add((echo as f32 * 0.15) as i16);
+                        // Saturate and scale to ensure we don't distort
+                        sample = sample.saturating_add((echo as f32 * 0.12) as i16);
                     }
                 }
                 let history_idx = (i as usize) % history_len;

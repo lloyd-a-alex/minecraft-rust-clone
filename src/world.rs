@@ -244,16 +244,16 @@ pub struct RemotePlayer { pub id: u32, pub position: Vec3, pub rotation: f32 }
 
 #[derive(Clone)]
 pub struct World {
-    pub chunks: HashMap<(i32, i32, i32), Chunk>, // (CX, CY, CZ)
-    pub seed: u32,
-    pub entities: Vec<ItemEntity>,
+    pub chunks: HashMap<(i32, i32, i32), Chunk>,
+    pub entities: Vec<Entity>,
+    pub mesh_dirty: bool,
     pub remote_players: Vec<RemotePlayer>,
-    pub occluded_chunks: HashSet<(i32, i32, i32)>,
+    pub seed: u32,
 }
 
 impl World {
     pub fn new(seed: u32) -> Self {
-        let mut world = World { chunks: HashMap::new(), entities: Vec::new(), remote_players: Vec::new(), seed, occluded_chunks: HashSet::new() };
+        let mut world = World { chunks: HashMap::new(), entities: Vec::new(), remote_players: Vec::new(), seed };
         world.generate_terrain_around(0, 0, 6); // Initial seed around origin
         world
     }
