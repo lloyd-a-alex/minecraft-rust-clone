@@ -564,13 +564,6 @@ world.entities.push(ent);
                     } else if !is_paused && !player.inventory_open { 
                         player.handle_input(key, pressed);
                         
-                        // ROOT FIX: More permissive jump check. 
-                        // If the player is on ground, apply a clean vertical impulse.
-                        if pressed && key == KeyCode::Space && !player.is_flying && player.on_ground { 
-                            player.velocity.y = 8.5; // Slightly more power to guarantee 1.25 block clearance
-                            player.on_ground = false; // Immediately leave ground state
-                        }
-                        
                         if pressed && key == KeyCode::KeyF { player.is_flying = !player.is_flying; if player.is_flying { player.velocity = glam::Vec3::ZERO; } }
                         if pressed && key == KeyCode::KeyT {
                             let top_y = world.get_height_at(player.position.x.floor() as i32, player.position.z.floor() as i32);

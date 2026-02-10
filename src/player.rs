@@ -177,11 +177,14 @@ pub is_dead: bool,
 pub bob_timer: f32,
     pub spawn_timer: f32,
     pub cave_sound_timer: f32,
+    pub grounded_latch: f32,   // Coyote Time / Hysteresis buffer
+    pub jump_buffer_timer: f32, // Allows pressing jump slightly before hitting ground
 }
 
 #[derive(Default)] 
 pub struct PlayerKeys { 
-    pub forward: bool, pub backward: bool, pub left: bool, pub right: bool, pub up: bool, pub down: bool 
+    pub forward: bool, pub backward: bool, pub left: bool, pub right: bool, pub up: bool, pub down: bool,
+    pub jump_queued: bool, // DIABOLICAL FIX: Buffer the jump request to sync with physics sub-steps
 }
 
 impl PlayerKeys {
@@ -223,6 +226,8 @@ is_dead: false,
 bob_timer: 0.0,
             spawn_timer: 0.0,
             cave_sound_timer: 15.0,
+            grounded_latch: 0.0,
+            jump_buffer_timer: 0.0,
         }
     }
     pub fn respawn(&mut self) { self.position = Vec3::new(0.0, 80.0, 0.0); self.velocity = Vec3::ZERO; self.health = self.max_health; self.is_dead = false; self.invincible_timer = 3.0; }
@@ -231,7 +236,8 @@ bob_timer: 0.0,
         match key {
             KeyCode::KeyW => self.keys.forward = pressed, KeyCode::KeyS => self.keys.backward = pressed,
             KeyCode::KeyA => self.keys.left = pressed, KeyCode::KeyD => self.keys.right = pressed,
-            KeyCode::Space => self.keys.up = pressed, KeyCode::ShiftLeft => self.keys.down = pressed,
+            KeyCode::Space => { self.keys.up = pressed; if pressed { self.keys.jump_queued = true; } },
+            KeyCode::ShiftLeft => self.keys.down = pressed,
             KeyCode::Digit1 => self.inventory.select_slot(0), KeyCode::Digit2 => self.inventory.select_slot(1),
             KeyCode::Digit3 => self.inventory.select_slot(2), KeyCode::Digit4 => self.inventory.select_slot(3),
             KeyCode::Digit5 => self.inventory.select_slot(4), KeyCode::Digit6 => self.inventory.select_slot(5),
@@ -265,11 +271,18 @@ pub fn update(&mut self, world: &crate::world::World, dt: f32, audio: &crate::Au
 
     fn internal_update(&mut self, world: &crate::world::World, dt: f32, audio: &crate::AudioSystem, in_cave: bool) {
         if self.invincible_timer > 0.0 { self.invincible_timer -= dt; }
+        
+        // --- DIABOLICAL GROUNDING HYSTERESIS ---
+        // We decrement timers. If they are > 0, we consider the state "active"
+        if self.grounded_latch > 0.0 { self.grounded_latch -= dt; }
+        if self.jump_buffer_timer > 0.0 { self.jump_buffer_timer -= dt; }
+        if self.keys.jump_queued {
+            self.jump_buffer_timer = 0.15; // Buffer the jump for 150ms
+            self.keys.jump_queued = false;
+        }
 
-        // ROOT FIX: Use a larger Snap Epsilon (0.01) and Vertical Deadzone (0.02)
-        // This stops the 1mm oscillation where gravity and ground-snapping fight each other.
-        // Capturing current state to handle landing/falling transitions
         let _prev_on_ground = self.on_ground;
+        self.on_ground = self.grounded_latch > 0.0;
 
         // --- CAVE AMBIENCE ---
         if in_cave {
@@ -380,11 +393,17 @@ if move_delta.length_squared() > 0.0 {
         
 let next_y = self.position.y + self.velocity.y * dt;
         
-        // ROOT FIX: Improved Grounding Latch. 
-        // If jumping (vel > 0), we ignore ground checks to allow upward momentum.
-        if self.velocity.y <= 0.001 {
+        // DIABOLICAL JUMP LOGIC: Can we jump?
+        let can_jump = (self.on_ground || self.grounded_latch > 0.0) && !self.is_flying;
+        if can_jump && self.jump_buffer_timer > 0.0 {
+            self.velocity.y = 9.2; // Optimized for 1.25 block vertical reach
+            self.on_ground = false;
+            self.grounded_latch = 0.0;
+            self.jump_buffer_timer = 0.0;
+            // Immediate Y update to clear the ground check zone
+            self.position.y += self.velocity.y * dt;
+        } else if self.velocity.y <= 0.001 {
             if let Some(ground_y) = self.check_ground(world, Vec3::new(self.position.x, next_y, self.position.z)) {
-                // If we just landed
                 if !self.on_ground {
                     let eye_p = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + self.height * 0.4).floor() as i32, z: self.position.z.floor() as i32 };
                     let is_submerged = world.get_block(eye_p).is_water();
@@ -392,18 +411,14 @@ let next_y = self.position.y + self.velocity.y * dt;
                     self.bob_timer = 0.0;
                 }
                 
-                // SNAP POSITIVELY: Use a higher epsilon (0.05) to ensure gravity cannot pull us back 
-                // into the collision zone in a single sub-step.
                 self.position.y = ground_y + 0.005; 
-                
                 if !in_water && self.velocity.y < -14.0 && self.invincible_timer <= 0.0 { 
-                    let dmg = (self.velocity.y.abs() - 12.0) * 0.5;
-                    self.health -= dmg;
+                    self.health -= (self.velocity.y.abs() - 12.0) * 0.5;
                 }
                 
-                // KILL VELOCITY: Complete stop to prevent jitter
                 self.velocity.y = 0.0; 
                 self.on_ground = true;
+                self.grounded_latch = 0.1; // Hold "grounded" state for 100ms
             } else { 
                 self.position.y = next_y; 
                 self.on_ground = false; 
@@ -421,13 +436,15 @@ if self.health <= 0.0 { self.health = 0.0; self.is_dead = true; }
 
 fn check_ground(&self, world: &World, pos: Vec3) -> Option<f32> {
         let feet_y = pos.y - self.height / 2.0;
-        // ROOT FIX: Use a tighter radius for ground checks (0.7) to prevent "edge-jitter"
-        // when standing on the microscopic boundary of two blocks.
-        let r = self.radius * 0.7; 
+        // DIABOLICAL RADIUS: Use a slightly larger check area (0.95) to ensure you can jump 
+        // while standing on the absolute corner of a block.
+        let r = self.radius * 0.95; 
         let check_points = [
             (pos.x - r, feet_y, pos.z - r), (pos.x + r, feet_y, pos.z + r), 
             (pos.x + r, feet_y, pos.z - r), (pos.x - r, feet_y, pos.z + r),
-            (pos.x, feet_y, pos.z) 
+            (pos.x, feet_y, pos.z),
+            // Middle-edge points for perfect corner coverage
+            (pos.x - r, feet_y, pos.z), (pos.x + r, feet_y, pos.z), (pos.x, feet_y, pos.z - r), (pos.x, feet_y, pos.z + r)
         ];
 
         for (x, y, z) in check_points {
