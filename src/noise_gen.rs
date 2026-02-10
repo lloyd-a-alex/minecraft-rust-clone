@@ -105,6 +105,7 @@ pub fn get_river_noise(&self, x: i32, z: i32) -> f64 {
         (1.0 - (n.abs() * 2.0 - 1.0).abs()) * 0.5
     }
 
+    #[allow(dead_code)]
     pub fn get_height(&self, x: i32, z: i32) -> i32 {
         let (cont, eros, weird, _) = self.get_height_params(x, z);
         let mut h = 64.0 + (cont * 40.0);
@@ -112,7 +113,8 @@ pub fn get_river_noise(&self, x: i32, z: i32) -> f64 {
         h as i32
     }
 
-pub fn get_biome_at(&self, x: i32, z: i32, y: i32) -> &'static str {
+#[allow(dead_code)]
+    pub fn get_biome_at(&self, x: i32, z: i32, y: i32) -> &'static str {
         let (cont, eros, _weird, temp) = self.get_height_params(x, z);
         let humid = self.get_noise_octaves(x as f64 * 0.01, 44.0, z as f64 * 0.01, 3) as f32;
         self.get_biome(cont, eros, temp, humid, y)

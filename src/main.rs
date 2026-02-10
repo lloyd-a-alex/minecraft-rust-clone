@@ -90,8 +90,11 @@ if reverb {
 
 mod renderer; mod world; mod texture; mod player; mod logger; mod noise_gen; mod network; mod ngrok_utils;
 use renderer::Renderer; use world::{World, BlockType, BlockPos}; use player::Player; use network::{NetworkManager, Packet};
+use glam::Vec3;
+use serde_json::json;
+use std::fs;
 
-// --- MENU SYSTEM ---
+// --- MENU SYSTEM ---  
 #[derive(PartialEq)] enum GameState { Menu, Playing }
 struct Rect { x: f32, y: f32, w: f32, h: f32 }
 impl Rect { fn contains(&self, nx: f32, ny: f32) -> bool { nx >= self.x - self.w/2.0 && nx <= self.x + self.w/2.0 && ny >= self.y - self.h/2.0 && ny <= self.y + self.h/2.0 } }
@@ -136,10 +139,35 @@ fn main() {
     // Initialize Renderer immediately (No Pollster block needed if we map async correctly, but keeping simple)
     let window_arc = window.clone(); // Clone ARC for renderer
 let mut renderer = pollster::block_on(Renderer::new(&window_arc));
-    let mut world = World::new(master_seed); // Temp world for menu background
+// DIABOLICAL LIVE PERSISTENCE: Force reload into the exact previous position and state
+    let mut start_pos = Vec3::new(0.0, 80.0, 0.0);
+    let mut current_seed = master_seed;
+    let mut was_playing = false;
+
+    // DIABOLICAL FIX: Move save file to target/ to prevent cargo watch from restarting the game constantly
+    let save_path = "target/.live_state.json";
+    if let Ok(data) = fs::read_to_string(save_path) {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&data) {
+            current_seed = val["seed"].as_u64().unwrap_or(master_seed as u64) as u32;
+            start_pos.x = val["x"].as_f64().unwrap_or(0.0) as f32;
+            start_pos.y = val["y"].as_f64().unwrap_or(80.0) as f32;
+            start_pos.z = val["z"].as_f64().unwrap_or(0.0) as f32;
+            was_playing = val["was_playing"].as_bool().unwrap_or(false);
+        }
+    }
+
+    let mut world = World::new(current_seed);
+    let mut player = Player::new();
+    player.position = start_pos;
+    let mut last_persist = Instant::now();
     
-// --- GAME STATE ---
-    let mut game_state = GameState::Menu;
+    // --- GAME STATE ---
+    // If we were playing before the code changed, jump STRAIGHT back in
+    let mut game_state = if was_playing { GameState::Playing } else { GameState::Menu };
+    if was_playing {
+        let _ = window.set_cursor_grab(CursorGrabMode::Locked);
+        window.set_cursor_visible(false);
+    }
     let mut main_menu = MainMenu::new_main();
     let pause_menu = MainMenu::new_pause();
     let mut network_mgr: Option<NetworkManager> = None;
@@ -151,7 +179,7 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     }
 
     // --- PLAYER & LOGIC STATE (Preserved from your code) ---
-let mut player = Player::new();
+
     
 // --- SPAWN STATE ---
     let mut spawn_found = false;
@@ -168,9 +196,12 @@ let mut player = Player::new();
     let window_clone = window.clone();
 let audio = AudioSystem::new();
     let mut last_frame = Instant::now();
+    let mut first_build_done = false;
+
+
 
     // Initial Cursor Logic
-    window.set_cursor_grab(CursorGrabMode::None).unwrap();
+    let _ = window.set_cursor_grab(CursorGrabMode::None);
     window.set_cursor_visible(true);
 
     event_loop.run(move |event, elwt| {
@@ -180,14 +211,12 @@ let audio = AudioSystem::new();
                 renderer.resize(size.width, size.height);
                 win_size = (size.width, size.height);
             },
-            Event::WindowEvent { event: WindowEvent::CursorMoved { position, .. }, .. } => {
+Event::WindowEvent { event: WindowEvent::CursorMoved { position, .. }, .. } => {
                 cursor_pos = (position.x, position.y);
-                if game_state == GameState::Menu {
+                if game_state == GameState::Menu || is_paused || player.inventory_open {
                     let ndc_x = (position.x as f32 / win_size.0 as f32) * 2.0 - 1.0;
                     let ndc_y = 1.0 - (position.y as f32 / win_size.1 as f32) * 2.0;
                     for btn in &mut main_menu.buttons { btn.hovered = btn.rect.contains(ndc_x, ndc_y); }
-                } else if !is_paused && !player.inventory_open {
-                    player.process_mouse(0.0, 0.0); // Handled by DeviceEvent for raw input
                 }
             },
             Event::DeviceEvent { event: DeviceEvent::MouseMotion { delta }, .. } => { 
@@ -475,9 +504,10 @@ if key == KeyCode::Escape && pressed {
                             let _ = window_clone.set_cursor_grab(CursorGrabMode::None); window_clone.set_cursor_visible(true);
                         }
 } else if key == KeyCode::KeyE && pressed && !is_paused {
-                        player.inventory_open = !player.inventory_open;
+player.inventory_open = !player.inventory_open;
                         player.crafting_open = false; 
-player.keys.reset(); // RESET HERE
+                        player.keys.reset(); 
+                        left_click = false; // Stop mining when opening inventory
 audio.play("click", false); // Sound for opening inventory
                         if player.inventory_open { 
                             let _ = window_clone.set_cursor_grab(CursorGrabMode::None);
@@ -511,6 +541,12 @@ world.entities.push(ent);
                         player.handle_input(key, pressed);
                         if pressed && key == KeyCode::Space && !player.is_flying && player.on_ground { player.velocity.y = 8.0; }
                         if pressed && key == KeyCode::KeyF { player.is_flying = !player.is_flying; if player.is_flying { player.velocity = glam::Vec3::ZERO; } }
+                        if pressed && key == KeyCode::KeyT {
+                            let top_y = world.get_height_at(player.position.x.floor() as i32, player.position.z.floor() as i32);
+                            player.position.y = top_y as f32 + 2.5;
+                            player.velocity.y = 0.0;
+                            log::info!("🚀 Teleported to surface: {}", top_y);
+                        }
                         if pressed && key == KeyCode::KeyN { player.is_noclip = !player.is_noclip; player.is_flying = player.is_noclip; }
                         if pressed && key == KeyCode::Equal { player.admin_speed = (player.admin_speed + 1.0).min(10.0); }
                         if pressed && key == KeyCode::Minus { player.admin_speed = (player.admin_speed - 1.0).max(1.0); }
@@ -539,6 +575,12 @@ world.entities.push(ent);
                 last_frame = now;
 
 if game_state == GameState::Playing {
+                    // DIABOLICAL FIRST-FRAME STABILITY
+                    if !first_build_done {
+                        renderer.rebuild_all_chunks(&world);
+                        first_build_done = true;
+                    }
+
                     // --- INFINITE GENERATION ---
                     let p_cx = (player.position.x / 16.0).floor() as i32;
                     let p_cz = (player.position.z / 16.0).floor() as i32;
@@ -555,6 +597,21 @@ if game_state == GameState::Playing {
                     // --- DAY/NIGHT CYCLE ---
                     let day_time = (renderer.start_time.elapsed().as_secs_f32() % 600.0) / 600.0;
                     let _sky_brightness = (day_time * std::f32::consts::PI * 2.0).sin().max(0.1);
+
+// DIABOLICAL AUTO-SAVE: Save every 10 seconds to stop cargo-watch restart loops
+                    if last_persist.elapsed().as_millis() >= 10000 {
+                        let save_data = json!({
+                            "seed": world.seed,
+                            "x": player.position.x,
+                            "y": player.position.y,
+                            "z": player.position.z,
+                            "was_playing": game_state == GameState::Playing,
+                        });
+if let Ok(contents) = serde_json::to_string(&save_data) {
+                            let _ = fs::write("target/.live_state.json", contents);
+                        }
+                        last_persist = Instant::now();
+                    }
 
                     if let Some(network) = &mut network_mgr {
                         while let Some(pkt) = network.try_recv() {
@@ -703,17 +760,20 @@ renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.
                 }
             }
 Event::AboutToWait => {
-if game_state == GameState::Playing && !is_paused && !player.inventory_open {
+                let frame_time = Instant::now().duration_since(last_frame);
+                // DIABOLICAL FPS CAP: Prevent the GPU from screaming and causing input lag
+                if frame_time.as_secs_f32() < 1.0 / 144.0 {
+                    return;
+                }
+                
+                if game_state == GameState::Playing && !is_paused && !player.inventory_open {
                     let p_cx = (player.position.x / 16.0).floor() as i32;
                     let p_cz = (player.position.z / 16.0).floor() as i32;
-                    // AMORTIZED OPTIMIZATION: Generate exactly ONE chunk per frame to maintain 60 FPS
-                    if let Some((cx, cz)) = world.generate_one_chunk_around(p_cx, p_cz, 8) {
+                    // DIABOLICAL OPTIMIZATION: Only generate if not already busy
+                    if let Some((cx, cz)) = world.generate_one_chunk_around(p_cx, p_cz, 6) {
                         renderer.update_chunk(cx, cz, &world);
                     }
-
-                    if window.set_cursor_grab(CursorGrabMode::Locked).is_err() {
-                        let _ = window.set_cursor_grab(CursorGrabMode::Confined);
-                    }
+                    let _ = window.set_cursor_grab(CursorGrabMode::Locked);
                     window.set_cursor_visible(false);
                 }
                 window.request_redraw();

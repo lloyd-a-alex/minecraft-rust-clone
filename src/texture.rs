@@ -142,9 +142,11 @@ pub fn new() -> Self {
         Self::clear_tile(&mut data, block_size, atlas_width, UI_BUBBLE);
         Self::generate_bubble_data(&mut data, block_size, atlas_width, UI_BUBBLE);
         Self::clear_tile(&mut data, block_size, atlas_width, UI_BAR);
-        Self::generate_ui_bar_data(&mut data, block_size, atlas_width, UI_BAR);
+Self::generate_ui_bar_data(&mut data, block_size, atlas_width, UI_BAR);
+        Self::generate_generic(&mut data, block_size, atlas_width, 245, [255, 255, 0]); // Yellow Bar
+        Self::generate_generic(&mut data, block_size, atlas_width, 246, [255, 0, 0]);   // Red Bar
 
-Self::generate_font(&mut data, block_size, atlas_width, 300);
+        Self::generate_font(&mut data, block_size, atlas_width, 300);
 
         // --- 9. BREAKING CRACKS (Indices 210-219) ---
         for i in 0..10 { Self::generate_cracks(&mut data, block_size, atlas_width, 210 + i, i as f32 / 9.0); }
@@ -171,7 +173,7 @@ Self::generate_font(&mut data, block_size, atlas_width, 300);
         Self::generate_button(&mut data, block_size, atlas_width, 250, false); // Normal
         Self::generate_button(&mut data, block_size, atlas_width, 251, true);  // Hovered
 TextureAtlas { data, size: block_size, grid_size: grid_width_in_blocks }
-    } // <--- This closes the 'new' function properly
+    }
 
     // --- 9. UI BUTTONS (Helper) ---
     fn generate_button(data: &mut [u8], size: u32, w: u32, idx: u32, hovered: bool) {
@@ -218,8 +220,18 @@ fn place_texture(data: &mut [u8], block_size: u32, atlas_width: u32, grid_idx: u
         let base_x = grid_x * block_size;
         let base_y = grid_y * block_size;
 
-        // DIABOLICAL FIX: Always wipe the destination first so we don't get "stickers" from previous indices
-        Self::clear_tile(data, block_size, atlas_width, grid_idx);
+// DIABOLICAL FIX: Always wipe the destination first
+        let blocks_per_row = atlas_width / block_size;
+        let grid_x_clear = grid_idx % blocks_per_row;
+        let grid_y_clear = grid_idx / blocks_per_row;
+        let base_x_clear = grid_x_clear * block_size;
+        let base_y_clear = grid_y_clear * block_size;
+        for cy in 0..block_size {
+            for cx in 0..block_size {
+                let d_idx = ((base_y_clear + cy) * atlas_width + (base_x_clear + cx)) as usize * 4;
+                data[d_idx] = 0; data[d_idx+1] = 0; data[d_idx+2] = 0; data[d_idx+3] = 0;
+            }
+        }
 
         for y in 0..block_size {
             for x in 0..block_size {

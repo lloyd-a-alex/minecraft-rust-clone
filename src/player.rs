@@ -44,11 +44,24 @@ impl Inventory {
         None
     }
     pub fn select_slot(&mut self, slot: usize) { self.selected_hotbar_slot = slot.clamp(0, HOTBAR_SIZE - 1); }
-    pub fn add_item(&mut self, item: BlockType) -> bool {
-        for slot in &mut self.slots { if let Some(stack) = slot { if stack.item == item && stack.count < 64 { stack.count += 1; return true; } } }
-        for slot in &mut self.slots { if slot.is_none() { *slot = Some(ItemStack::new(item, 1)); return true; } } false 
+pub fn add_item(&mut self, item: BlockType) -> bool {
+        if item == BlockType::Air { return false; }
+        for slot in &mut self.slots { 
+            if let Some(stack) = slot { 
+                if stack.item == item && stack.count < 64 { 
+                    stack.count += 1; 
+                    return true; 
+                } 
+            } 
+        }
+        for slot in &mut self.slots { 
+            if slot.is_none() { 
+                *slot = Some(ItemStack::new(item, 1)); 
+                return true; 
+            } 
+        } 
+        false 
     }
-
 pub fn check_recipes(&mut self) {
         let g: Vec<u8> = self.crafting_grid.iter().map(|s| s.map(|i| i.item as u8).unwrap_or(0)).collect();
         // 3x3 Grid: 0 1 2 / 3 4 5 / 6 7 8
@@ -144,11 +157,10 @@ pub struct Player {
     pub on_ground: bool,
     pub inventory: Inventory,
     pub keys: PlayerKeys,
-    pub hotbar: crate::Hotbar, // Fixed import
+pub hotbar: crate::Hotbar,
     
-    // New fields required by Main Menu & Gameplay logic
-pub is_flying: bool,
-    pub is_noclip: bool, // NEW
+    pub is_flying: bool,
+    pub is_noclip: bool,
     pub admin_speed: f32, // NEW
     pub is_sprinting: bool,
     pub health: f32,
@@ -240,7 +252,19 @@ KeyCode::Digit9 => self.inventory.select_slot(8),
 pub fn update(&mut self, world: &crate::world::World, dt: f32, audio: &crate::AudioSystem, in_cave: bool) {
         let was_on_ground = self.on_ground;
         if self.is_dead || self.inventory_open { return; }
-let dt = dt.min(0.1); if self.invincible_timer > 0.0 { self.invincible_timer -= dt; }
+        
+        // DIABOLICAL PHYSICS SUB-STEPPING
+        // We split the frame into 4 tiny slices to prevent tunneling through blocks at low FPS
+        let substeps = 4;
+        let sub_dt = dt.min(0.1) / substeps as f32;
+        
+        for _ in 0..substeps {
+            self.internal_update(world, sub_dt, audio, in_cave, was_on_ground);
+        }
+    }
+
+    fn internal_update(&mut self, world: &crate::world::World, dt: f32, audio: &crate::AudioSystem, in_cave: bool, was_on_ground: bool) {
+        if self.invincible_timer > 0.0 { self.invincible_timer -= dt; }
 
         // --- CAVE AMBIENCE ---
         if in_cave {
@@ -290,8 +314,9 @@ let feet_bp = BlockPos { x: self.position.x.floor() as i32, y: self.position.y.f
         let mut move_delta = Vec3::ZERO;
         if self.keys.forward { move_delta += forward; } if self.keys.backward { move_delta -= forward; }
         if self.keys.right { move_delta += right; } if self.keys.left { move_delta -= right; }
-        if move_delta.length_squared() > 0.0 { 
-            let speed_mult = if self.is_flying { self.admin_speed * 4.0 } else { 1.0 };
+if move_delta.length_squared() > 0.0 { 
+            let mut speed_mult = if self.is_flying { self.admin_speed * 4.0 } else { 1.0 };
+            if self.is_sprinting && !self.is_flying { speed_mult *= 1.5; }
             move_delta = move_delta.normalize() * self.speed * speed_mult * dt; 
         }
         
@@ -372,7 +397,7 @@ if !was_on_ground {
             } else { self.position.y = next_y; }
             self.on_ground = false;
         }
-        if self.health <= 0.0 { self.health = 0.0; self.is_dead = true; }
+if self.health <= 0.0 { self.health = 0.0; self.is_dead = true; }
     }
 
 fn check_ground(&self, world: &World, pos: Vec3) -> Option<f32> {
@@ -395,20 +420,17 @@ fn check_ground(&self, world: &World, pos: Vec3) -> Option<f32> {
         None
     }
 
-    fn check_collision_horizontal(&self, world: &World, pos: Vec3) -> bool {
-         let feet_y = pos.y - self.height / 2.0 + 0.1; 
-         let mid_y = pos.y; 
-         let head_y = pos.y + self.height / 2.0 - 0.1;
-         let r = self.radius;
-         let corners = [(-r, -r), (r, r), (r, -r), (-r, r)];
-         let heights = [feet_y, mid_y, head_y];
-         for &h in &heights {
-             for &(dx, dz) in &corners {
-                 let bp = BlockPos { x: (pos.x + dx).floor() as i32, y: h.floor() as i32, z: (pos.z + dz).floor() as i32 };
-                 if world.get_block(bp).is_solid() { return true; }
-             }
-         }
-         false
+fn check_collision_horizontal(&self, world: &World, pos: Vec3) -> bool {
+        let r = self.radius - 0.05; // Slightly smaller hitbox for smoother movement
+        let heights = [pos.y - 0.8, pos.y, pos.y + 0.8];
+        let corners = [(-r, -r), (r, r), (r, -r), (-r, r)];
+        for &h in &heights {
+            for &(dx, dz) in &corners {
+                let bp = BlockPos { x: (pos.x + dx).floor() as i32, y: h.floor() as i32, z: (pos.z + dz).floor() as i32 };
+                if world.get_block(bp).is_solid() { return true; }
+            }
+        }
+        false
     }
 
     fn check_full_collision(&self, world: &World, pos: Vec3) -> bool {

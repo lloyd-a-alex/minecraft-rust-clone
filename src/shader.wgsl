@@ -66,8 +66,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // DIABOLICAL TRANSLUCENCY: If it's water, force alpha to 0.6
     // Assuming water is using tex_index 9 from your texture.rs
     // Check vs_main's out.light to pass tex_index if needed, or use a color check
-    if (base_color.r < 0.4 && base_color.g < 0.6 && base_color.b > 0.6) {
-        base_color.a = 0.6;
+// DIABOLICAL PRECISION: Only apply water transparency to the specific atlas tile for water
+    if (in.light < 0.99 && base_color.b > 0.5 && base_color.r < 0.4) {
+        base_color.a = 0.7;
     }
     
 // --- VOXEL LIGHTING ---

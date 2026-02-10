@@ -43,7 +43,7 @@ Planks = 14, Stick = 15, Cobblestone = 16, IronIngot = 17, GoldIngot = 18, Diamo
 OakSapling = 60, Glass = 61, Bookshelf = 62, TNT = 63, Pumpkin = 64, Melon = 65,
     BrickBlock = 66, MossyCobble = 67, Lava = 70, Fire = 71,
     SpruceWood = 72, SpruceLeaves = 73, BirchWood = 74, BirchLeaves = 75,
-    Wheat0 = 85, Wheat1 = 86, Wheat2 = 87, Wheat3 = 88, Wheat4 = 89, Wheat5 = 90, Wheat6 = 91, Wheat7 = 92,
+Wheat0 = 85, Wheat1 = 86, Wheat2 = 87, Wheat3 = 88, Wheat4 = 89, Wheat5 = 90, Wheat6 = 91, Wheat7 = 92,
     Cloud = 95,
     CraftingTable = 100, Furnace = 101, FurnaceActive = 102, Chest = 103,
     ChestLeft = 104, ChestRight = 105,
@@ -232,9 +232,9 @@ pub struct RemotePlayer { pub id: u32, pub position: Vec3, pub rotation: f32 }
 
 pub struct World {
     pub chunks: HashMap<(i32, i32), Chunk>,
+    pub seed: u32,
     pub entities: Vec<ItemEntity>,
 pub remote_players: Vec<RemotePlayer>,
-    pub seed: u32,
 }
 
 impl World {
@@ -375,7 +375,8 @@ fn generate_single_chunk(&mut self, cx: i32, cz: i32, noise_gen: &NoiseGenerator
         }
         0
     }
-fn generate_terrain(&mut self) {
+#[allow(dead_code)]
+    fn generate_terrain(&mut self) {
         // Consolidated terrain generation to prevent logic duplication and tree-overlap
         self.generate_terrain_around(0, 0, 6);
     }
@@ -386,8 +387,15 @@ pub fn get_light_world(&self, pos: BlockPos) -> u8 {
         if let Some(chunk) = self.chunks.get(&(cx, cz)) { chunk.get_light(lx, pos.y as usize, lz) } else { 15 }
     }
 pub fn get_height_at(&self, x: i32, z: i32) -> i32 {
-        for y in (0..CHUNK_SIZE_Y as i32).rev() {
-            if self.get_block(BlockPos { x, y, z }).is_solid() { return y; }
+        let cx = x.div_euclid(16);
+        let cz = z.div_euclid(16);
+        let lx = x.rem_euclid(16) as usize;
+        let lz = z.rem_euclid(16) as usize;
+        
+        if let Some(chunk) = self.chunks.get(&(cx, cz)) {
+            for y in (0..CHUNK_SIZE_Y).rev() {
+                if chunk.get_block(lx, y, lz).is_solid() { return y as i32; }
+            }
         }
         0
     }
@@ -494,53 +502,34 @@ self.set_block_world(pos, BlockType::Air);
         c.extend(self.get_affected_chunks(pos));
         c.sort(); c.dedup(); c
     }
-    fn trigger_water_update(&mut self, start_pos: BlockPos) -> Vec<(i32, i32)> {
+fn trigger_water_update(&mut self, start_pos: BlockPos) -> Vec<(i32, i32)> {
         let mut updates = Vec::new();
-        let cx = start_pos.x.div_euclid(CHUNK_SIZE_X as i32); let cz = start_pos.z.div_euclid(CHUNK_SIZE_Z as i32);
-        // Only update affected chunks
-        updates.push((cx, cz));
-        
-        // For water updates, limit to immediate neighbors
-        let mut queue = VecDeque::new(); 
+        let mut queue = VecDeque::new();
         queue.push_back(start_pos);
-        let b = self.get_block(start_pos);
-        if !b.is_water() { 
-            for (dx, dy, dz) in &[(0,1,0), (0,-1,0), (1,0,0), (-1,0,0), (0,0,1), (0,0,-1)] { 
-                let check_pos = BlockPos{x:start_pos.x+dx, y:start_pos.y+dy, z:start_pos.z+dz};
-                if self.get_block(check_pos).is_water() { 
-                    queue.push_back(check_pos); 
-                } 
-            } 
-        }
-let mut visited = HashSet::new(); 
+        let mut visited = HashSet::new();
         let mut steps = 0;
-        let max_steps = 20; // DIABOLICAL FIX: Further reduced to stop lagspikes
-while let Some(pos) = queue.pop_front() {
-            if steps > max_steps { 
-                break; 
-            }
+
+        while let Some(pos) = queue.pop_front() {
+            if steps > 15 { break; } // Hard limit for performance
             if !visited.insert(pos) { continue; }
             steps += 1;
+
             let current = self.get_block(pos);
+            let cx = pos.x.div_euclid(16);
+            let cz = pos.z.div_euclid(16);
+            updates.push((cx, cz));
+
             if current.is_water() {
                 let below = BlockPos { x: pos.x, y: pos.y - 1, z: pos.z };
                 if self.get_block(below) == BlockType::Air {
-                    self.set_block_world(below, BlockType::Water); updates.push((below.x.div_euclid(CHUNK_SIZE_X as i32), below.z.div_euclid(CHUNK_SIZE_Z as i32))); queue.push_back(below);
-                } else if self.get_block(below).is_solid() || self.get_block(below).is_water() {
-                    for (dx, dz) in &[(1,0), (-1,0), (0,1), (0,-1)] {
-                        let side = BlockPos { x: pos.x + dx, y: pos.y, z: pos.z + dz };
-                        if self.get_block(side) == BlockType::Air {
-                            let lvl = current.get_water_level();
-                            if lvl > 1 {
-                                let new_blk = if lvl > 1 { BlockType::Water } else { BlockType::Air };
-                                self.set_block_world(side, new_blk); updates.push((side.x.div_euclid(CHUNK_SIZE_X as i32), side.z.div_euclid(CHUNK_SIZE_Z as i32))); queue.push_back(side);
-                            }
-                        }
-                    }
+                    self.set_block_world(below, BlockType::Water);
+                    queue.push_back(below);
                 }
             }
         }
-        updates.sort(); updates.dedup(); updates
+        updates.sort();
+        updates.dedup();
+        updates
     }
 pub fn update_entities(&mut self, dt: f32, player: &mut Player) {
     let entities = std::mem::take(&mut self.entities);
@@ -583,14 +572,11 @@ pub fn update_entities(&mut self, dt: f32, player: &mut Player) {
         if dist_sq < 9.0 && entity.pickup_delay <= 0.0 {
             let dir = (player.position - entity.position).normalize(); entity.position += dir * 10.0 * dt;
 if dist_sq < 2.25 { 
-                if player.inventory.add_item(entity.item_type) { 
-                    log::info!("🎁 Picked up {:?}", entity.item_type);
-                    // main.rs handles this via the player reference if we pass audio, 
-                    // but since World doesn't have AudioSystem, we log it for now 
-                    // or rely on main.rs's update loop.
-                    continue; 
-                } 
+if player.inventory.add_item(entity.item_type) { 
+                log::info!("🎁 Picked up {:?}", entity.item_type);
+                continue; 
             }
+        }
         }
 retained.push(entity);
     }

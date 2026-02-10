@@ -34,6 +34,9 @@ pub struct ChunkMesh { vertex_buffer: Buffer, index_buffer: Buffer, index_count:
 
 pub struct Renderer<'a> {
     pub particles: Vec<Particle>,
+    ui_v_cache: Vec<Vertex>,
+    ui_i_cache: Vec<u32>,
+    ui_needs_update: bool,
 surface: Surface<'a>, device: Device, queue: Queue, pub config: SurfaceConfiguration,
     pipeline: RenderPipeline, ui_pipeline: RenderPipeline,
     depth_texture: TextureView, bind_group: BindGroup,
@@ -93,7 +96,7 @@ let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         let entity_vertex_buffer = device.create_buffer(&BufferDescriptor { label: Some("Entity VB"), size: 1024, usage: BufferUsages::VERTEX | BufferUsages::COPY_DST, mapped_at_creation: false });
         let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("Entity IB"), size: 1024, usage: BufferUsages::INDEX | BufferUsages::COPY_DST, mapped_at_creation: false });
 
-        Self { particles: Vec::new(), surface, device, queue, config, pipeline, ui_pipeline, depth_texture, bind_group, camera_bind_group, camera_buffer, time_bind_group, time_buffer, start_time: Instant::now(), chunk_meshes: HashMap::new(), entity_vertex_buffer, entity_index_buffer, break_progress: 0.0 }
+        Self { particles: Vec::new(), ui_v_cache: Vec::new(), ui_i_cache: Vec::new(), ui_needs_update: true, surface, device, queue, config, pipeline, ui_pipeline, depth_texture, bind_group, camera_bind_group, camera_buffer, time_bind_group, time_buffer, start_time: Instant::now(), chunk_meshes: HashMap::new(), entity_vertex_buffer, entity_index_buffer, break_progress: 0.0 }
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -316,11 +319,8 @@ let ry = -1.0 + (gy as f32 * grid_size) + grid_size/2.0;
             color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &view, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } })],
             depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
         });
-        rpass.set_pipeline(&self.ui_pipeline);
-        // NOTE: Assuming your struct has 'diffuse_bind_group' based on typical naming. 
-        // If error persists, change to 'bind_group' or 'texture_bind_group'.
-rpass.set_bind_group(0, &self.bind_group, &[]);
-        // REMOVED camera and time bind groups as UI pipeline doesn't use them in this version
+rpass.set_pipeline(&self.ui_pipeline);
+        rpass.set_bind_group(0, &self.bind_group, &[]);
         rpass.set_vertex_buffer(0, vb.slice(..));
         rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
         rpass.draw_indexed(0..indices.len() as u32, 0, 0..1);
@@ -422,17 +422,18 @@ let is_underwater = if world.get_block(eye_bp).is_water() { 1.0f32 } else { 0.0f
             let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { label: Some("3D Pass"), color_attachments: &[Some(RenderPassColorAttachment { view: &view, resolve_target: None, ops: Operations { load: LoadOp::Clear(Color { r: 0.5, g: 0.8, b: 0.9, a: 1.0 }), store: StoreOp::Store } })], depth_stencil_attachment: Some(RenderPassDepthStencilAttachment { view: &self.depth_texture, depth_ops: Some(Operations { load: LoadOp::Clear(1.0), store: StoreOp::Store }), stencil_ops: None }), timestamp_writes: None, occlusion_query_set: None });
             pass.set_pipeline(&self.pipeline); pass.set_bind_group(0, &self.bind_group, &[]); pass.set_bind_group(1, &self.camera_bind_group, &[]); pass.set_bind_group(2, &self.time_bind_group, &[]);
 for m in self.chunk_meshes.values() { pass.set_vertex_buffer(0, m.vertex_buffer.slice(..)); pass.set_index_buffer(m.index_buffer.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..m.index_count, 0, 0..1); }
-            if !ent_v.is_empty() { pass.set_vertex_buffer(0, self.entity_vertex_buffer.slice(..)); pass.set_index_buffer(self.entity_index_buffer.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..ent_i.len() as u32, 0, 0..1); }
-            
-// --- BREAKING CRACKS OVERLAY (STUB) ---
-            if self.break_progress > 0.0 {
-                // Future crack logic
-            }
+if !ent_v.is_empty() { pass.set_vertex_buffer(0, self.entity_vertex_buffer.slice(..)); pass.set_index_buffer(self.entity_index_buffer.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..ent_i.len() as u32, 0, 0..1); }
         }
 
 // UI
         let mut uv = Vec::new(); let mut ui = Vec::new(); let mut uoff = 0;
         let aspect = self.config.width as f32 / self.config.height as f32;
+
+        // DIABOLICAL BREAKING CRACKS: Now correctly scoped in the UI section
+        if self.break_progress > 0.0 {
+            let crack_tex = 210 + (self.break_progress * 9.0) as u32;
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.05, -0.05 * aspect, 0.1, 0.1 * aspect, crack_tex);
+        }
 
         // DIABOLICAL LAYOUT CONSTANTS (Defined early for scope access)
         let sw = 0.12; 
@@ -464,12 +465,15 @@ for m in self.chunk_meshes.values() { pass.set_vertex_buffer(0, m.vertex_buffer.
              self.draw_text("INVENTORY", -0.2, 0.8, 0.08, &mut uv, &mut ui, &mut uoff);
         }
 
-        if !is_paused || player.inventory_open {
+if !is_paused || player.inventory_open {
             for i in 0..9 {
                 let x = sx + (i as f32 * sw);
-                if i == player.inventory.selected_hotbar_slot { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x-0.005, by-0.005*aspect, sw+0.01, sh+0.01*aspect, 241); }
+                if i == player.inventory.selected_hotbar_slot { 
+                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x - 0.005, by - 0.005 * aspect, sw + 0.01, sh + 0.01 * aspect, 241); 
+                }
                 self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, by, sw, sh, 240);
-if let Some(stack) = &player.inventory.slots[i] {
+                
+                if let Some(stack) = &player.inventory.slots[i] {
                     let (t, _, _) = stack.item.get_texture_indices();
                     self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, by+0.02*aspect, sw-0.04, sh-0.04*aspect, t);
                     // Shifted text so it doesn't overlap slots
