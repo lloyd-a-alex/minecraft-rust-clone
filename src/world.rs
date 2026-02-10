@@ -505,19 +505,33 @@ pub fn set_block_world(&mut self, pos: BlockPos, block: BlockType) {
         affected
     }
     pub fn get_affected_chunks(&self, pos: BlockPos) -> Vec<(i32, i32)> {
-        let cx = pos.x.div_euclid(CHUNK_SIZE_X as i32);
-        let cz = pos.z.div_euclid(CHUNK_SIZE_Z as i32);
-        let lx = pos.x.rem_euclid(CHUNK_SIZE_X as i32);
-        let lz = pos.z.rem_euclid(CHUNK_SIZE_Z as i32);
-        let mut u = vec![(cx, cz)];
-        if lx == 0 { u.push((cx - 1, cz)); } else if lx == 15 { u.push((cx + 1, cz)); }
-        if lz == 0 { u.push((cx, cz - 1)); } else if lz == 15 { u.push((cx, cz + 1)); }
-        u
+        // DIABOLICAL 3D RADIUS: Ghost blocks occur because boundary neighbors don't know they need to redraw.
+        // We calculate the exact chunk coordinates.
+        let cx = pos.x.div_euclid(16);
+        let cy = pos.y.div_euclid(16);
+        let cz = pos.z.div_euclid(16);
+        
+        // We use a set to ensure we don't return duplicates
+        let mut affected = Vec::new();
+        
+        // Add the primary chunk and all immediate 6 neighbors to be safe.
+        // This is "Overwork" logic—it ensures that any greedy quad touching this block is purged.
+        for dx in -1..=1 {
+            for dz in -1..=1 {
+                affected.push((cx + dx, cz + dz));
+            }
+        }
+        
+        affected.sort();
+        affected.dedup();
+        affected
     }
 
     pub fn break_block(&mut self, pos: BlockPos) -> Vec<(i32, i32)> {
         let block_type = self.get_block(pos);
         if block_type != BlockType::Air && block_type != BlockType::Bedrock && !block_type.is_water() {
+            // DIABOLICAL FIX: Mark world as dirty immediately to prevent logic skips
+            self.mesh_dirty = true;
              let mut rng = SimpleRng::new(pos.x as u64 ^ pos.z as u64 ^ pos.y as u64);
              let velocity = Vec3::new(rng.gen_range(-2.0, 2.0), 4.0, rng.gen_range(-2.0, 2.0));
              let drop_item = match block_type { BlockType::Stone => BlockType::Cobblestone, BlockType::CoalOre => BlockType::Coal, BlockType::IronOre => BlockType::IronOre, BlockType::DiamondOre => BlockType::DiamondItem, BlockType::Grass => BlockType::Dirt, _ => block_type };

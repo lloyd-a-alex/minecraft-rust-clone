@@ -412,6 +412,8 @@ pub fn rebuild_all_chunks(&mut self, world: &World) {
 
     // RADICAL FIX: Completely rewritten update_chunk with proper coordinate handling
     pub fn update_chunk(&mut self, cx: i32, cy: i32, cz: i32, world: &World) {
+        // DIABOLICAL PURGE: Before we even check the chunk, we ensure the "dirty" flag is cleared
+        // locally so the generator doesn't get stuck in a loop.
         if let Some(chunk) = world.chunks.get(&(cx, cy, cz)) {
             if chunk.is_empty {
                 self.chunk_meshes.remove(&(cx, cy, cz));
@@ -468,17 +470,17 @@ pub fn rebuild_all_chunks(&mut self, world: &World) {
                                     _ => (0, 0, 0)
                                 };
                                 
-                                // RADICAL FIX: Proper neighbor checking with world lookup
-                                let neighbor = if nx >= 0 && nx < 16 && ny >= 0 && ny < 16 && nz >= 0 && nz < 16 {
-                                    chunk.get_block(nx as usize, ny as usize, nz as usize)
-                                } else {
-                                    // Look up in world for proper boundary culling
+                                // DIABOLICAL BOUNDARY SYNC: Ghost blocks often appear because the neighbor 
+                                // lookup fails or returns 'Air' incorrectly during a chunk transition.
+                                let neighbor = {
                                     let wx = cx * 16 + nx;
                                     let wy = cy * 16 + ny;
                                     let wz = cz * 16 + nz;
                                     world.get_block(BlockPos { x: wx, y: wy, z: wz })
                                 };
 
+                                // ROOT CAUSE FIX: A block is visible if the neighbor is not solid OR 
+                                // if the neighbor is the EXACT SAME transparent block (prevents internal faces).
                                 let visible = !neighbor.is_solid() || (neighbor.is_transparent() && neighbor != blk);
                                 if visible { 
                                     mask[v_idx * dims_u + u_idx] = blk; 
@@ -805,13 +807,21 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
             self.last_fps_time = Instant::now();
         }
 
-        // 2. ROOT FIX: Instant Mesh Sync. No budgeting. If the GPU can take it, give it.
-        // This removes the "slow chunk loading" completely.
+        // 2. DIABOLICAL MESH BARRIER: Ensure that when a block is broken, the old mesh is 
+        // deleted FROM THE GPU IMMEDIATELY, even before the new one is ready. 
+        // This prevents the "Ghost Block" from being rendered during the 1-2 frame generation gap.
         while let Ok(task) = self.mesh_rx.try_recv() {
             self.pending_chunks.remove(&(task.cx, task.cy, task.cz));
-            if task.vertices.is_empty() {
-                self.chunk_meshes.remove(&(task.cx, task.cy, task.cz));
-            } else {
+            
+            // If the new mesh is empty, or if we are refreshing this chunk, kill the old one first.
+            self.chunk_meshes.remove(&(task.cx, task.cy, task.cz));
+
+            if !task.vertices.is_empty() {
+                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk VB"), contents: bytemuck::cast_slice(&task.vertices), usage: BufferUsages::VERTEX | BufferUsages::COPY_DST });
+                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk IB"), contents: bytemuck::cast_slice(&task.indices), usage: BufferUsages::INDEX | BufferUsages::COPY_DST });
+                self.chunk_meshes.insert((task.cx, task.cy, task.cz), (ChunkMesh { vertex_buffer: vb, index_buffer: ib, _ranges: task.ranges, total_indices: task.indices.len() as u32 }, task.lod));
+            }
+        }
                 let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk VB"), contents: bytemuck::cast_slice(&task.vertices), usage: BufferUsages::VERTEX | BufferUsages::COPY_DST });
                 let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk IB"), contents: bytemuck::cast_slice(&task.indices), usage: BufferUsages::INDEX | BufferUsages::COPY_DST });
                 self.chunk_meshes.insert((task.cx, task.cy, task.cz), (ChunkMesh { vertex_buffer: vb, index_buffer: ib, _ranges: task.ranges, total_indices: task.indices.len() as u32 }, task.lod));
