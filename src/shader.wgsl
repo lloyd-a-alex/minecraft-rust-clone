@@ -61,9 +61,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // Apply fract() to tile within the 16x16 block texture
     let local_uv = fract(in.tex_coords);
-    // Precision clamp to prevent atlas bleeding at edges
-    let u_clamped = mix(0.005, 0.995, local_uv.x);
-    let v_clamped = mix(0.005, 0.995, local_uv.y);
+    // Precision clamp to prevent atlas bleeding at edges (0.5 pixel margin)
+    let margin = 0.5 / 512.0; 
+    let u_clamped = clamp(local_uv.x, margin, 1.0 - margin);
+    let v_clamped = clamp(local_uv.y, margin, 1.0 - margin);
 
     let atlas_uv = vec2<f32>(
         (col + u_clamped) * u_step,

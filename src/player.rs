@@ -1,5 +1,5 @@
 use winit::keyboard::KeyCode;
-use glam::{Vec3, Mat4};
+use glam::{Vec3, Mat4, Vec4Swizzles};
 use crate::world::{World, BlockPos, BlockType};
 use serde::{Serialize, Deserialize};
 
@@ -478,12 +478,21 @@ pub fn build_view_projection_matrix(&self, aspect: f32) -> [[f32; 4]; 4] {
     pub fn get_frustum_planes(&self, aspect: f32) -> [[f32; 4]; 6] {
         let m = glam::Mat4::from_cols_array_2d(&self.build_view_projection_matrix(aspect));
         let mut planes = [[0.0f32; 4]; 6];
-        for i in 0..4 { planes[0][i] = m.col(i).w + m.col(i).x; }
-        for i in 0..4 { planes[1][i] = m.col(i).w - m.col(i).x; }
-        for i in 0..4 { planes[2][i] = m.col(i).w + m.col(i).y; }
-        for i in 0..4 { planes[3][i] = m.col(i).w - m.col(i).y; }
-        for i in 0..4 { planes[4][i] = m.col(i).w + m.col(i).z; }
-        for i in 0..4 { planes[5][i] = m.col(i).w - m.col(i).z; }
+        // Extract planes and NORMALIZE them for accurate distance checks
+        let row4 = m.row(3);
+        let rows = [m.row(0), m.row(1), m.row(2)];
+
+        let p_raw = [
+            row4 + rows[0], row4 - rows[0], // Left, Right
+            row4 + rows[1], row4 - rows[1], // Bottom, Top
+            row4 + rows[2], row4 - rows[2], // Near, Far
+        ];
+
+        for i in 0..6 {
+            let p = p_raw[i];
+            let length = p.xyz().length();
+            planes[i] = (p / length).to_array();
+        }
         planes
     }
 }

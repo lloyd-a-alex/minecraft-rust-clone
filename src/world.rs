@@ -61,7 +61,7 @@ pub fn is_transparent(&self) -> bool {
         matches!(self, BlockType::Air | BlockType::Water | BlockType::Lava | BlockType::Leaves | BlockType::SpruceLeaves | BlockType::BirchLeaves | 
                        BlockType::Torch | BlockType::Fire | BlockType::Glass | BlockType::Rose | BlockType::Dandelion | 
                        BlockType::DeadBush | BlockType::TallGrass | BlockType::OakSapling | BlockType::Sugarcane | 
-                       BlockType::Ice | BlockType::LilyPad | BlockType::Vine | BlockType::Wheat |
+                       BlockType::Ice | BlockType::LilyPad | BlockType::Vine |
                        BlockType::Wheat0 | BlockType::Wheat1 | BlockType::Wheat2 | BlockType::Wheat3 | 
                        BlockType::Wheat4 | BlockType::Wheat5 | BlockType::Wheat6 | BlockType::Wheat7) 
     }
