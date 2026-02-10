@@ -776,15 +776,14 @@ Event::AboutToWait => {
                 }
                 
 if game_state == GameState::Playing && !is_paused && !player.inventory_open {
-                    // Only generate 1 chunk every few frames to prevent hitching
-                    if rand::random::<f32>() < 0.2 {
-                        let p_cx = (player.position.x / 16.0).floor() as i32;
-                        let p_cy = (player.position.y / 16.0).floor() as i32;
-                        let p_cz = (player.position.z / 16.0).floor() as i32;
-                        if let Some((cx, cy, cz)) = world.generate_one_chunk_around(p_cx, p_cy, p_cz, 6) {
-                            renderer.update_chunk(cx, cy, cz, &world);
-                        }
-                    }
+                    // DIABOLICAL FIX: World generation is now strictly non-blocking. 
+                    // The World generates it, and the Renderer's background thread will catch it.
+                    // Never call synchronous update_chunk in the hot loop.
+                    let p_cx = (player.position.x / 16.0).floor() as i32;
+                    let p_cy = (player.position.y / 16.0).floor() as i32;
+                    let p_cz = (player.position.z / 16.0).floor() as i32;
+                    let _ = world.generate_one_chunk_around(p_cx, p_cy, p_cz, 6);
+
                     let _ = window.set_cursor_grab(CursorGrabMode::Locked);
                     window.set_cursor_visible(false);
                 }
