@@ -7,8 +7,9 @@ use std::sync::Arc;
 use crossbeam_channel::{unbounded, Sender, Receiver};
 use crate::world::{World, BlockPos, BlockType};
 use crate::player::Player;
-use crate::texture::TextureAtlas;
 use crate::MainMenu; // Added Rect
+use std::fs::File;
+use std::io::Write;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -405,8 +406,40 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
         });
     }
 
+    pub fn dump_crash_telemetry(&self, error: &str) {
+        let path = "GPU_CRASH_DUMP.txt";
+        let mut file = File::create(path).expect("Failed to create crash dump file");
+        let info = self.device.adapter_info();
+        
+        let dump = format!(
+            "--- DIABOLICAL GPU CRASH DUMP ---\n\
+             TIMESTAMP: {:?}\n\
+             ERROR: {}\n\
+             ADAPTER: {} ({:?})\n\
+             BACKEND: {:?}\n\
+             DEVICE TYPE: {:?}\n\
+             COMPUTE_UNITS: {:?}\n\
+             WINDOW_SIZE: {}x{}\n\
+             CHUNKS_LOADED: {}\n\
+             PENDING_TASKS: {}\n\
+             --------------------------------",
+            Instant::now(), error, info.name, info.device, info.backend, 
+            info.device_type, info.driver, self.config.width, self.config.height,
+            self.chunk_meshes.len(), self.pending_chunks.len()
+        );
+        
+        let _ = file.write_all(dump.as_bytes());
+        log::error!("🔥 GPU CRASH DETECTED. Telemetry dumped to {}", path);
+    }
+
     pub fn render_loading_screen(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let output = self.surface.get_current_texture()?;
+        let output = match self.surface.get_current_texture() {
+            Ok(t) => t,
+            Err(e) => {
+                self.dump_crash_telemetry(&format!("{:?}", e));
+                return Err(e);
+            }
+        };
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Loading Encoder") });
         let aspect = self.config.width as f32 / self.config.height as f32;
@@ -901,12 +934,14 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
         if time_since_last.as_secs_f32() >= 1.0 {
             self.fps = self.frame_count as f32 / time_since_last.as_secs_f32();
             
-            // DIABOLICAL TELEMETRY SNAPSHOT: High-density, single-line diagnostic for AI/Humans
+            // DIABOLICAL TELEMETRY SNAPSHOT: Hyper-Exhaustive high-density diagnostic
             let p = player.position; let v = player.velocity;
-            log::info!("[STAT] FPS:{:.0} | CHK:{} | POS:({:.1},{:.1},{:.1}) | VEL:({:.2},{:.2},{:.2}) | G:{} F:{} S:{} | INV:{}", 
-                self.fps, self.chunk_meshes.len(), p.x, p.y, p.z, v.x, v.y, v.z, 
+            let info = self.device.adapter_info();
+            log::info!("[STAT] FPS:{:<3.0} | DT:{:.4}s | CHK:{} | PND:{} | POS:({:.1},{:.1},{:.1}) | VEL:({:.2},{:.2},{:.2}) | GRD:{} FLY:{} SPR:{} | INV:{} | GPU:{}", 
+                self.fps, time_since_last.as_secs_f32() / self.frame_count as f32, self.chunk_meshes.len(), self.pending_chunks.len(),
+                p.x, p.y, p.z, v.x, v.y, v.z, 
                 if player.on_ground {'Y'} else {'N'}, if player.is_flying {'Y'} else {'N'}, if player.is_sprinting {'Y'} else {'N'},
-                player.inventory_open
+                if player.inventory_open {'Y'} else {'N'}, info.backend
             );
             
             self.frame_count = 0;

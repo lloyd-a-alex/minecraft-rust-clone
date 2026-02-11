@@ -12,7 +12,8 @@ pub fn init_logger() {
         .format(|buf, record| {
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
             let ts = now.as_secs();
-            let time_str = format!("{:02}:{:02}:{:02}", (ts / 3600) % 24, (ts / 60) % 60, ts % 60);
+            let ms = now.subsec_millis();
+            let time_str = format!("{:02}:{:02}:{:02}.{:03}", (ts / 3600) % 24, (ts / 60) % 60, ts % 60, ms);
             writeln!(buf, "[{} {:<5}] {}", time_str, record.level(), record.args())
         })
         .init();

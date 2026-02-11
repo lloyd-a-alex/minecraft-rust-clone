@@ -652,8 +652,8 @@ world.entities.push(ent);
                         }
                         _ => {
                             // DIABOLICAL TRANSITION SEQUENCE: Fade-in and World Handshake
-                            // dt is calculated at start of RedrawRequested block
-                            renderer.transition_alpha = (renderer.transition_alpha - dt * 0.8).max(0.0);
+                            // Use calculated frame delta for smooth transition
+                            renderer.transition_alpha = (renderer.transition_alpha - _dt_frame * 0.8).max(0.0);
                             renderer.loading_progress = 1.0;
                             renderer.loading_message = "SYSTEMS NOMINAL. READY.".to_string();
 
