@@ -146,19 +146,19 @@ use serde_json::json;
 use std::fs;
 
 // --- MENU SYSTEM ---  
-#[derive(PartialEq)] enum GameState { Loading, Menu, Playing }
+#[derive(PartialEq)] enum GameState { Loading, Menu, Multiplayer, Playing }
 struct Rect { x: f32, y: f32, w: f32, h: f32 }
 impl Rect { fn contains(&self, nx: f32, ny: f32) -> bool { nx >= self.x - self.w/2.0 && nx <= self.x + self.w/2.0 && ny >= self.y - self.h/2.0 && ny <= self.y + self.h/2.0 } }
-enum MenuAction { Singleplayer, Host, Join, Stress, Resume, Quit }
+#[derive(Clone)] enum MenuAction { Singleplayer, Host, JoinMenu, JoinAddr(String), Stress, Resume, Quit }
 struct MenuButton { rect: Rect, text: String, action: MenuAction, hovered: bool }
 pub struct MainMenu { buttons: Vec<MenuButton> }
 impl MainMenu {
     fn new_main() -> Self {
         let mut b = Vec::new();
-        let w = 0.8; let h = 0.12; let g = 0.05; let sy = 0.2; 
+        let w = 0.8; let h = 0.12; let g = 0.05; let sy = 0.3; 
         b.push(MenuButton{rect:Rect{x:0.0,y:sy,w,h}, text:"SINGLEPLAYER".to_string(), action:MenuAction::Singleplayer, hovered:false});
-        b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g),w,h}, text:"HOST ONLINE".to_string(), action:MenuAction::Host, hovered:false});
-        b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g)*2.0,w,h}, text:"JOIN GAME".to_string(), action:MenuAction::Join, hovered:false});
+        b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g),w,h}, text:"MULTIPLAYER".to_string(), action:MenuAction::JoinMenu, hovered:false});
+        b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g)*2.0,w,h}, text:"HOST WORLD".to_string(), action:MenuAction::Host, hovered:false});
         b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g)*3.0,w,h}, text:"STRESS TEST".to_string(), action:MenuAction::Stress, hovered:false});
         b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g)*4.5,w,h}, text:"QUIT".to_string(), action:MenuAction::Quit, hovered:false});
         MainMenu { buttons: b }
@@ -223,6 +223,7 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     }
     let mut main_menu = MainMenu::new_main();
     let pause_menu = MainMenu::new_pause();
+    let mut hosting_mgr = crate::ngrok_utils::HostingManager::new();
     let mut network_mgr: Option<NetworkManager> = None;
     
     // If CLI args provided, jump straight to game
@@ -283,9 +284,9 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                 let ndc_x = (cursor_pos.0 as f32 / win_size.0 as f32) * 2.0 - 1.0;
                 let ndc_y = 1.0 - (cursor_pos.1 as f32 / win_size.1 as f32) * 2.0;
 
-                if game_state == GameState::Menu && pressed && button == MouseButton::Left {
+                if (game_state == GameState::Menu || game_state == GameState::Multiplayer) && pressed && button == MouseButton::Left {
                     let mut action = None;
-                    for btn in &main_menu.buttons { if btn.rect.contains(ndc_x, ndc_y) { action = Some(&btn.action); break; } }
+                    for btn in &main_menu.buttons { if btn.rect.contains(ndc_x, ndc_y) { action = Some(btn.action.clone()); break; } }
                     
                     if let Some(act) = action {
                         match act {
@@ -295,17 +296,19 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                                 game_state = GameState::Playing;
                                 spawn_found = false;
                             },
-                            MenuAction::Host => {
-                                let mut hosting = ngrok_utils::HostingManager::new();
-                                hosting.init();
-                                network_mgr = Some(NetworkManager::host("25565".to_string(), master_seed));
-                                world = World::new(master_seed);
-                                renderer.rebuild_all_chunks(&world);
+                            MenuAction::JoinMenu => {
+                                game_state = GameState::Multiplayer;
+                            },
+                            MenuAction::JoinAddr(addr) => {
+                                network_mgr = Some(NetworkManager::join(addr));
                                 game_state = GameState::Playing;
                                 spawn_found = false;
                             },
-                            MenuAction::Join => {
-                                network_mgr = Some(NetworkManager::join("127.0.0.1:7878".to_string()));
+                            MenuAction::Host => {
+                                hosting_mgr.init();
+                                network_mgr = Some(NetworkManager::host("25565".to_string(), master_seed));
+                                world = World::new(master_seed);
+                                renderer.rebuild_all_chunks(&world);
                                 game_state = GameState::Playing;
                                 spawn_found = false;
                             },
@@ -318,7 +321,10 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                                 game_state = GameState::Playing;
                                 spawn_found = false;
                             },
-                            MenuAction::Quit => elwt.exit(),
+                            MenuAction::Quit => {
+                                if game_state == GameState::Multiplayer { game_state = GameState::Menu; }
+                                else { elwt.exit(); }
+                            },
                             _ => {}
                         }
 
@@ -940,6 +946,8 @@ if !is_paused {
                         Err(wgpu::SurfaceError::OutOfMemory) => elwt.exit(),
                         Err(_) => {},
                     }
+                } else if game_state == GameState::Multiplayer {
+                    if let Err(_) = renderer.render_multiplayer_menu(&mut main_menu, &hosting_mgr, win_size.0, win_size.1) { renderer.resize(win_size.0, win_size.1); }
                 } else {
                     if let Err(_) = renderer.render_main_menu(&main_menu, win_size.0, win_size.1) { renderer.resize(win_size.0, win_size.1); }
                 }

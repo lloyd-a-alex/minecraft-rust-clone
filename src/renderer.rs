@@ -850,6 +850,55 @@ fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Ve
             x += final_scale;
         }
     }
+pub fn render_multiplayer_menu(&mut self, menu: &mut crate::MainMenu, hosting: &crate::ngrok_utils::HostingManager, width: u32, height: u32) -> Result<(), wgpu::SurfaceError> {
+    let output = self.surface.get_current_texture()?;
+    let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Multiplayer") });
+    let mut v: Vec<Vertex> = Vec::new(); let mut i: Vec<u32> = Vec::new(); let mut off = 0;
+
+    // 1. Dark Background
+    self.add_ui_quad(&mut v, &mut i, &mut off, -1.0, -1.0, 2.0, 2.0, 2); 
+    self.draw_text("MULTIPLAYER DISCOVERY", -0.7, 0.8, 0.08, &mut v, &mut i, &mut off);
+
+    // 2. Dynamic Server List from Discovery
+    menu.buttons.clear();
+    let servers = hosting.discovered_servers.lock().unwrap();
+    let mut y_pos = 0.5;
+    for srv in servers.iter() {
+        let rect = crate::Rect { x: 0.0, y: y_pos, w: 1.4, h: 0.15 };
+        let hovered = rect.contains((self.config.width as f32 / 2.0) / self.config.width as f32 * 2.0 - 1.0, y_pos); // Placeholder hover check
+        menu.buttons.push(crate::MenuButton { rect, text: srv.name.clone(), action: crate::MenuAction::JoinAddr(srv.address.clone()), hovered });
+        
+        self.add_ui_quad(&mut v, &mut i, &mut off, -0.7, y_pos - 0.075, 1.4, 0.15, if hovered { 251 } else { 250 });
+        self.draw_text(&format!("{} > {}", srv.name, srv.address), -0.65, y_pos - 0.02, 0.04, &mut v, &mut i, &mut off);
+        y_pos -= 0.2;
+    }
+
+    // 3. Manual Entry & Back
+    let back_rect = crate::Rect { x: 0.0, y: -0.8, w: 0.4, h: 0.1 };
+    menu.buttons.push(crate::MenuButton { rect: back_rect, text: "BACK".to_string(), action: crate::MenuAction::Quit, hovered: false });
+    self.add_ui_quad(&mut v, &mut i, &mut off, -0.2, -0.85, 0.4, 0.1, 250);
+    self.draw_text("BACK", -0.05, -0.82, 0.04, &mut v, &mut i, &mut off);
+
+    let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("M VB"), contents: bytemuck::cast_slice(&v), usage: wgpu::BufferUsages::VERTEX });
+    let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("M IB"), contents: bytemuck::cast_slice(&i), usage: wgpu::BufferUsages::INDEX });
+    {
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("MP Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &view, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } })],
+            depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
+        });
+        rpass.set_pipeline(&self.ui_pipeline);
+        rpass.set_bind_group(0, &self.bind_group, &[]);
+        rpass.set_vertex_buffer(0, vb.slice(..));
+        rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+        rpass.draw_indexed(0..i.len() as u32, 0, 0..1);
+    }
+    self.queue.submit(std::iter::once(encoder.finish()));
+    output.present();
+    Ok(())
+}
+
 pub fn render_main_menu(&mut self, menu: &MainMenu, _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
     let output = self.surface.get_current_texture()?;
     let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());

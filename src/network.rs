@@ -28,6 +28,7 @@ impl NetworkManager {
         let (tx_in, rx_in) = unbounded();
         let (tx_out, rx_out) = unbounded();
         
+        // DIABOLICAL FIX: 0.0.0.0 binds to EVERY interface (LAN, Hamachi, Ngrok) simultaneously
         let address = "0.0.0.0:25565";
         println!("🔥 HOSTING SERVER ON: {}", address);
         
@@ -94,9 +95,13 @@ NetworkManager {
         }
     }
 
-    pub fn join(ip: String) -> Self {
+    pub fn join(mut ip: String) -> Self {
         let (tx_in, rx_in) = unbounded();
         let (tx_out, rx_out) = unbounded();
+
+        // Sanitize Ngrok/SSH Tunnel addresses
+        if ip.starts_with("tcp://") { ip = ip.replace("tcp://", ""); }
+        if ip.starts_with("http://") { ip = ip.replace("http://", ""); }
 
         println!("🚀 CONNECTING TO: {}", ip);
         
