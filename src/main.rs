@@ -600,61 +600,80 @@ world.entities.push(ent);
                 last_frame = now;
 
                 if game_state == GameState::Loading {
-                    // DIABOLICAL INCREMENTAL LOADER: Spread tasks across frames to keep OS Responsive
+                    // DIABOLICAL ASYNC BOOTLOADER: Max speed with zero main-thread stalls
                     match load_step {
                         0 => {
                             renderer.loading_message = "INITIALIZING CORE KERNEL...".to_string();
-                            renderer.loading_progress = 0.05;
-                            load_step += 1;
+                            renderer.loading_progress = 0.01;
+                            load_step = 1;
                         }
                         1 => {
                             renderer.loading_message = "BAKING PROCEDURAL ATLAS...".to_string();
-                            renderer.loading_progress = 0.1;
                             let atlas = texture::TextureAtlas::new();
                             renderer.upload_atlas(&atlas.data);
-                            load_step += 1;
+                            load_step = 2;
                         }
-                        2..=170 => {
-                            let terrain_step = load_step - 2;
-                            renderer.loading_message = format!("GENERATING VOXEL TOPOLOGY... {}%", (terrain_step as f32 / 169.0 * 100.0) as u32);
-                            renderer.loading_progress = 0.1 + (terrain_step as f32 / 169.0) * 0.4;
-                            if world.bootstrap_terrain_step(terrain_step) { load_step = 171; }
-                            else { load_step += 1; }
-                        }
-                        171..=240 => {
-                            let mesh_step = load_step - 171;
-                            renderer.loading_message = format!("MESHLING TOPOLOGY... {}%", (mesh_step as f32 / 69.0 * 100.0) as u32);
-                            renderer.loading_progress = 0.6 + (mesh_step as f32 / 69.0) * 0.3;
+                        2 => {
+                            // Stage 2: Parallel Column Generation
+                            // We process 8 columns per frame (approx 400ms) to bypass the "Not Responding" check
+                            // but finish 8x faster than before.
+                            let columns_per_frame = 8;
+                            let current_col = world.chunks.len() / (crate::world::WORLD_HEIGHT as usize / 16);
                             
-                            // DIABOLICAL INCREMENTAL DISPATCH
-                            // Instead of stalling for 5 seconds at 99%, we mesh 1/70th of the world per frame.
-                            let chunk_keys: Vec<_> = world.chunks.keys().cloned().collect();
-                            let start_idx = (mesh_step as usize * chunk_keys.len()) / 70;
-                            let end_idx = ((mesh_step as usize + 1) * chunk_keys.len()) / 70;
-                            
-                            let world_arc = Arc::new(world.clone());
-                            for i in start_idx..end_idx.min(chunk_keys.len()) {
-                                let key = chunk_keys[i];
-                                renderer.update_chunk(key.0, key.1, key.2, &world_arc);
+                            for i in 0..columns_per_frame {
+                                let step = (current_col + i) as i32;
+                                if step < 169 {
+                                    world.bootstrap_terrain_step(step);
+                                }
                             }
                             
-                            if mesh_step == 0 { log::info!("[RENDER] Starting Incremental Mesh Dispatch..."); }
-                            load_step += 1;
+                            let progress = (current_col as f32 / 169.0).min(1.0);
+                            renderer.loading_progress = 0.1 + progress * 0.4;
+                            renderer.loading_message = format!("GENERATING VOXEL TOPOLOGY... {}%", (progress * 100.0) as u32);
+                            
+                            if current_col >= 168 { load_step = 3; }
                         }
-                        241 => {
-                            renderer.loading_message = "CALCULATING SPATIAL INTEGRITY...".to_string();
-                            renderer.loading_progress = 0.95;
-                            let h = world.get_height_at(0, 0);
-                            player.position = glam::Vec3::new(0.5, h as f32 + 2.5, 0.5);
-                            load_step += 1;
+                        3 => {
+                            // Stage 3: Async Background Mesh Dispatch
+                            // We fire off ALL tasks to the 16 worker threads instantly.
+                            // The main thread stays free to keep the UI fluid.
+                            renderer.loading_message = "DISPATCHING ASYNC MESHERS...".to_string();
+                            let world_arc = Arc::new(world.clone());
+                            let chunk_keys: Vec<_> = world.chunks.keys().cloned().collect();
+                            for key in chunk_keys {
+                                if !renderer.chunk_meshes.contains_key(&key) && !renderer.pending_chunks.contains(&key) {
+                                    renderer.pending_chunks.insert(key);
+                                    let _ = renderer.mesh_tx.send((key.0, key.1, key.2, 0, world_arc.clone()));
+                                }
+                            }
+                            log::info!("[RENDER] All Load-Time Meshing Tasks Dispatched to Background Pool.");
+                            load_step = 4;
                         }
-                        
+                        4 => {
+                            // Stage 4: Wait for Worker threads
+                            let total = world.chunks.len() as f32;
+                            let remaining = renderer.pending_chunks.len() as f32;
+                            let progress = (total - remaining) / total;
+                            
+                            renderer.loading_message = format!("OPTIMIZING GEOMETRY... {}%", (progress * 100.0) as u32);
+                            renderer.loading_progress = 0.5 + progress * 0.45;
+                            
+                            if renderer.pending_chunks.is_empty() {
+                                let h = world.get_height_at(0, 0);
+                                player.position = glam::Vec3::new(0.5, h as f32 + 2.5, 0.5);
+                                load_step = 5;
+                            }
+                        }
                         _ => {
-                            renderer.transition_alpha = (renderer.transition_alpha - _dt_frame * 1.2).max(0.0);
+                            renderer.transition_alpha = (renderer.transition_alpha - _dt_frame * 1.5).max(0.0);
                             renderer.loading_progress = 1.0;
                             renderer.loading_message = "SYSTEMS NOMINAL. READY.".to_string();
 
                             if renderer.transition_alpha <= 0.0 {
+                                let total_load_time = renderer.init_time.elapsed().as_secs_f32();
+                                log::info!("╔════════════════════════════════════════════════════════════╗");
+                                log::info!("║ 🚀 LOAD COMPLETED IN {:<5.2} SECONDS                      ║", total_load_time);
+                                log::info!("╚════════════════════════════════════════════════════════════╝");
                                 if was_playing {
                                     game_state = GameState::Playing;
                                     let _ = window.set_cursor_grab(CursorGrabMode::Locked);

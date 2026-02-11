@@ -452,40 +452,38 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
         let mut ui = Vec::new();
         let mut uoff = 0;
 
-        // 1. CLEAN BACKGROUND
-        self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240); // Dark base
+        // 1. PROFESSIONAL BACKGROUND
+        self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240); // Solid base
         
-        // 2. Title - Single Layer (Clean)
+        // 2. Title - Single Clean Pass
         self.draw_text("MINECRAFT", -0.32, 0.42, 0.12, &mut uv, &mut ui, &mut uoff);
         self.draw_text("RUST EDITION", -0.25, 0.32, 0.05, &mut uv, &mut ui, &mut uoff);
 
-        // 3. Progress Bar: Procedural Glow
-        let bar_w = 1.4;
-        let bar_h = 0.04;
-        let bar_x = -0.7;
-        let bar_y = -0.4;
+        // 3. High-Contrast Progress Bar
+        let bar_w = 1.2;
+        let bar_h = 0.02;
+        let bar_x = -0.6;
+        let bar_y = -0.3;
         
-        // Shadow/Container
-        self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bar_x - 0.01, bar_y - 0.01, bar_w + 0.02, bar_h + 0.02, 240);
+        // Container
+        self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bar_x - 0.005, bar_y - 0.005, bar_w + 0.01, bar_h + 0.01, 240);
         
-        // Active Bar (Pulse Green)
+        // Progress Fill (Green/White)
         if self.loading_progress > 0.001 {
-            let p_w = bar_w * self.loading_progress;
-            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bar_x, bar_y, p_w, bar_h, 1);
-            // Tip Glow
-            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bar_x + p_w - 0.02, bar_y - 0.01, 0.04, bar_h + 0.02, 241);
+            let p_w = bar_w * self.loading_progress.clamp(0.0, 1.0);
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bar_x, bar_y, p_w, bar_h, 241);
         }
 
-        // 4. Status Message: Real-time Telemetry
+        // 4. Status Message
         let msg = self.loading_message.to_uppercase();
-        let msg_scale = 0.035;
+        let msg_scale = 0.03;
         let msg_x = -(msg.len() as f32 * msg_scale * 0.6) / 2.0;
-        self.draw_text(&msg, msg_x, bar_y - 0.12, msg_scale, &mut uv, &mut ui, &mut uoff);
+        self.draw_text(&msg, msg_x, bar_y - 0.1, msg_scale, &mut uv, &mut ui, &mut uoff);
 
-        // 5. Procedural Wipe (When finishing)
-        if self.transition_alpha < 1.0 {
-            let wipe_size = (1.0 - self.transition_alpha) * 4.0;
-            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, wipe_size, 2.0, 240);
+        // 5. Clean Fade Out
+        if self.transition_alpha < 0.99 {
+            let alpha_box = 2.0 * (1.0 - self.transition_alpha);
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240);
         }
 
         if !uv.is_empty() {
