@@ -837,61 +837,38 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
             }
         }
 
-        // 3. STABLE MESH UPDATER: Prevents flickering and "black holes"
+        // 3. PRIORITY MESH UPDATER: Prevents the 5-second lag and flickering
         let p_cx = (player.position.x / 16.0).floor() as i32;
-        let p_cy = (player.position.y / 16.0).floor() as i32;
         let p_cz = (player.position.z / 16.0).floor() as i32;
         
-        let world_changed = world.mesh_dirty;
-        let player_moved = (p_cx, p_cy, p_cz) != self.last_player_chunk;
+        let player_moved = (p_cx, p_cz) != (self.last_player_chunk.0, self.last_player_chunk.2);
+        let world_arc = Arc::new(world.clone());
 
-        if player_moved || world_changed || self.frame_count % 10 == 0 {
-            self.last_player_chunk = (p_cx, p_cy, p_cz);
-            let world_arc = Arc::new(world.clone());
-            let r_dist = 12; // Increased radius for smoother peripheral loading
-            let max_vertical_chunks = crate::world::WORLD_HEIGHT / 16;
-            
-            for dx in -r_dist..=r_dist {
-                for dz in -r_dist..=r_dist {
-                    if dx*dx + dz*dz > r_dist*r_dist { continue; }
-                    for dy in 0..max_vertical_chunks {
-                        let target = (p_cx + dx, dy, p_cz + dz);
-                        
-                        if let Some(c) = world.chunks.get(&target) {
-                            // DIABOLICAL PERSISTENCE: We only request a mesh if it's dirty 
-                            // OR missing, but we NEVER remove the old one here.
-                            if (c.mesh_dirty || !self.chunk_meshes.contains_key(&target)) && !self.pending_chunks.contains(&target) {
-                                self.pending_chunks.insert(target);
-                                let _ = self.mesh_tx.send((target.0, target.1, target.2, 0, world_arc.clone()));
-                            }
-                        }
-                    }
-                }
+        // A. Handle explicitly dirty chunks FIRST (Block breaking/placing)
+        for &target in &world.dirty_chunks {
+            if !self.pending_chunks.contains(&target) {
+                // Ghost Block Killer: Remove immediately if we know it changed locally
+                self.chunk_meshes.remove(&target);
+                self.pending_chunks.insert(target);
+                let _ = self.mesh_tx.send((target.0, target.1, target.2, 0, world_arc.clone()));
             }
         }
-        let player_moved = (p_cx, p_cy, p_cz) != self.last_player_chunk;
 
-        if player_moved || world_changed || self.frame_count % 20 == 0 {
-            self.last_player_chunk = (p_cx, p_cy, p_cz);
-            let world_arc = Arc::new(world.clone());
-            let r_dist = 10; // Slightly larger scan for stability
-            let max_vertical_chunks = crate::world::WORLD_HEIGHT / 16;
+        // B. Handle background loading and movement (Throttled to prevent CPU saturation)
+        if player_moved || self.frame_count % 30 == 0 {
+            self.last_player_chunk = (p_cx, 0, p_cz);
+            let r_dist = 10;
+            let max_vertical = crate::world::WORLD_HEIGHT / 16;
             
             for dx in -r_dist..=r_dist {
                 for dz in -r_dist..=r_dist {
                     if dx*dx + dz*dz > r_dist*r_dist { continue; }
-                    for dy in 0..max_vertical_chunks {
+                    for dy in 0..max_vertical {
                         let target = (p_cx + dx, dy, p_cz + dz);
-                        
                         if let Some(c) = world.chunks.get(&target) {
-                            if c.mesh_dirty || !self.chunk_meshes.contains_key(&target) {
-                                if !self.pending_chunks.contains(&target) {
-                                    // GHOST BLOCK KILLER: If it's dirty, remove the old mesh NOW.
-                                    // This makes the block disappear visually 0ms after breaking.
-                                    self.chunk_meshes.remove(&target);
-                                    self.pending_chunks.insert(target);
-                                    let _ = self.mesh_tx.send((target.0, target.1, target.2, 0, world_arc.clone()));
-                                }
+                            if !self.chunk_meshes.contains_key(&target) && !self.pending_chunks.contains(&target) {
+                                self.pending_chunks.insert(target);
+                                let _ = self.mesh_tx.send((target.0, target.1, target.2, 0, world_arc.clone()));
                             }
                         }
                     }

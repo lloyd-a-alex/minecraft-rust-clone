@@ -770,10 +770,16 @@ let head_p = BlockPos { x: player.position.x as i32, y: (player.position.y + 1.5
                     }
 renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.0 };
                     renderer.update_camera(&player, win_size.0 as f32 / win_size.1 as f32);
-                    // ROOT FIX: Reset world dirty flag after the Renderer has had a chance to evict meshes.
-                    world.mesh_dirty = false;
                     
                     let result = if is_paused {
+                        renderer.render_pause_menu(&pause_menu, &world, &player, cursor_pos, win_size.0, win_size.1)
+                    } else {
+                        renderer.render(&world, &player, is_paused, cursor_pos, win_size.0, win_size.1)
+                    };
+
+                    // RADICAL SYNC: Only clear flags AFTER renderer has processed the priority queue
+                    world.mesh_dirty = false;
+                    world.dirty_chunks.clear();
                         renderer.render_pause_menu(&pause_menu, &world, &player, cursor_pos, win_size.0, win_size.1)
                     } else {
                         renderer.render(&world, &player, is_paused, cursor_pos, win_size.0, win_size.1)

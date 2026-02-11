@@ -245,23 +245,24 @@ pub struct RemotePlayer { pub id: u32, pub position: Vec3, pub rotation: f32 }
 #[derive(Clone)]
 pub struct World {
     pub chunks: HashMap<(i32, i32, i32), Chunk>,
-    pub entities: Vec<ItemEntity>, // ROOT FIX: Use ItemEntity which is defined in this file
+    pub entities: Vec<ItemEntity>,
     pub mesh_dirty: bool,
+    pub dirty_chunks: HashSet<(i32, i32, i32)>, // NEW: Priority mesh update queue
     pub remote_players: Vec<RemotePlayer>,
     pub seed: u32,
 }
 
 impl World {
     pub fn new(seed: u32) -> Self {
-        // ROOT FIX: Include mesh_dirty in the initializer
         let mut world = World { 
             chunks: HashMap::new(), 
             entities: Vec::new(), 
             mesh_dirty: true,
+            dirty_chunks: HashSet::new(),
             remote_players: Vec::new(), 
             seed 
         };
-        world.generate_terrain_around(0, 0, 6); // Initial seed around origin
+        world.generate_terrain_around(0, 0, 6);
         world
     }
 
@@ -557,7 +558,6 @@ pub fn set_block_world(&mut self, pos: BlockPos, block: BlockType) {
         
         self.set_block_world(pos, BlockType::Air);
         
-        // ROOT FIX: Trigger fluid logic and aggregate ALL affected 3D chunks
         let mut affected = self.trigger_water_update(pos);
         affected.extend(self.get_affected_chunks(pos));
         affected.sort_unstable();
@@ -566,9 +566,10 @@ pub fn set_block_world(&mut self, pos: BlockPos, block: BlockType) {
         for &(cx, cy, cz) in &affected {
             if let Some(chunk) = self.chunks.get_mut(&(cx, cy, cz)) {
                 chunk.mesh_dirty = true;
+                self.dirty_chunks.insert((cx, cy, cz)); // PRIORITY UPDATE
             }
         }
-        self.mesh_dirty = true; // Global signal to Renderer
+        self.mesh_dirty = true;
         affected
     }
     pub fn place_block(&mut self, pos: BlockPos, block: BlockType) -> Vec<(i32, i32, i32)> { 
@@ -581,6 +582,7 @@ pub fn set_block_world(&mut self, pos: BlockPos, block: BlockType) {
         for &(cx, cy, cz) in &affected {
             if let Some(chunk) = self.chunks.get_mut(&(cx, cy, cz)) {
                 chunk.mesh_dirty = true;
+                self.dirty_chunks.insert((cx, cy, cz)); // PRIORITY UPDATE
             }
         }
         self.mesh_dirty = true;

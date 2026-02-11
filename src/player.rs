@@ -273,16 +273,18 @@ pub fn update(&mut self, world: &crate::world::World, dt: f32, audio: &crate::Au
         if self.invincible_timer > 0.0 { self.invincible_timer -= dt; }
         
         // --- DIABOLICAL GROUNDING HYSTERESIS ---
-        // We decrement timers. If they are > 0, we consider the state "active"
         if self.grounded_latch > 0.0 { self.grounded_latch -= dt; }
         if self.jump_buffer_timer > 0.0 { self.jump_buffer_timer -= dt; }
+        
         if self.keys.jump_queued {
-            self.jump_buffer_timer = 0.15; // Buffer the jump for 150ms
+            self.jump_buffer_timer = 0.15;
             self.keys.jump_queued = false;
         }
 
-        let _prev_on_ground = self.on_ground;
-        self.on_ground = self.grounded_latch > 0.0;
+        // RADICAL FIX: Recalculate on_ground status IMMEDIATELY to prevent frame-lag jitter
+        let feet_y = self.position.y - self.height / 2.0;
+        let ground_check = self.check_ground(world, self.position);
+        self.on_ground = ground_check.is_some() || self.grounded_latch > 0.0;
 
         // --- CAVE AMBIENCE ---
         if in_cave {
