@@ -207,6 +207,31 @@ pub fn get_tool_class(&self) -> &'static str {
         else if u >= 41 && u <= 45 { "hoe" }
         else { "none" }
     }
+
+    pub fn get_step_sound_category(&self) -> &'static str {
+        match self {
+            BlockType::Grass | BlockType::Mycelium | BlockType::LilyPad => "grass",
+            BlockType::Dirt | BlockType::FarmlandDry | BlockType::FarmlandWet | BlockType::Gravel | BlockType::Clay => "gravel",
+            BlockType::Stone | BlockType::Cobblestone | BlockType::MossyCobble | BlockType::BrickBlock | 
+            BlockType::CoalOre | BlockType::IronOre | BlockType::GoldOre | BlockType::DiamondOre | 
+            BlockType::RedstoneOre | BlockType::LapisOre | BlockType::Furnace | BlockType::FurnaceActive |
+            BlockType::Obsidian => "stone",
+            BlockType::Wood | BlockType::Planks | BlockType::SpruceWood | BlockType::SprucePlanks | 
+            BlockType::BirchWood | BlockType::BirchPlanks | BlockType::Chest | BlockType::ChestLeft | 
+            BlockType::ChestRight | BlockType::CraftingTable | BlockType::Bookshelf | BlockType::OakSapling => "wood",
+            BlockType::Leaves | BlockType::SpruceLeaves | BlockType::BirchLeaves | BlockType::Vine | 
+            BlockType::Cactus | BlockType::Rose | BlockType::Dandelion | BlockType::TallGrass | BlockType::Sugarcane |
+            BlockType::Wheat | BlockType::Wheat0 | BlockType::Wheat1 | BlockType::Wheat2 | BlockType::Wheat3 | 
+            BlockType::Wheat4 | BlockType::Wheat5 | BlockType::Wheat6 | BlockType::Wheat7 => "leaves",
+            BlockType::Sand | BlockType::Sandstone => "sand",
+            BlockType::Snow | BlockType::Ice => "snow",
+            BlockType::Glass => "glass",
+            BlockType::Bedrock => "bedrock",
+            BlockType::IronBlock | BlockType::GoldBlock | BlockType::DiamondBlock | BlockType::TNT => "metal",
+            BlockType::Water | BlockType::Lava => "water",
+            _ => "stone",
+        }
+    }
     
     pub fn get_tool_speed(&self) -> f32 {
         let u = *self as u8;

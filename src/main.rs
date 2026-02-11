@@ -20,6 +20,33 @@ impl AudioSystem {
         Self { _stream: stream, stream_handle: handle }
     }
 
+    pub fn play_step(&self, category: &str, variant: usize, in_cave: bool) {
+        let sink = Sink::try_new(&self.stream_handle).unwrap();
+        
+        // DIABOLICAL VARIANT MODULATION: Each variant (0-4) slightly shifts frequency and duration
+        let v_mod = 0.92 + (variant as f32 * 0.04); // Pitch range: 0.92 to 1.08
+        let d_mod = 0.85 + (variant as f32 * 0.06); // Duration range: 0.85 to 1.09
+        
+        let (freq_start, freq_end, duration) = match category {
+            "grass" => (140.0 * v_mod, 60.0 * v_mod, 0.12 * d_mod),
+            "gravel" => (280.0 * v_mod, 110.0 * v_mod, 0.14 * d_mod),
+            "stone" => (220.0 * v_mod, 180.0 * v_mod, 0.11 * d_mod),
+            "wood" => (180.0 * v_mod, 120.0 * v_mod, 0.15 * d_mod),
+            "leaves" => (1600.0 * v_mod, 400.0 * v_mod, 0.08 * d_mod),
+            "sand" => (120.0 * v_mod, 90.0 * v_mod, 0.18 * d_mod),
+            "snow" => (450.0 * v_mod, 350.0 * v_mod, 0.10 * d_mod),
+            "glass" => (2400.0 * v_mod, 2200.0 * v_mod, 0.05 * d_mod),
+            "metal" => (400.0 * v_mod, 380.0 * v_mod, 0.13 * d_mod),
+            "water" => (100.0 * v_mod, 250.0 * v_mod, 0.25 * d_mod),
+            "bedrock" => (60.0 * v_mod, 40.0 * v_mod, 0.30 * d_mod),
+            _ => (200.0, 100.0, 0.12),
+        };
+
+        let data = Self::gen_noise(duration, freq_start, freq_end, in_cave);
+        sink.append(Decoder::new(Cursor::new(data)).unwrap());
+        sink.detach();
+    }
+
 pub fn play(&self, sound_type: &str, in_cave: bool) {
         let sink = Sink::try_new(&self.stream_handle).unwrap();
         let mut dur = match sound_type {

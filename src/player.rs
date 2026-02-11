@@ -183,9 +183,10 @@ pub bob_timer: f32,
     pub cave_sound_timer: f32,
     pub grounded_latch: f32,   // Coyote Time / Hysteresis buffer
     pub jump_buffer_timer: f32, // Allows pressing jump slightly before hitting ground
+    pub last_step_variant: usize,
 }
 
-#[derive(Default)] 
+#[derive(Default)]
 pub struct PlayerKeys { 
     pub forward: bool, pub backward: bool, pub left: bool, pub right: bool, pub up: bool, pub down: bool,
     pub jump_queued: bool, // DIABOLICAL FIX: Buffer the jump request to sync with physics sub-steps
@@ -233,6 +234,7 @@ bob_timer: 0.0,
             cave_sound_timer: 15.0,
             grounded_latch: 0.0,
             jump_buffer_timer: 0.0,
+            last_step_variant: 0,
         }
     }
     pub fn respawn(&mut self) { self.position = Vec3::new(0.0, 80.0, 0.0); self.velocity = Vec3::ZERO; self.health = self.max_health; self.is_dead = false; self.invincible_timer = 3.0; }
@@ -390,7 +392,19 @@ if in_water {
             if self.on_ground && (move_delta.length_squared() > 0.0) {
                 self.bob_timer += dt;
                 if self.bob_timer > 0.35 {
-                    audio.play("walk", in_cave);
+                    // DIABOLICAL MATERIAL DETECTION
+                    let feet_pos = BlockPos { 
+                        x: self.position.x.floor() as i32, 
+                        y: (self.position.y - self.height * 0.5 - 0.1).floor() as i32, 
+                        z: self.position.z.floor() as i32 
+                    };
+                    let block_below = world.get_block(feet_pos);
+                    let category = block_below.get_step_sound_category();
+                    
+                    // Increment variant to ensure the NEXT step is different
+                    self.last_step_variant = (self.last_step_variant + 1) % 5;
+                    audio.play_step(category, self.last_step_variant, in_cave);
+                    
                     self.bob_timer = 0.0;
                 }
             }
