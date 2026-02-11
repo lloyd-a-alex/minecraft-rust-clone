@@ -241,7 +241,6 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     let mut break_progress = 0.0;
     let mut left_click = false;
     let mut net_timer = 0.0;
-    let mut visual_load_step = 0; // DIABOLICAL FIX: Smooth counter for UI
     let mut death_timer = 0.0;
     let mut is_paused = false;
     let mut cursor_pos = (0.0, 0.0);
@@ -670,9 +669,8 @@ world.entities.push(ent);
                                 }
                             }
                             
-                            visual_load_step = current_col;
-                            renderer.loading_progress = 0.1 + (visual_load_step as f32 / 169.0) * 0.4;
-                            renderer.loading_message = format!("GENERATING TOPOLOGY... [STEP {}/169]", visual_load_step);
+                            renderer.loading_progress = 0.1 + (current_col as f32 / 169.0) * 0.4;
+                            renderer.loading_message = format!("GENERATING TOPOLOGY... [STEP {}/169]", current_col);
                             
                             // Exit early logic: We only NEED a 3x3 radius to play immediately.
                             // This brings the "Playable" time down from 24s to ~3s.

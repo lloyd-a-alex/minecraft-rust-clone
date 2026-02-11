@@ -59,9 +59,6 @@ pub struct MeshTask {
 
 pub struct Renderer<'a> {
     pub particles: Vec<Particle>,
-    pub ui_v_cache: Vec<Vertex>,
-    pub ui_i_cache: Vec<u32>,
-    pub ui_needs_update: bool,
     surface: Surface<'a>, device: Device, queue: Queue, pub config: SurfaceConfiguration,
     pipeline: RenderPipeline, ui_pipeline: RenderPipeline,
     depth_texture: TextureView, bind_group: BindGroup,
@@ -391,7 +388,7 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
         }
 
         Self {
-            particles: Vec::new(), ui_v_cache: Vec::new(), ui_i_cache: Vec::new(), ui_needs_update: true, surface, device, queue, config, pipeline, ui_pipeline, depth_texture, bind_group, camera_bind_group, camera_buffer, time_bind_group, time_buffer, start_time: Instant::now(), 
+            particles: Vec::new(), surface, device, queue, config, pipeline, ui_pipeline, depth_texture, bind_group, camera_bind_group, camera_buffer, time_bind_group, time_buffer, start_time: Instant::now(), 
             chunk_meshes: HashMap::new(),
             entity_vertex_buffer, entity_index_buffer, 
             break_progress: 0.0,
@@ -913,18 +910,9 @@ pub fn render_main_menu(&mut self, menu: &MainMenu, _width: u32, _height: u32) -
     let grid_size = 2.0 / grid_count as f32;
     for gy in 0..grid_count {
         for gx in 0..grid_count {
-            let rx = -1.0 + (gx as f32 * grid_size) + grid_size/2.0;
-let ry = -1.0 + (gy as f32 * grid_size) + grid_size/2.0;
-            let tex_id = 2u32; // CLASSIC DIRT BACKGROUND
-            let u_min = (tex_id % 32) as f32 / 32.0; let v_min = (tex_id / 32) as f32 / 32.0;
-            let u_max = u_min + 1.0 / 32.0; let v_max = v_min + 1.0 / 32.0;
-            let ao = 0.4;
-            vertices.push(Vertex { position: [rx - grid_size / 2.0, ry - grid_size / 2.0, 0.0], tex_coords: [u_min, v_max], ao, tex_index: tex_id, light: 1.0 });
-            vertices.push(Vertex { position: [rx + grid_size / 2.0, ry - grid_size / 2.0, 0.0], tex_coords: [u_max, v_max], ao, tex_index: tex_id, light: 1.0 });
-            vertices.push(Vertex { position: [rx + grid_size / 2.0, ry + grid_size / 2.0, 0.0], tex_coords: [u_max, v_min], ao, tex_index: tex_id, light: 1.0 });
-            vertices.push(Vertex { position: [rx - grid_size / 2.0, ry + grid_size / 2.0, 0.0], tex_coords: [u_min, v_min], ao, tex_index: tex_id, light: 1.0 });
-            indices.extend_from_slice(&[idx_offset, idx_offset + 1, idx_offset + 2, idx_offset, idx_offset + 2, idx_offset + 3]);
-            idx_offset += 4;
+            let rx = -1.0 + (gx as f32 * grid_size);
+            let ry = -1.0 + (gy as f32 * grid_size);
+            self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, rx, ry, grid_size, grid_size, 2);
         }
     }
 
@@ -964,6 +952,8 @@ let ry = -1.0 + (gy as f32 * grid_size) + grid_size/2.0;
         });
 rpass.set_pipeline(&self.ui_pipeline);
         rpass.set_bind_group(0, &self.bind_group, &[]);
+        rpass.set_bind_group(1, &self.camera_bind_group, &[]);
+        rpass.set_bind_group(2, &self.time_bind_group, &[]);
         rpass.set_vertex_buffer(0, vb.slice(..));
         rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
         rpass.draw_indexed(0..indices.len() as u32, 0, 0..1);
