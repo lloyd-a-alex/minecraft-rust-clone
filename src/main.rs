@@ -683,7 +683,7 @@ world.entities.push(ent);
                                 let mut found = false;
                                 
                                 // DIABOLICAL SPIRAL SEARCH
-                                'outer: for r in 0..20 {
+                                'outer: for r in 0..20i32 {
                                     for dx in -r..=r {
                                         for dz in -r..=r {
                                             if dx.abs() != r && dz.abs() != r { continue; }

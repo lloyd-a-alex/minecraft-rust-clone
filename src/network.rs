@@ -44,10 +44,13 @@ impl NetworkManager {
 println!("✨ NEW PLAYER CONNECTED: {:?} (ID: {})", addr, client_id_counter);
                     let _ = stream.set_nonblocking(false); 
                     
-                    // --- INSTANT HANDSHAKE (SYNC WORLD) ---
-                   let handshake = Packet::Handshake { username: "Host".to_string(), seed };
-                    let bytes = bincode::serialize(&handshake).unwrap();
-                    let _ = stream.write_all(&bytes);
+                    // --- RADICAL MULTIPLAYER HANDSHAKE ---
+                    // Forcefully sync the seed and ensure the client receives it before spawning
+                    let handshake = Packet::Handshake { username: "Host".to_string(), seed };
+                    if let Ok(bytes) = bincode::serialize(&handshake) {
+                        let _ = stream.write_all(&bytes);
+                        let _ = stream.flush();
+                    }
                     // --------------------------------------
 
                     let mut stream_clone = stream.try_clone().unwrap();
@@ -120,7 +123,7 @@ NetworkManager {
                 }
             }
         };
-        println!("\n✅ CONNECTED!");
+        println!("\n✅ DIABOLICAL CONNECTION ESTABLISHED!");
 
         let mut stream_read = stream.try_clone().unwrap();
         let mut stream_write = stream.try_clone().unwrap();

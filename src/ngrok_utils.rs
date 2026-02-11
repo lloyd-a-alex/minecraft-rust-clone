@@ -1,5 +1,5 @@
 use std::process::{Command, Child, Stdio};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::net::UdpSocket;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -39,6 +39,7 @@ impl HostingManager {
             public_url: Arc::new(Mutex::new("Initializing...".to_string())),
             hamachi_ip: None,
             wan_ip: None,
+            lan_ip: None,
             discovered_servers: Arc::new(Mutex::new(Vec::new())),
         };
         manager.start_discovery_listener();
