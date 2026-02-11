@@ -214,8 +214,8 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     const FIXED_TIME: f32 = 1.0 / 120.0; // 120Hz DIABOLICAL PHYSICS LOCK
     
     // --- GAME STATE ---
-    // DIABOLICAL FIX: Start in Loading to ensure Texture Atlas is baked before Menu displays.
-    let mut game_state = GameState::Loading;
+    // DIABOLICAL FIX: Start in Menu for instant-access. Atlas bakes on first load.
+    let mut game_state = GameState::Menu;
     let mut load_step = 0;
     if was_playing {
         let _ = window.set_cursor_grab(CursorGrabMode::Locked);
@@ -331,29 +331,12 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                             _ => {}
                         }
 
-                        if game_state == GameState::Playing {
-                            let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked);
-                            window_clone.set_cursor_visible(false);
-                            
-                            log::info!("🔍 Searching for dry land...");
-'spawn_search: for r in 0..1000i32 {
-                                for x in -r..=r {
-                                    for z in -r..=r {
-                                        if x.abs() != r && z.abs() != r { continue; }
-                                        let h = world.get_height_at(x, z);
-                                        if h > world::WATER_LEVEL as i32 + 2 {
-                                            player.position = glam::Vec3::new(x as f32 + 0.5, h as f32 + 2.5, z as f32 + 0.5);
-                                            spawn_found = true;
-                                            log::info!("✅ Spawned on dry land: {}, {}, {}", x, h, z);
-                                            break 'spawn_search;
-                                        }
-                                    }
-                                }
-                            }
-                            if !spawn_found {
-                                player.position = glam::Vec3::new(0.0, 100.0, 0.0);
-                                for x in -2..=2 { for z in -2..=2 { world.place_block(BlockPos { x, y: 98, z }, BlockType::Stone); } }
-                            }
+                        if game_state == GameState::Playing || game_state == GameState::Loading {
+                            // Reset state for the transition
+                            spawn_found = false;
+                            breaking_pos = None;
+                            break_progress = 0.0;
+                            // Cursor will be locked after Loading finishes
                         }
                     }
                 } else if is_paused && pressed && button == MouseButton::Left {
@@ -693,7 +676,33 @@ world.entities.push(ent);
                             load_step = 4;
                         }
                         4 => {
-                            // Stage 4: Radical Boot - Exit as soon as spawn is meshed
+                            // Stage 4: Dry Land Search (In-loading sequence to prevent UI freeze)
+                            renderer.loading_message = "SCOUTING HABITABLE TERRAIN...".to_string();
+                            if !spawn_found {
+                                'scout: for r in 0..150i32 { // Search 150 radius
+                                    for x in -r..=r {
+                                        for z in -r..=r {
+                                            if x.abs() != r && z.abs() != r { continue; }
+                                            let h = world.get_height_at(x, z);
+                                            if h > world::WATER_LEVEL as i32 + 2 {
+                                                player.position = glam::Vec3::new(x as f32 + 0.5, h as f32 + 2.5, z as f32 + 0.5);
+                                                spawn_found = true;
+                                                log::info!("✅ Spawned on dry land: {}, {}, {}", x, h, z);
+                                                break 'scout;
+                                            }
+                                        }
+                                    }
+                                }
+                                if !spawn_found {
+                                    player.position = glam::Vec3::new(0.0, 100.0, 0.0);
+                                    for x in -2..=2 { for z in -2..=2 { world.place_block(BlockPos { x, y: 98, z }, BlockType::Stone); } }
+                                    spawn_found = true;
+                                }
+                            }
+                            load_step = 5;
+                        }
+                        5 => {
+                            // Stage 5: Radical Boot - Exit as soon as spawn is meshed
                             renderer.process_mesh_queue(); 
 
                             let total = world.chunks.len() as f32;

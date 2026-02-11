@@ -107,12 +107,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 fn vs_ui(model: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     // UI is 2D and uses raw NDC coordinates (-1.0 to 1.0), so we pass position directly
-    out.clip_position = vec4<f32>(model.position, 1.0);
+    out.clip_position = vec4<f32>(model.position.x, model.position.y, 0.0, 1.0);
     out.depth = 0.0;
     out.ao = 1.0;
     out.tex_index = model.tex_index;
     
-    // Texture Atlas Logic (Same as vs_main)
+    // Texture Atlas Logic (Decoupled from Camera)
     let atlas_size = 32.0;
     let u_idx = f32(model.tex_index % 32u);
     let v_idx = f32(model.tex_index / 32u);

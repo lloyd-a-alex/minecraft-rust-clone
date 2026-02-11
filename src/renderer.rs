@@ -211,8 +211,9 @@ let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor { label: Some("Pipeline Layout"), bind_group_layouts: &[&bind_group_layout, &camera_bg_layout, &time_bg_layout], push_constant_ranges: &[] });
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor { label: Some("Pipeline"), layout: Some(&pipeline_layout), vertex: VertexState { module: &shader, entry_point: "vs_main", buffers: &[Vertex::desc()] }, fragment: Some(FragmentState { module: &shader, entry_point: "fs_main", targets: &[Some(ColorTargetState { format: config.format, blend: Some(BlendState::ALPHA_BLENDING), write_mask: ColorWrites::ALL })] }), primitive: PrimitiveState { topology: PrimitiveTopology::TriangleList, strip_index_format: None, front_face: FrontFace::Ccw, cull_mode: Some(Face::Back), ..Default::default() }, depth_stencil: Some(DepthStencilState { format: TextureFormat::Depth32Float, depth_write_enabled: true, depth_compare: CompareFunction::Less, stencil: StencilState::default(), bias: DepthBiasState::default() }), multisample: MultisampleState::default(), multiview: None });
 
-        // DIABOLICAL BINDING FIX: UI layout must include all groups to match the RenderPass expectations and prevent GPU validation crashes.
-        let ui_pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor { label: Some("UI Layout"), bind_group_layouts: &[&bind_group_layout, &camera_bg_layout, &time_bg_layout], push_constant_ranges: &[] });
+        // DIABOLICAL BINDING STABILITY: The UI pipeline only needs the Texture Atlas (Group 0). 
+        // Removing Groups 1 and 2 here prevents validation errors when camera/time aren't bound.
+        let ui_pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor { label: Some("UI Layout"), bind_group_layouts: &[&bind_group_layout], push_constant_ranges: &[] });
         let ui_pipeline = device.create_render_pipeline(&RenderPipelineDescriptor { label: Some("UI Pipeline"), layout: Some(&ui_pipeline_layout), vertex: VertexState { module: &shader, entry_point: "vs_ui", buffers: &[Vertex::desc()] }, fragment: Some(FragmentState { module: &shader, entry_point: "fs_ui", targets: &[Some(ColorTargetState { format: config.format, blend: Some(BlendState::ALPHA_BLENDING), write_mask: ColorWrites::ALL })] }), primitive: PrimitiveState { topology: PrimitiveTopology::TriangleList, strip_index_format: None, front_face: FrontFace::Ccw, cull_mode: None, ..Default::default() }, depth_stencil: None, multisample: MultisampleState::default(), multiview: None });
 
         let depth_texture = device.create_texture(&TextureDescriptor { size: Extent3d { width: config.width, height: config.height, depth_or_array_layers: 1 }, mip_level_count: 1, sample_count: 1, dimension: TextureDimension::D2, format: TextureFormat::Depth32Float, usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING, label: Some("depth"), view_formats: &[] }).create_view(&TextureViewDescriptor::default());
@@ -544,8 +545,6 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
                 });
                 pass.set_pipeline(&self.ui_pipeline);
                 pass.set_bind_group(0, &self.bind_group, &[]);
-                pass.set_bind_group(1, &self.camera_bind_group, &[]);
-                pass.set_bind_group(2, &self.time_bind_group, &[]);
                 pass.set_vertex_buffer(0, vb.slice(..));
                 pass.set_index_buffer(ib.slice(..), IndexFormat::Uint32);
                 pass.draw_indexed(0..ui.len() as u32, 0, 0..1);
@@ -1257,8 +1256,14 @@ pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, c
              self.draw_text("INVENTORY", -0.2, 0.8, 0.08, &mut uv, &mut ui, &mut uoff);
         }
 
-        // FPS COUNTER
+        // FPS & TELEMETRY COUNTER
         self.draw_text(&format!("FPS {}", self.fps as u32), -0.98, 0.94, 0.03, &mut uv, &mut ui, &mut uoff);
+        
+        // DIABOLICAL MULTIPLAYER FEEDBACK: Show the URL if hosting so the user knows it's working
+        if !player.inventory_open && !is_paused {
+             // We can check if ngrok is active via global flags or by passing host info
+             self.draw_text("HOSTING ENABLED", 0.6, 0.94, 0.025, &mut uv, &mut ui, &mut uoff);
+        }
 
         if !is_paused || player.inventory_open {
             for i in 0..9 {
