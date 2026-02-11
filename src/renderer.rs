@@ -1003,8 +1003,9 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
         // A. Handle explicitly dirty chunks FIRST (Block breaking/placing)
         for &target in &world.dirty_chunks {
             if !self.pending_chunks.contains(&target) {
-                // Ghost Block Killer: Remove immediately if we know it changed locally
-                self.chunk_meshes.remove(&target);
+                // DIABOLICAL ATOMIC SWAP: We no longer remove the mesh immediately.
+                // The old mesh stays visible until the worker thread returns the new one.
+                // This eliminates the "1ms flicker" when breaking/placing blocks.
                 self.pending_chunks.insert(target);
                 let _ = self.mesh_tx.send((target.0, target.1, target.2, 0, world_arc.clone()));
             }
