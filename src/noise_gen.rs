@@ -78,23 +78,42 @@ pub fn get_height_params(&self, x: i32, z: i32) -> (f32, f32, f32, f32) {
         (continentalness, erosion, weirdness, temperature)
     }
 pub fn get_density(&self, x: i32, y: i32, z: i32, cont: f32, eros: f32, weird: f32) -> f32 {
-        let xf = x as f64; let yf = y as f64; let zf = z as f64;
+        let xf = x as f64;
+        let yf = y as f64;
+        let zf = z as f64;
+
+        // 1. Continental Foundation: The "Macro-Shape"
+        // Continentalness determines the baseline ground level.
+        let ground_bias = 64.0 + (cont * 32.0);
+
+        // 2. The Monolith Warp Field: Low-frequency "hotspots"
+        // This determines WHERE the laws of gravity/falloff are suspended.
+        let warp_weight = self.get_noise_octaves(xf * 0.012, 13.37, zf * 0.012, 2) as f32;
         
-        // --- FJORD & MOUNTAIN SPLINES ---
-        let mut base_height = 64.0 + (cont * 40.0);
-        if eros < -0.3 { base_height += weird.abs() * 60.0; } // Peaks
+        // 3. Volumetric Detail Noise: The "Micro-Shape"
+        // Using multiple octaves at medium frequency to create crags and alcoves.
+        let noise_3d = self.get_noise_octaves(xf * 0.035, yf * 0.035, zf * 0.035, 4) as f32;
+
+        // 4. Diabolical Falloff Spline
+        // Standard falloff increases as we go up.
+        let mut falloff_scale = 0.15;
         
-        // FJORDS: Deep river cuts in high terrain
-        let river = self.get_river_noise(x, z) as f32;
-        if river < 0.08 && cont > 0.1 {
-            base_height -= (0.08 - river) * 150.0;
+        // The Monolith Trigger: In high-warp zones, we radically flatten the falloff.
+        // This forces the density to remain high even at Y=120.
+        if warp_weight > 0.35 {
+            let intensity = (warp_weight - 0.35) * 2.0;
+            falloff_scale *= (1.0 - intensity).max(0.02);
         }
 
-        // --- 3D NOISE (Floating Islands & Overhangs) ---
-        let density_3d = self.get_noise_octaves(xf * 0.03, yf * 0.03, zf * 0.03, 3) as f32;
-        let height_falloff = (yf as f32 - base_height) * 0.12;
-        
-        density_3d - height_falloff
+        // 5. Erosion/Weirdness Modification
+        // We inject weirdness into the noise_3d directly to create jagged "spikes" in peak biomes.
+        let spiked_noise = if eros < -0.4 { noise_3d + weird.abs() * 0.5 } else { noise_3d };
+
+        // 6. River/Fjord Carving: Subtract density in river channels
+        let river = self.get_river_noise(x, z) as f32;
+        let river_cut = if river < 0.08 && cont > 0.0 { (0.08 - river) * 2.5 } else { 0.0 };
+
+        (spiked_noise - ((yf as f32 - ground_bias) * falloff_scale)) - river_cut
     }
 
 pub fn get_river_noise(&self, x: i32, z: i32) -> f64 {

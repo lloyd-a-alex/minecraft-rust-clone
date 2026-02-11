@@ -367,21 +367,28 @@ pub fn _update_occlusion(&mut self, _px: i32, _py: i32, _pz: i32) {
                 let (cont, eros, weird, temp) = noise_gen.get_height_params(wx, wz);
                 let humid = noise_gen.get_noise_octaves(wx as f64 * 0.01, 123.0, wz as f64 * 0.01, 3) as f32;
                 
-                let h_world = noise_gen.get_height(wx, wz);
-                let biome = noise_gen.get_biome(cont, eros, temp, humid, h_world);
-                
+                // DIABOLICAL VOLUMETRIC SAMPLING: Replace 2D heightmap with 3D Density
                 for ly in 0..16 {
                     let y_world = chunk_y_world + ly as i32;
                     let mut block = BlockType::Air;
 
-                    if y_world <= h_world {
-                        block = if y_world == h_world {
+                    // Sample the density field at this specific voxel
+                    let density = noise_gen.get_density(wx, y_world, wz, cont, eros, weird);
+
+                    if density > 0.0 {
+                        // Check density 1 block up to see if we are at the surface
+                        let density_above = noise_gen.get_density(wx, y_world + 1, wz, cont, eros, weird);
+                        let is_surface = density_above <= 0.0 && y_world > WATER_LEVEL;
+                        
+                        let biome = noise_gen.get_biome(cont, eros, temp, humid, y_world);
+                        
+                        block = if is_surface {
                             if biome == "desert" || biome == "ocean" { BlockType::Sand }
                             else if biome == "ice_plains" { BlockType::Snow }
                             else { BlockType::Grass }
-                        } else if y_world > h_world - 4 {
-                            if biome == "desert" { BlockType::Sand }
-                            else { BlockType::Dirt }
+                        } else if density < 0.15 && y_world > WATER_LEVEL - 5 {
+                            // The transition layer between surface and deep stone
+                            if biome == "desert" { BlockType::Sand } else { BlockType::Dirt }
                         } else {
                             BlockType::Stone
                         };
@@ -410,10 +417,15 @@ pub fn _update_occlusion(&mut self, _px: i32, _py: i32, _pz: i32) {
                     }
                 }
 
-                let h_world = noise_gen.get_height(wx, wz);
-                if h_world >= chunk_y_world && h_world < chunk_y_world + 16 {
-                    let ly = (h_world - chunk_y_world) as usize;
-                    let biome = noise_gen.get_biome(cont, eros, temp, humid, h_world);
+                // DIABOLICAL SURFACE SCAN: Since we use 3D noise, we must find surfaces vertically
+                for ly in 0..CHUNK_SIZE_Y {
+                    let y_world = chunk_y_world + ly as i32;
+                    let density = noise_gen.get_density(wx, y_world, wz, cont, eros, weird);
+                    let density_above = noise_gen.get_density(wx, y_world + 1, wz, cont, eros, weird);
+                    
+                    // Surface condition: Solid here, Air above, above water level
+                    if density > 0.0 && density_above <= 0.0 && y_world > WATER_LEVEL {
+                        let biome = noise_gen.get_biome(cont, eros, temp, humid, y_world);
                     let r = rng.next_f32();
                     let ground_block = chunk.get_block(lx, ly, lz);
 

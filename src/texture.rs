@@ -476,18 +476,37 @@ fn generate_bedrock(data: &mut [u8], size: u32, w: u32, idx: u32) {
         Self::place_texture(data, size, w, idx, &p);
     }
 fn generate_ore(data: &mut [u8], size: u32, w: u32, idx: u32, ore_col: [u8; 3]) {
-        // Base Stone
         let mut p = vec![0u8; (size * size * 4) as usize];
+        // 1. Gritty Base Stone
         for i in 0..size*size {
-            let val = (125 + (i % 5 * 10) as i32 - 20) as u8;
+            let x = i % size;
+            let y = i / size;
+            let noise = ((x * 7 + y * 13) % 16) as i32 - 8;
+            let val = (120 + noise) as u8;
             let base = (i as usize) * 4;
             p[base] = val; p[base+1] = val; p[base+2] = val; p[base+3] = 255;
         }
-        // Clusters
-        for i in 0..size*size {
-            if (i % 7 == 0 && i % 3 != 0) || i % 19 == 0 {
-                 let base = (i as usize) * 4;
-                 p[base] = ore_col[0]; p[base+1] = ore_col[1]; p[base+2] = ore_col[2];
+        // 2. Crystalline Clusters with Specular Highlights
+        for y in 1..size-1 {
+            for x in 1..size-1 {
+                // Pseudo-random cluster trigger
+                if (x as u32 * 713 + y as u32 * 911) % 100 < 12 {
+                    let i = ((y * size + x) * 4) as usize;
+                    
+                    // The "Shine": Top-left pixels of a cluster are brighter
+                    let is_top_left = (x as u32 * 713 + (y-1) as u32 * 911) % 100 >= 12;
+                    let shine = if is_top_left { 40 } else { -20 };
+                    
+                    p[i] = (ore_col[0] as i32 + shine).clamp(0, 255) as u8;
+                    p[i+1] = (ore_col[1] as i32 + shine).clamp(0, 255) as u8;
+                    p[i+2] = (ore_col[2] as i32 + shine).clamp(0, 255) as u8;
+
+                    // Small neighboring fleck for organic feel
+                    let ni = (((y+1) * size + (x+1)) * 4) as usize;
+                    if ni + 3 < p.len() {
+                        p[ni] = ore_col[0]; p[ni+1] = ore_col[1]; p[ni+2] = ore_col[2];
+                    }
+                }
             }
         }
         Self::place_texture(data, size, w, idx, &p);
@@ -534,12 +553,17 @@ fn generate_obsidian(data: &mut [u8], size: u32, w: u32, idx: u32) {
         for y in 0..size {
             for x in 0..size {
                 let i = ((y*size+x)*4) as usize;
-                let grid = x > 3 && x < 13 && y > 3 && y < 13;
-                if grid {
-                    p[i] = 100; p[i+1] = 60; p[i+2] = 20; p[i+3] = 255;
+                let is_border = x == 0 || y == 0 || x == size-1 || y == size-1;
+                let is_grid = (x == 5 || x == 10) || (y == 5 || y == 10);
+                
+                if is_border {
+                    p[i]=80; p[i+1]=50; p[i+2]=20; // Dark frame
+                } else if is_grid && x > 2 && x < 13 && y > 2 && y < 13 {
+                    p[i]=60; p[i+1]=40; p[i+2]=10; // Grid lines
                 } else {
-                    p[i] = 180; p[i+1] = 130; p[i+2] = 80; p[i+3] = 255; // Wood
+                    p[i]=160; p[i+1]=120; p[i+2]=70; // Fresh wood
                 }
+                p[i+3]=255;
             }
         }
         Self::place_texture(data, size, w, idx, &p);
@@ -547,14 +571,25 @@ fn generate_obsidian(data: &mut [u8], size: u32, w: u32, idx: u32) {
     
     fn generate_crafting_side(data: &mut [u8], size: u32, w: u32, idx: u32) {
         let mut p = vec![0u8; (size * size * 4) as usize];
-        for i in 0..size*size {
-            let base = (i*4) as usize;
-            p[base]=160; p[base+1]=100; p[base+2]=50; p[base+3]=255;
+        for y in 0..size {
+            for x in 0..size {
+                let i = ((y*size+x)*4) as usize;
+                // Rich Wood background with grain
+                let grain = if x % 3 == 0 { -10 } else { 0 };
+                p[i] = (140 + grain) as u8; p[i+1] = (100 + grain) as u8; p[i+2] = (50 + grain) as u8; p[i+3] = 255;
+                
+                // "Hammer & Saw" Silhouette
+                let is_hammer_head = y == 5 && x > 4 && x < 10;
+                let is_hammer_handle = x == 7 && y > 5 && y < 12;
+                let is_saw = x == 3 && y > 4 && y < 12 && y % 2 == 0;
+                
+                if is_hammer_head || is_saw {
+                    p[i]=50; p[i+1]=50; p[i+2]=50; // Iron
+                } else if is_hammer_handle {
+                    p[i]=100; p[i+1]=70; p[i+2]=40; // Tool wood
+                }
+            }
         }
-        // Tools on side
-        let mid = (size/2) * size + (size/2);
-        let m = (mid*4) as usize;
-        p[m]=50; p[m+1]=50; p[m+2]=50;
         Self::place_texture(data, size, w, idx, &p);
     }
 
@@ -839,13 +874,53 @@ fn generate_deadbush(data: &mut [u8], size: u32, w: u32, idx: u32) {
 
     fn generate_tool(data: &mut [u8], size: u32, w: u32, idx: u32, color: [u8; 3]) {
         let mut p = vec![0u8; (size * size * 4) as usize];
+        let handle_col = [101, 67, 33]; // Dark Oak handle
+        
+        // Determine tool type based on index ranges defined in world.rs
+        // 21-25: Pickaxe, 26-30: Axe, 31-35: Shovel, 36-40: Sword, 41-45: Hoe
+        let tool_type = if idx >= 21 && idx <= 25 { "pick" }
+                   else if idx >= 26 && idx <= 30 { "axe" }
+                   else if idx >= 31 && idx <= 35 { "shovel" }
+                   else if idx >= 36 && idx <= 40 { "sword" }
+                   else { "hoe" };
+
         for y in 0..size {
             for x in 0..size {
                 let i = ((y * size + x) * 4) as usize;
-                if x == y { // Handle
-                    p[i] = 100; p[i+1] = 50; p[i+2] = 0; p[i+3] = 255;
-                } else if y > size-6 && x < 6 { // Head
-                    p[i] = color[0]; p[i+1] = color[1]; p[i+2] = color[2]; p[i+3] = 255;
+                
+                // 1. Handle (Diagonal with structural shading)
+                if x == y && x > 2 && x < size - 2 {
+                    let shade = if x % 2 == 0 { 0 } else { -15 };
+                    p[i] = (handle_col[0] as i32 + shade).clamp(0, 255) as u8;
+                    p[i+1] = (handle_col[1] as i32 + shade).clamp(0, 255) as u8;
+                    p[i+2] = (handle_col[2] as i32 + shade).clamp(0, 255) as u8;
+                    p[i+3] = 255;
+                }
+
+                // 2. DIABOLICAL SHAPE DEFINITIONS
+                let is_head = match tool_type {
+                    "pick" => {
+                        let is_arc = (y > size - 5 && (x as i32 - (size as i32 - 1 - y as i32)).abs() < 2);
+                        let is_tip = (y == size - 2 && x < 6) || (x == size - 2 && y < 6);
+                        is_arc || is_tip
+                    },
+                    "axe" => (x < 7 && y > size - 8 && (x as i32 + (size as i32 - y as i32)) < 12),
+                    "shovel" => (x < 6 && y > size - 6 && (x as i32 - (size as i32 - y as i32)).abs() < 3),
+                    "sword" => {
+                        let dist_from_diag = (x as i32 + y as i32 - (size as i32 + 2)).abs();
+                        dist_from_diag < 3 && x + y > size + 2
+                    },
+                    "hoe" => (y > size - 4 && x < 8) || (y == size - 2 && x < 10),
+                    _ => false,
+                };
+
+                if is_head {
+                    // Add a directional "Glint" effect for sexiness
+                    let glint = if x < 4 || y > size - 4 { 45 } else if x > 8 || y < 8 { -30 } else { 0 };
+                    p[i] = (color[0] as i32 + glint).clamp(0, 255) as u8;
+                    p[i+1] = (color[1] as i32 + glint).clamp(0, 255) as u8;
+                    p[i+2] = (color[2] as i32 + glint).clamp(0, 255) as u8;
+                    p[i+3] = 255;
                 }
             }
         }
@@ -908,10 +983,11 @@ fn generate_bubble_data(data: &mut [u8], size: u32, w: u32, idx: u32) {
                 let dx = x as f32 - c; let dy = y as f32 - c;
                 let dist = (dx*dx + dy*dy).sqrt();
                 let i = ((y * size + x) * 4) as usize;
-                if dist > 3.0 && dist < 6.0 { // Sexy Blue Rings
-                    p[i] = 80; p[i+1] = 160; p[i+2] = 255; p[i+3] = 255;
-                } else if dist <= 3.0 { // Translucent center
-                    p[i] = 150; p[i+1] = 200; p[i+2] = 255; p[i+3] = 100;
+                if dist > 3.5 && dist < 6.5 { // Defined Outer Ring
+                    p[i] = 40; p[i+1] = 120; p[i+2] = 255; p[i+3] = 255;
+                } else if dist <= 3.5 { // Refractive Highlight
+                    let shine = if dx < 0.0 && dy < 0.0 { 50 } else { 0 };
+                    p[i] = (150 + shine) as u8; p[i+1] = (200 + shine) as u8; p[i+2] = 255; p[i+3] = 180;
                 }
             }
         }

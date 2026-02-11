@@ -91,7 +91,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Simple Fog
     let fog_density = 0.015; 
     let fog_factor = 1.0 - exp(-in.depth * fog_density);
-    lit_color = mix(lit_color, time_data.sky_color.rgb, clamp(fog_factor, 0.0, 1.0));
+    // DIABOLICAL ATMOSPHERIC PERSPECTIVE: Increase fog for that surreal "Endless Monolith" look
+    lit_color = mix(lit_color, time_data.sky_color.rgb, clamp(fog_factor * 1.2, 0.0, 1.0));
 
     // Underwater Tint
     if (time_data.underwater > 0.5) {
