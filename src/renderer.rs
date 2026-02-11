@@ -981,13 +981,19 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
             
             // DIABOLICAL TELEMETRY SNAPSHOT: Hyper-Exhaustive high-density diagnostic
             let p = player.position; let v = player.velocity;
+            let dt_val = time_since_last.as_secs_f32() / self.frame_count as f32;
             log::info!("[STAT] FPS:{:<3.0} | DT:{:.4}s | CHK:{} | PND:{} | POS:({:.1},{:.1},{:.1}) | VEL:({:.2},{:.2},{:.2}) | GRD:{} FLY:{} SPR:{} | PTCL:{} | TRK:{} | DIRTY:{}", 
-                self.fps, time_since_last.as_secs_f32() / self.frame_count as f32, 
+                self.fps, 
+                dt_val,
                 self.chunk_meshes.len(), 
                 self.pending_chunks.len(),
-                p.x, p.y, p.z, v.x, v.y, v.z,
-                if player.on_ground {'Y'} else {'N'}, if player.is_flying {'Y'} else {'N'}, if player.is_sprinting {'Y'} else {'N'},
+                p.x, p.y, p.z, 
+                v.x, v.y, v.z,
+                if player.on_ground {'Y'} else {'N'}, 
+                if player.is_flying {'Y'} else {'N'}, 
+                if player.is_sprinting {'Y'} else {'N'},
                 self.particles.len(),
+                0, // Placeholder for TRK (Tracking) to match format string index
                 world.dirty_chunks.len() // Track pending mesh updates
             );
             
