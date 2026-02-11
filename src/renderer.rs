@@ -1254,8 +1254,7 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
         output.present();
         Ok(())
     }
-
-    pub fn render_game(&mut self, world: &World, player: &Player, pause_menu: Option<&MainMenu>, _cursor_pos: (f64, f64)) -> Result<(), wgpu::SurfaceError> {pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor_pos: (f64, f64), _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
+}
         // 1. FPS Calculation & Diabolical Telemetry
         self.frame_count += 1;
         let time_since_last = self.last_fps_time.elapsed();
