@@ -504,21 +504,24 @@ fn check_collision_horizontal(&self, world: &World, pos: Vec3) -> bool {
         false
     }
 
-    fn check_full_collision(&self, world: &World, pos: Vec3) -> bool {
-         let feet_y = pos.y - self.height / 2.0 + 0.05; 
-         let head_y = pos.y + self.height / 2.0 - 0.05;
-         let r = self.radius;
-         // Check feet, center, head
-         let heights = [feet_y, pos.y, head_y];
-         let corners = [(-r, -r), (r, r), (r, -r), (-r, r)];
-         
-         for &h in &heights {
-             for &(dx, dz) in &corners {
-                 let bp = BlockPos { x: (pos.x + dx).floor() as i32, y: h.floor() as i32, z: (pos.z + dz).floor() as i32 };
-                 if world.get_block(bp).is_solid() { return true; }
-             }
-         }
-         false
+    fn check_collision(&self, world: &World, pos: Vec3) -> bool {
+        let min_x = (pos.x - self.radius).floor() as i32;
+        let max_x = (pos.x + self.radius).floor() as i32;
+        let min_y = (pos.y - self.height * 0.9).floor() as i32;
+        let max_y = (pos.y + self.height * 0.1).floor() as i32;
+        let min_z = (pos.z - self.radius).floor() as i32;
+        let max_z = (pos.z + self.radius).floor() as i32;
+
+        for x in min_x..=max_x {
+            for y in min_y..=max_y {
+                for z in min_z..=max_z {
+                    if world.get_block(BlockPos { x, y, z }).is_solid() {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
     
 pub fn build_view_projection_matrix(&self, aspect: f32) -> [[f32; 4]; 4] {

@@ -342,33 +342,32 @@ pub fn _update_occlusion(&mut self, _px: i32, _py: i32, _pz: i32) {
                 let (cont, eros, weird, temp) = noise_gen.get_height_params(wx, wz);
                 let humid = noise_gen.get_noise_octaves(wx as f64 * 0.01, 123.0, wz as f64 * 0.01, 3) as f32;
                 
-                for ly in 0..CHUNK_SIZE_Y {
-                    let y = chunk_y_world + ly as i32;
-                    let density = noise_gen.get_density(wx, y, wz, cont, eros, weird);
+                let h_world = noise_gen.get_height(wx, wz);
+                let biome = noise_gen.get_biome(cont, eros, temp, humid, h_world);
+                
+                for ly in 0..16 {
+                    let y_world = chunk_y_world + ly as i32;
                     let mut block = BlockType::Air;
 
-                    if density > 0.0 {
-                        let n1 = noise_gen.get_noise3d(wx as f64 * 0.06, y as f64 * 0.06, wz as f64 * 0.06);
-                        let n2 = noise_gen.get_noise3d(wx as f64 * 0.06, y as f64 * 0.06 + 100.0, wz as f64 * 0.06);
-                        if n1.abs() < 0.05 && n2.abs() < 0.05 && y > 6 { 
-                            block = if (y as i32) <= WATER_LEVEL { BlockType::Water } else { BlockType::Air };
+                    if y_world <= h_world {
+                        block = if y_world == h_world {
+                            if biome == "desert" || biome == "ocean" { BlockType::Sand }
+                            else if biome == "ice_plains" { BlockType::Snow }
+                            else { BlockType::Grass }
+                        } else if y_world > h_world - 4 {
+                            if biome == "desert" { BlockType::Sand }
+                            else { BlockType::Dirt }
                         } else {
-                            if noise_gen.get_density(wx, (y + 1) as i32, wz, cont, eros, weird) <= 0.0 {
-                                block = match noise_gen.get_biome(cont, eros, temp, humid, y as i32) {
-                                    "desert" => BlockType::Sand,
-                                    "ice_plains" | "ice_ocean" => BlockType::Snow,
-                                    "ocean" | "badlands" => BlockType::Sand,
-                                    "peaks" => BlockType::Stone,
-                                    _ => BlockType::Grass,
-                                };
-                            } else {
-                                block = if y < 5 { BlockType::Bedrock } else if (y as i32) < (62 + (cont * 12.0) as i32) { BlockType::Stone } else { BlockType::Dirt };
-                            }
-                        }
-                    } else if (y as i32) <= WATER_LEVEL { block = BlockType::Water; }
+                            BlockType::Stone
+                        };
+                    } else if y_world <= WATER_LEVEL {
+                        block = BlockType::Water;
+                    }
 
-                    if block != BlockType::Air { 
-                        chunk.set_block(lx, ly, lz, block); 
+                    if y_world < 2 { block = BlockType::Bedrock; }
+
+                    if block != BlockType::Air {
+                        chunk.set_block(lx, ly, lz, block);
                         chunk.is_empty = false;
                     }
                 }
@@ -391,24 +390,31 @@ pub fn _update_occlusion(&mut self, _px: i32, _py: i32, _pz: i32) {
                             }
 
                             if !too_close {
-                                if (biome == "forest" || biome == "jungle") && r < 0.05 {
+                                if (biome == "forest" || biome == "jungle") && r < 0.05 && h_world > 64 {
                                     tree_map.insert((lx as i32, lz as i32));
-                                    let tree_h = 5 + (rng.next_f32() * 2.0) as i32;
-                                    // PLACE LOGS
+                                    let tree_h = 5 + (rng.next_f32() * 3.0) as i32;
+                                    
+                                    // 1. PLACE TRUNK (Solid Bark)
                                     for i in 1..=tree_h { 
                                         let ty = h_world + i;
                                         if ty >= chunk_y_world && ty < chunk_y_world + 16 {
                                             chunk.set_block(lx, (ty - chunk_y_world) as usize, lz, BlockType::Wood); 
                                         }
                                     }
-                                    // PLACE LEAF CANOPY
-                                    for dy in (tree_h - 2)..=(tree_h + 1) {
-                                        for dx in -2..=2 {
-                                            for dz in -2..=2 {
-                                                if dx*dx + dz*dz > 4 { continue; } // Rounded canopy
+
+                                    // 2. PLACE CANOPY (Spherical Leaf Logic)
+                                    // We ensure the canopy starts slightly below the top and extends above it
+                                    for dy in (tree_h - 3)..=(tree_h + 2) {
+                                        let radius = if dy >= tree_h { 1 } else { 2 };
+                                        for dx in -radius..=radius {
+                                            for dz in -radius..=radius {
+                                                // Manhattan distance check for "Minecraft-y" leaf clusters
+                                                if dx.abs() + dz.abs() > radius + 1 { continue; }
+                                                
                                                 let ty = h_world + dy;
                                                 let tlx = lx as i32 + dx;
                                                 let tlz = lz as i32 + dz;
+                                                
                                                 if ty >= chunk_y_world && ty < chunk_y_world + 16 && tlx >= 0 && tlx < 16 && tlz >= 0 && tlz < 16 {
                                                     let cur = chunk.get_block(tlx as usize, (ty - chunk_y_world) as usize, tlz as usize);
                                                     if cur == BlockType::Air {
@@ -418,7 +424,7 @@ pub fn _update_occlusion(&mut self, _px: i32, _py: i32, _pz: i32) {
                                             }
                                         }
                                     }
-                                } else if r < 0.02 {
+                                }else if r < 0.02 {
                                     if ly + 1 < 16 {
                                         chunk.set_block(lx, ly + 1, lz, if biome == "desert" { BlockType::DeadBush } else { BlockType::Rose });
                                     }

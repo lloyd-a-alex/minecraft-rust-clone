@@ -841,6 +841,7 @@ fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Ve
                       else if c >= '0' && c <= '9' { 300 + 26 + (c as u32 - '0' as u32) } 
                       else if c == '-' { 300 + 36 } 
                       else if c == '>' { 300 + 37 } 
+                      else if c == '/' { 300 + 38 } // DIABOLICAL SLASH SUPPORT
                       else { 999 }; // Fallback to hidden index to prevent "AAA" prefixing
             
             if idx != 999 {
@@ -980,12 +981,15 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
             
             // DIABOLICAL TELEMETRY SNAPSHOT: Hyper-Exhaustive high-density diagnostic
             let p = player.position; let v = player.velocity;
-            let info = &self.adapter_info;
-            log::info!("[STAT] FPS:{:<3.0} | DT:{:.4}s | CHK:{} | PND:{} | POS:({:.1},{:.1},{:.1}) | VEL:({:.2},{:.2},{:.2}) | GRD:{} FLY:{} SPR:{} | INV:{} | GPU:{:?} | DEV:{} | MEM:{}", 
-                self.fps, time_since_last.as_secs_f32() / self.frame_count as f32, self.chunk_meshes.len(), self.pending_chunks.len(),
+            log::info!("[STAT] FPS:{:<3.0} | DT:{:.4}s | CHK:{} | PND:{} | POS:({:.1},{:.1},{:.1}) | VEL:({:.2},{:.2},{:.2}) | GRD:{} FLY:{} SPR:{} | PTCL:{} | TRK:{} | DIRTY:{}", 
+                self.fps, time_since_last.as_secs_f32() / self.frame_count as f32, 
+                self.chunk_meshes.len(), 
+                self.pending_chunks.len(),
                 p.x, p.y, p.z, v.x, v.y, v.z,
                 if player.on_ground {'Y'} else {'N'}, if player.is_flying {'Y'} else {'N'}, if player.is_sprinting {'Y'} else {'N'},
-                if player.inventory_open {'Y'} else {'N'}, info.backend, info.name, self.particles.len()
+                self.particles.len(),
+                world.tree_map.len(), // Track active tree nodes
+                world.dirty_chunks.len() // Track pending mesh updates
             );
             
             self.frame_count = 0;
@@ -1229,6 +1233,118 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
                 self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ndc_x - sw/2.0, ndc_y - sh/2.0, sw, sh, t);
                 if stack.count > 1 { self.draw_text(&format!("{}", stack.count), ndc_x - sw/2.0, ndc_y - sh/2.0, 0.03, &mut uv, &mut ui, &mut uoff); }
             }
+        }
+
+        if !uv.is_empty() {
+            let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("UI VB"), contents: bytemuck::cast_slice(&uv), usage: BufferUsages::VERTEX });
+            let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("UI IB"), contents: bytemuck::cast_slice(&ui), usage: BufferUsages::INDEX });
+            let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { 
+                label: Some("UI Pass"), color_attachments: &[Some(RenderPassColorAttachment { view: &view, resolve_target: None, ops: Operations { load: LoadOp::Load, store: StoreOp::Store } })], 
+                depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None 
+            });
+            pass.set_pipeline(&self.ui_pipeline); pass.set_bind_group(0, &self.bind_group, &[]); pass.set_vertex_buffer(0, vb.slice(..)); pass.set_index_buffer(ib.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..ui.len() as u32, 0, 0..1);
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+        Ok(())
+    }
+
+    pub fn render_game(&mut self, world: &World, player: &Player, pause_menu: Option<&MainMenu>, cursor_pos: (f64, f64)) -> Result<(), wgpu::SurfaceError> {
+        // 1. FPS Calculation
+        self.frame_count += 1;
+        let time_since_last = self.last_fps_time.elapsed();
+        if time_since_last.as_secs_f32() >= 1.0 {
+            self.fps = self.frame_count as f32 / time_since_last.as_secs_f32();
+            self.frame_count = 0;
+            self.last_fps_time = Instant::now();
+        }
+
+        self.process_mesh_queue();
+
+        let output = self.surface.get_current_texture()?;
+        let view = output.texture.create_view(&TextureViewDescriptor::default());
+        let aspect = self.config.width as f32 / self.config.height as f32;
+        let time = self.start_time.elapsed().as_secs_f32();
+
+        // Setup Uniforms
+        let eye_bp = BlockPos { x: player.position.x.floor() as i32, y: (player.position.y + player.height * 0.4).floor() as i32, z: player.position.z.floor() as i32 };
+        let is_underwater = if world.get_block(eye_bp).is_water() { 1.0f32 } else { 0.0f32 };
+        let noise_gen = crate::noise_gen::NoiseGenerator::new(world.seed); 
+        let (cont, eros, _, temp) = noise_gen.get_height_params(eye_bp.x, eye_bp.z);
+        let humid = noise_gen.get_noise_octaves(eye_bp.x as f64 * 0.01, 44.0, eye_bp.z as f64 * 0.01, 3) as f32;
+        let biome = noise_gen.get_biome(cont, eros, temp, humid, eye_bp.y);
+        let fog_color = match biome {
+            "swamp" => [0.3, 0.4, 0.2, 1.0], "desert" => [0.8, 0.7, 0.5, 1.0], "ice_plains" => [0.9, 0.9, 1.0, 1.0], _ => [0.5, 0.8, 0.9, 1.0],
+        };
+        self.queue.write_buffer(&self.time_buffer, 0, bytemuck::cast_slice(&[fog_color[0], fog_color[1], fog_color[2], fog_color[3], time, is_underwater, 0.0, 0.0]));
+
+        let mut encoder = self.device.create_command_encoder(&CommandEncoderDescriptor { label: Some("Primary Encoder") });
+
+        // --- 3D WORLD PASS ---
+        {
+            let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { 
+                label: Some("3D Pass"), 
+                color_attachments: &[Some(RenderPassColorAttachment { view: &view, resolve_target: None, ops: Operations { load: LoadOp::Clear(Color { r: fog_color[0] as f64, g: fog_color[1] as f64, b: fog_color[2] as f64, a: 1.0 }), store: StoreOp::Store } })], 
+                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment { view: &self.depth_texture, depth_ops: Some(Operations { load: LoadOp::Clear(1.0), store: StoreOp::Store }), stencil_ops: None }), 
+                timestamp_writes: None, occlusion_query_set: None 
+            });
+            pass.set_pipeline(&self.pipeline); 
+            pass.set_bind_group(0, &self.bind_group, &[]); 
+            pass.set_bind_group(1, &self.camera_bind_group, &[]); 
+            pass.set_bind_group(2, &self.time_bind_group, &[]);
+
+            let planes = player.get_frustum_planes(aspect);
+            let p_normals: [glam::Vec3; 6] = [
+                glam::Vec3::from_slice(&planes[0][0..3]), glam::Vec3::from_slice(&planes[1][0..3]),
+                glam::Vec3::from_slice(&planes[2][0..3]), glam::Vec3::from_slice(&planes[3][0..3]),
+                glam::Vec3::from_slice(&planes[4][0..3]), glam::Vec3::from_slice(&planes[5][0..3]),
+            ];
+
+            for (&(cx, cy, cz), (mesh, _)) in &self.chunk_meshes {
+                if cx == 999 { continue; }
+                let center = glam::Vec3::new(cx as f32 * 16.0 + 8.0, cy as f32 * 16.0 + 8.0, cz as f32 * 16.0 + 8.0);
+                let mut visible = true;
+                for i in 0..6 { if p_normals[i].dot(center) + planes[i][3] < -14.0 { visible = false; break; } }
+                if visible {
+                    pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+                    pass.set_index_buffer(mesh.index_buffer.slice(..), IndexFormat::Uint32);
+                    pass.draw_indexed(0..mesh.total_indices, 0, 0..1);
+                }
+            }
+        }
+
+        // --- UI PASS (Overlay) ---
+        let mut uv = Vec::new(); let mut ui = Vec::new(); let mut uoff = 0;
+        
+        if let Some(menu) = pause_menu {
+            // Darken the background
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240);
+            for btn in &menu.buttons {
+                let tex_id = if btn.hovered { 251 } else { 250 };
+                let rect = &btn.rect;
+                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, rect.x - rect.w/2.0, rect.y - rect.h/2.0, rect.w, rect.h, tex_id);
+                let text_scale = 0.05;
+                let center_off = (btn.text.len() as f32 * text_scale) / 2.0;
+                self.draw_text(&btn.text, rect.x - center_off, rect.y - 0.02, text_scale, &mut uv, &mut ui, &mut uoff);
+            }
+        } else {
+            // Standard Game UI
+            if self.break_progress > 0.0 {
+                let crack_tex = 210 + (self.break_progress * 9.0) as u32;
+                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.05, -0.05 * aspect, 0.1, 0.1 * aspect, crack_tex);
+            }
+            if !player.inventory_open { 
+                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.01, -0.01 * aspect, 0.02, 0.02 * aspect, 240); 
+            }
+            // Hotbar
+            let sw = 0.12; let sh = sw * aspect; let sx = -(sw * 9.0) / 2.0; let by = -0.9;
+            for i in 0..9 {
+                let x = sx + (i as f32 * sw);
+                if i == player.inventory.selected_hotbar_slot { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x - 0.005, by - 0.005 * aspect, sw + 0.01, sh + 0.01 * aspect, 241); }
+                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, by, sw, sh, 240);
+            }
+            self.draw_text(&format!("FPS {}", self.fps as u32), -0.98, 0.94, 0.03, &mut uv, &mut ui, &mut uoff);
         }
 
         if !uv.is_empty() {

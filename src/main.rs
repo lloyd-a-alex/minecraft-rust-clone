@@ -888,9 +888,9 @@ if !is_paused {
                     renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.0 };
                     
                     let result = if is_paused {
-                        renderer.render_pause_menu(&pause_menu, &world, &player, cursor_pos, win_size.0, win_size.1)
+                        renderer.render_game(&world, &player, Some(&pause_menu), cursor_pos)
                     } else {
-                        renderer.render(&world, &player, is_paused, cursor_pos, win_size.0, win_size.1)
+                        renderer.render_game(&world, &player, None, cursor_pos)
                     };
 
                     // RADICAL SYNC: Clear priority flags ONLY after the render call consumes them.
