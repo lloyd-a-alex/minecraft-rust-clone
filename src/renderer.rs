@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crossbeam_channel::{unbounded, Sender, Receiver};
 use crate::world::{World, BlockPos, BlockType};
 use crate::player::Player;
-use crate::MainMenu; // Added Rect
+use crate::MainMenu;
 use std::fs::File;
 use std::io::Write;
 
@@ -59,9 +59,9 @@ pub struct MeshTask {
 
 pub struct Renderer<'a> {
     pub particles: Vec<Particle>,
-    _ui_v_cache: Vec<Vertex>,
-    _ui_i_cache: Vec<u32>,
-    _ui_needs_update: bool,
+    pub ui_v_cache: Vec<Vertex>,
+    pub ui_i_cache: Vec<u32>,
+    pub ui_needs_update: bool,
     surface: Surface<'a>, device: Device, queue: Queue, pub config: SurfaceConfiguration,
     pipeline: RenderPipeline, ui_pipeline: RenderPipeline,
     depth_texture: TextureView, bind_group: BindGroup,
@@ -391,7 +391,7 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
         }
 
         Self {
-            particles: Vec::new(), _ui_v_cache: Vec::new(), _ui_i_cache: Vec::new(), _ui_needs_update: true, surface, device, queue, config, pipeline, ui_pipeline, depth_texture, bind_group, camera_bind_group, camera_buffer, time_bind_group, time_buffer, start_time: Instant::now(), 
+            particles: Vec::new(), ui_v_cache: Vec::new(), ui_i_cache: Vec::new(), ui_needs_update: true, surface, device, queue, config, pipeline, ui_pipeline, depth_texture, bind_group, camera_bind_group, camera_buffer, time_bind_group, time_buffer, start_time: Instant::now(), 
             chunk_meshes: HashMap::new(),
             entity_vertex_buffer, entity_index_buffer, 
             break_progress: 0.0,
@@ -1333,3 +1333,4 @@ pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, c
             pass.set_pipeline(&self.ui_pipeline); pass.set_bind_group(0, &self.bind_group, &[]); pass.set_vertex_buffer(0, vb.slice(..)); pass.set_index_buffer(ib.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..ui.len() as u32, 0, 0..1);
         }
     }
+}
