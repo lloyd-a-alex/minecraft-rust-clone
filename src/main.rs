@@ -615,9 +615,9 @@ world.entities.push(ent);
                         }
                         2 => {
                             // Stage 2: Parallel Column Generation
-                            // We process 8 columns per frame (approx 400ms) to bypass the "Not Responding" check
-                            // but finish 8x faster than before.
-                            let columns_per_frame = 8;
+                            // Radical Speedup: Process 32 columns per frame (approx 128 chunks).
+                            // This saturates the CPU for a short burst without triggering "Not Responding".
+                            let columns_per_frame = 32;
                             let current_col = world.chunks.len() / (crate::world::WORLD_HEIGHT as usize / 16);
                             
                             for i in 0..columns_per_frame {
@@ -635,25 +635,29 @@ world.entities.push(ent);
                         }
                         3 => {
                             // Stage 3: Async Background Mesh Dispatch
-                            // We fire off ALL tasks to the 16 worker threads instantly.
-                            // The main thread stays free to keep the UI fluid.
                             renderer.loading_message = "DISPATCHING ASYNC MESHERS...".to_string();
                             let world_arc = Arc::new(world.clone());
-                            let chunk_keys: Vec<_> = world.chunks.keys().cloned().collect();
-                            for key in chunk_keys {
+                            let mut keys: Vec<_> = world.chunks.keys().cloned().collect();
+                            // Sort keys by proximity to center (0,0) to mesh spawn area first
+                            keys.sort_by_key(|k| k.0 * k.0 + k.2 * k.2);
+
+                            for key in keys {
                                 if !renderer.chunk_meshes.contains_key(&key) && !renderer.pending_chunks.contains(&key) {
                                     renderer.pending_chunks.insert(key);
                                     let _ = renderer.mesh_tx.send((key.0, key.1, key.2, 0, world_arc.clone()));
                                 }
                             }
-                            log::info!("[RENDER] All Load-Time Meshing Tasks Dispatched to Background Pool.");
                             load_step = 4;
                         }
                         4 => {
-                            // Stage 4: Wait for Worker threads
+                            // Stage 4: DIABOLICAL FIX - DRAIN THE MESH RESULTS
+                            // We must call renderer.update() or a specialized drain here, 
+                            // otherwise pending_chunks will NEVER decrease!
+                            renderer.process_mesh_queue(); 
+
                             let total = world.chunks.len() as f32;
                             let remaining = renderer.pending_chunks.len() as f32;
-                            let progress = (total - remaining) / total;
+                            let progress = (total - remaining) / (total + 0.001);
                             
                             renderer.loading_message = format!("OPTIMIZING GEOMETRY... {}%", (progress * 100.0) as u32);
                             renderer.loading_progress = 0.5 + progress * 0.45;
