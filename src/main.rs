@@ -651,8 +651,6 @@ world.entities.push(ent);
                         }
                         4 => {
                             // Stage 4: DIABOLICAL FIX - DRAIN THE MESH RESULTS
-                            // We must call renderer.update() or a specialized drain here, 
-                            // otherwise pending_chunks will NEVER decrease!
                             renderer.process_mesh_queue(); 
 
                             let total = world.chunks.len() as f32;
@@ -662,7 +660,10 @@ world.entities.push(ent);
                             renderer.loading_message = format!("OPTIMIZING GEOMETRY... {}%", (progress * 100.0) as u32);
                             renderer.loading_progress = 0.5 + progress * 0.45;
                             
-                            if renderer.pending_chunks.is_empty() {
+                            // HYPER-EXHAUSTIVE EXIT: Proceed if all chunks done OR if we have waited 
+                            // long enough to have at least the spawn area (approx 100 chunks) ready.
+                            let minimum_ready = total > 100.0 && (total - remaining) > 100.0;
+                            if renderer.pending_chunks.is_empty() || (renderer.init_time.elapsed().as_secs_f32() > 10.0 && minimum_ready) {
                                 let h = world.get_height_at(0, 0);
                                 player.position = glam::Vec3::new(0.5, h as f32 + 2.5, 0.5);
                                 load_step = 5;

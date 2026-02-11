@@ -409,6 +409,32 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
         });
     }
 
+    pub fn process_mesh_queue(&mut self) {
+        while let Ok(task) = self.mesh_rx.try_recv() {
+            self.pending_chunks.remove(&(task.cx, task.cy, task.cz));
+            self.chunk_meshes.remove(&(task.cx, task.cy, task.cz));
+
+            if !task.vertices.is_empty() {
+                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { 
+                    label: Some("Chunk VB"), 
+                    contents: bytemuck::cast_slice(&task.vertices), 
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST 
+                });
+                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { 
+                    label: Some("Chunk IB"), 
+                    contents: bytemuck::cast_slice(&task.indices), 
+                    usage: BufferUsages::INDEX | BufferUsages::COPY_DST 
+                });
+                self.chunk_meshes.insert((task.cx, task.cy, task.cz), (ChunkMesh { 
+                    vertex_buffer: vb, 
+                    index_buffer: ib, 
+                    _ranges: task.ranges, 
+                    total_indices: task.indices.len() as u32 
+                }, task.lod));
+            }
+        }
+    }
+
     pub fn dump_crash_telemetry(&self, error: &str) {
         let path = "GPU_CRASH_DUMP.txt";
         let mut file = File::create(path).expect("Failed to create crash dump file");
@@ -941,35 +967,8 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
             self.last_fps_time = Instant::now();
         }
 
-        // 2. DIABOLICAL MESH BARRIER: Ensure that when a block is broken, the old mesh is 
-        // deleted FROM THE GPU IMMEDIATELY, even before the new one is ready. 
-        // This prevents the "Ghost Block" from being rendered during the 1-2 frame generation gap.
-        while let Ok(task) = self.mesh_rx.try_recv() {
-            self.pending_chunks.remove(&(task.cx, task.cy, task.cz));
-            
-            // ROOT CAUSE FIX: Remove the old mesh regardless of whether the new one has vertices.
-            // This ensures "Air" chunks or newly emptied chunks don't keep their old geometry.
-            self.chunk_meshes.remove(&(task.cx, task.cy, task.cz));
-
-            if !task.vertices.is_empty() {
-                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { 
-                    label: Some("Chunk VB"), 
-                    contents: bytemuck::cast_slice(&task.vertices), 
-                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST 
-                });
-                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { 
-                    label: Some("Chunk IB"), 
-                    contents: bytemuck::cast_slice(&task.indices), 
-                    usage: BufferUsages::INDEX | BufferUsages::COPY_DST 
-                });
-                self.chunk_meshes.insert((task.cx, task.cy, task.cz), (ChunkMesh { 
-                    vertex_buffer: vb, 
-                    index_buffer: ib, 
-                    _ranges: task.ranges, 
-                    total_indices: task.indices.len() as u32 
-                }, task.lod));
-            }
-        }
+        // 2. DIABOLICAL MESH BARRIER: Consistently process incoming meshes from worker threads.
+        self.process_mesh_queue();
 
         // 3. PRIORITY MESH UPDATER: Prevents the 5-second lag and flickering
         let p_cx = (player.position.x / 16.0).floor() as i32;
