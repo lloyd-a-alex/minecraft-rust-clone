@@ -183,6 +183,8 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     let mut player = Player::new();
     player.position = start_pos;
     let mut last_persist = Instant::now();
+    let mut accumulator = 0.0f32;
+    const FIXED_TIME: f32 = 1.0 / 120.0; // 120Hz DIABOLICAL PHYSICS LOCK
     
     // --- GAME STATE ---
     // DIABOLICAL INITIALIZATION: game_state starts as Loading to show the bar during heavy work.
@@ -697,10 +699,28 @@ world.entities.push(ent);
                     return; 
                 }
                 
-                // Root Cause Fix: Use the time calculated at the start of the RedrawRequested block
-                let dt = _dt_frame;
+                // ROOT CAUSE FIX: Decouple Physics from Framerate via Accumulator
+                accumulator += _dt_frame.min(0.1); // Cap to 100ms to prevent spiral of death
 
-if game_state == GameState::Playing {
+                if game_state == GameState::Playing {
+                    while accumulator >= FIXED_TIME {
+                        let head_pos = BlockPos { 
+                            x: player.position.x as i32, 
+                            y: (player.position.y + 1.0) as i32, 
+                            z: player.position.z as i32 
+                        };
+                        let is_cave = world.get_light_world(head_pos) < 6;
+                        
+                        player.capture_state();
+                        player.update(&world, FIXED_TIME, &audio, is_cave);
+                        world.update_entities(FIXED_TIME, &mut player);
+                        accumulator -= FIXED_TIME;
+                    }
+                    
+                    let alpha = accumulator / FIXED_TIME;
+                    renderer.update_camera(&player, win_size.0 as f32 / win_size.1 as f32, alpha);
+
+                    // DIABOLICAL FIRST-FRAME STABILITY
                     // DIABOLICAL FIRST-FRAME STABILITY
                     if !first_build_done {
                         renderer.rebuild_all_chunks(&world);
@@ -777,12 +797,11 @@ if !spawn_found { player.position = glam::Vec3::new(0.0, 80.0, 0.0); player.velo
                     }
 
 if !is_paused {
-                        if player.spawn_timer > 0.0 { player.spawn_timer -= dt; player.velocity = glam::Vec3::ZERO; }
+                        if player.spawn_timer > 0.0 { player.spawn_timer -= _dt_frame; player.velocity = glam::Vec3::ZERO; }
                         // DEATH
                         if player.is_dead {
-                            death_timer += dt;
+                            death_timer += _dt_frame;
                             if death_timer > 3.0 {
-                                // RESPAWN LOGIC (Copied)
                                 spawn_found = false;
                                 'respawn: for r in 0..300i32 {
                                     for x in -r..=r { for z in -r..=r {
@@ -794,18 +813,12 @@ if !is_paused {
                                                 spawn_found = true; death_timer = 0.0; break 'respawn;
                                             }
                                         }
-}}
+                                    }}
                                 }
-if !spawn_found { player.respawn(); player.position = glam::Vec3::new(0.0, 80.0, 0.0); death_timer = 0.0; }
+                                if !spawn_found { player.respawn(); player.position = glam::Vec3::new(0.0, 80.0, 0.0); death_timer = 0.0; }
                             }
-} else {
-                            let head_pos = BlockPos { 
-                                x: player.position.x as i32, 
-                                y: (player.position.y + 1.0) as i32, 
-                                z: player.position.z as i32 
-                            };
-                            let is_cave = world.get_light_world(head_pos) < 6;
-                            player.update(&world, dt, &audio, is_cave);
+                        } else {
+                            // Mining logic still runs per-frame for responsiveness
                             let (sin, cos) = player.rotation.x.sin_cos(); 
                             let (ysin, ycos) = player.rotation.y.sin_cos();
                             let dir = glam::Vec3::new(ycos * cos, sin, ysin * cos).normalize();
@@ -814,12 +827,11 @@ if !spawn_found { player.respawn(); player.position = glam::Vec3::new(0.0, 80.0,
                             
                             if left_click && !player.inventory_open {
                                 if let Some(hit) = current_target {
-if Some(hit) != breaking_pos {
-                        // DIABOLICAL FIX: Reset immediately when looking at a new block
-                        breaking_pos = Some(hit); 
-                        break_progress = 0.0; 
-                        break_grace_timer = 0.0; 
-                    }
+                                    if Some(hit) != breaking_pos {
+                                        breaking_pos = Some(hit); 
+                                        break_progress = 0.0; 
+                                        break_grace_timer = 0.0; 
+                                    }
                                     
                                     if Some(hit) == breaking_pos {
                                         let blk = world.get_block(hit); 
@@ -827,7 +839,7 @@ if Some(hit) != breaking_pos {
                                         let is_correct_tool = tool.get_tool_class() == blk.get_best_tool_type();
                                         let speed = if is_correct_tool || blk.get_best_tool_type() == "none" { tool.get_tool_speed() } else { 1.0 };
                                         let h = blk.get_hardness();
-                                        if h > 0.0 { break_progress += (speed / h) * dt; } else { break_progress = 1.1; }
+                                        if h > 0.0 { break_progress += (speed / h) * _dt_frame; } else { break_progress = 1.1; }
                                         if break_progress >= 1.0 {
                                             if let Some(stack) = &mut player.inventory.slots[player.inventory.selected_hotbar_slot] {
                                                 if stack.item.is_tool() {
@@ -842,31 +854,26 @@ if Some(hit) != breaking_pos {
                                                 renderer.particles.push(renderer::Particle {
                                                     pos: glam::Vec3::new(hit.x as f32 + 0.5, hit.y as f32 + 0.5, hit.z as f32 + 0.5),
                                                     vel: glam::Vec3::new((rand::random::<f32>() - 0.5) * 4.0, rand::random::<f32>() * 5.0, (rand::random::<f32>() - 0.5) * 4.0),
-                                                    life: 1.0,
-                                                    color_idx: tex,
+                                                    life: 1.0, color_idx: tex,
                                                 });
                                             }
-let b_type = world.get_block(hit);
                                             let s_type = match b_type {
                                                 BlockType::Grass | BlockType::Leaves | BlockType::TallGrass => "grass",
                                                 BlockType::Stone | BlockType::Cobblestone | BlockType::CoalOre => "stone",
                                                 BlockType::Sand | BlockType::Gravel => "sand",
                                                 _ => "break",
                                             };
-let head_p = BlockPos { x: player.position.x as i32, y: (player.position.y + 1.5) as i32, z: player.position.z as i32 };
+                                            let head_p = BlockPos { x: player.position.x as i32, y: (player.position.y + 1.5) as i32, z: player.position.z as i32 };
                                             let is_submerged = world.get_block(head_p).is_water();
-                                            let is_cave = world.get_light_world(head_p) < 6;
-                                            audio.play(s_type, is_submerged || is_cave);
+                                            audio.play(s_type, is_submerged);
                                             let _c = world.break_block(hit);
                                             if let Some(net) = &network_mgr { net.send_packet(Packet::BlockUpdate { pos: hit, block: BlockType::Air }); }
                                             breaking_pos = None; break_progress = 0.0;
-                                            // ROOT FIX: Background thread takes over automatically
                                         }
                                     }
-                                } else { if breaking_pos.is_some() && break_grace_timer > 0.0 { break_grace_timer -= dt; } else { breaking_pos = None; break_progress = 0.0; } }
-                            } else { if breaking_pos.is_some() && break_grace_timer > 0.0 { break_grace_timer -= dt; } else { breaking_pos = None; break_progress = 0.0; } }
+                                } else { breaking_pos = None; break_progress = 0.0; }
+                            } else { breaking_pos = None; break_progress = 0.0; }
                         }
-                        world.update_entities(dt, &mut player);
                     }
 renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.0 };
                     renderer.update_camera(&player, win_size.0 as f32 / win_size.1 as f32);

@@ -157,8 +157,12 @@ pub struct Player {
     pub on_ground: bool,
     pub inventory: Inventory,
     pub keys: PlayerKeys,
-pub hotbar: crate::Hotbar,
-    
+    pub hotbar: crate::Hotbar,
+
+    // DIABOLICAL INTERPOLATION: Store previous state to kill visual jitter
+    pub prev_position: Vec3,
+    pub prev_rotation: Vec3,
+
     pub is_flying: bool,
     pub is_noclip: bool,
     pub admin_speed: f32, // NEW
@@ -207,8 +211,9 @@ Player {
             inventory: Inventory::new(),
             keys: PlayerKeys::default(),
             hotbar: crate::Hotbar::new(),
-            
-is_flying: false,
+            prev_position: Vec3::new(0.0, 100.0, 0.0),
+            prev_rotation: Vec3::ZERO,
+            is_flying: false,
             is_noclip: false,
             admin_speed: 1.0,
             is_sprinting: false,
@@ -249,10 +254,17 @@ KeyCode::Digit9 => self.inventory.select_slot(8),
     
     pub fn process_mouse(&mut self, dx: f64, dy: f64) {
         if self.is_dead || self.inventory_open { return; }
-        // Touchpad Smoothing & Floating Point (No floor)
+        // DIABOLICAL NOISE FILTER: Ignore hardware-level mouse shivering
+        if dx.abs() < 0.0001 && dy.abs() < 0.0001 { return; }
+        
         self.rotation.y += dx as f32 * self.sensitivity; 
         self.rotation.x -= dy as f32 * self.sensitivity;
         self.rotation.x = self.rotation.x.clamp(-1.55, 1.55); // Clamp pitch
+    }
+
+    pub fn capture_state(&mut self) {
+        self.prev_position = self.position;
+        self.prev_rotation = self.rotation;
     }
     
 pub fn update(&mut self, world: &crate::world::World, dt: f32, audio: &crate::AudioSystem, in_cave: bool) {

@@ -119,10 +119,33 @@ struct DrawIndexedIndirect {
 }
 
 impl<'a> Renderer<'a> {
-    pub fn update_camera(&mut self, player: &Player, aspect: f32) {
-    let view_proj = player.build_view_projection_matrix(aspect);
-    self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[view_proj]));
-}
+    pub fn update_camera(&mut self, player: &Player, aspect: f32, alpha: f32) {
+        let (pitch_sin, pitch_cos) = player.rotation.x.sin_cos(); 
+        let (yaw_sin, yaw_cos) = player.rotation.y.sin_cos();
+        
+        // INTERPOLATE POSITION: Perfect smoothness
+        let pos = player.prev_position.lerp(player.position, alpha);
+        let mut eye_pos = pos + glam::Vec3::new(0.0, player.height * 0.4, 0.0);
+        
+        // Bobbing interpolation
+        if player.on_ground && (player.keys.forward || player.keys.backward || player.keys.left || player.keys.right) { 
+            eye_pos.y += (player.walk_time * 2.0).sin() * 0.02; 
+        }
+        
+        let forward = glam::Vec3::new(yaw_cos * pitch_cos, pitch_sin, yaw_sin * pitch_cos).normalize();
+        let view = glam::Mat4::look_at_rh(eye_pos, eye_pos + forward, glam::Vec3::Y);
+        let proj = glam::Mat4::perspective_rh(75.0f32.to_radians(), aspect, 0.1, 512.0);
+        
+        let correction = glam::Mat4::from_cols_array(&[
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 0.5, 0.0,
+            0.0, 0.0, 0.5, 1.0,
+        ]);
+        
+        let view_proj = (correction * proj * view).to_cols_array_2d();
+        self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[view_proj]));
+    }
     pub async fn new(window: &'a Window) -> Self {
         // --- KEY FIX: Use empty flags for compatibility ---
 let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
