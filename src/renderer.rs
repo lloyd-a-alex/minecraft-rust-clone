@@ -452,16 +452,23 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
         let mut ui = Vec::new();
         let mut uoff = 0;
 
-        // 1. DIABOLICAL BACKGROUND: Dynamic Scanning Grid
-        self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240); // Base dim
+        // 1. DIABOLICAL BACKGROUND: Dynamic Scanning Matrix
+        self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240); // Dark base
         
-        let grid_count = 12;
+        let grid_count = 24;
         let grid_w = 2.0 / grid_count as f32;
         for i in 0..grid_count {
-            let _pulse = ((time * 2.0 + i as f32 * 0.5).sin() * 0.5 + 0.5) * 0.05;
-            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0 + i as f32 * grid_w, -1.0, 0.002, 2.0, 245); // Vertical scanlines
-            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0 + i as f32 * grid_w * aspect, 2.0, 0.002, 245); // Horizontal
+            let scroll = (time * 0.2 + i as f32 * 0.1) % 2.0;
+            let alpha_pulse = ((time * 3.0 + i as f32).sin() * 0.5 + 0.5) * 0.1;
+            // Vertical Matrix Rain effect
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0 + i as f32 * grid_w, -1.0, 0.003, 2.0, 245);
+            // Scanline overlay
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, 1.0 - scroll, 2.0, 0.01, 241);
         }
+
+        // 2. Title with Bloom (Shadow layers)
+        self.draw_text("MINECRAFT", -0.42, 0.42, 0.12, &mut uv, &mut ui, &mut uoff);
+        self.draw_text("RUST EDITION", -0.32, 0.32, 0.05, &mut uv, &mut ui, &mut uoff);
 
         // 2. Title with Bloom (Shadow layers)
         self.draw_text("MINECRAFT", -0.32, 0.42, 0.12, &mut uv, &mut ui, &mut uoff);

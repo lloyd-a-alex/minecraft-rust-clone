@@ -301,10 +301,25 @@ pub fn generate_terrain_around(&mut self, cx: i32, cz: i32, radius: i32) -> Vec<
                 }
             }
         }
-        self.update_occlusion(cx, 64/16, cz);
         newly_generated
     }
 
+    pub fn bootstrap_terrain_step(&mut self, step: i32) -> bool {
+        let radius = 6;
+        let side = radius * 2 + 1;
+        if step >= side * side { return true; }
+        
+        let x = (step % side) - radius;
+        let z = (step / side) - radius;
+        let noise_gen = NoiseGenerator::new(self.seed);
+        
+        for y in 0..(WORLD_HEIGHT / 16) {
+            if !self.chunks.contains_key(&(x, y, z)) {
+                self.generate_single_chunk(x, y, z, &noise_gen);
+            }
+        }
+        false
+    }
 pub fn update_occlusion(&mut self, _px: i32, _py: i32, _pz: i32) {
         // ROOT FIX: Occlusion is now handled by the Frustum Culler in the Renderer.
         // We do nothing here to keep the World structure lightweight.

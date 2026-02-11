@@ -600,65 +600,46 @@ world.entities.push(ent);
                 last_frame = now;
 
                 if game_state == GameState::Loading {
-                    // RADICAL TELEMETRY PIPELINE: High-precision state reporting
+                    // DIABOLICAL INCREMENTAL LOADER: Spread tasks across frames to keep OS Responsive
                     match load_step {
                         0 => {
-                            renderer.loading_message = "ESTABLISHING GPU CONTEXT...".to_string();
+                            renderer.loading_message = "INITIALIZING CORE KERNEL...".to_string();
                             renderer.loading_progress = 0.05;
-                            log::info!("[BOOT] GPU Pipeline warm-up started.");
                             load_step += 1;
                         }
                         1 => {
                             renderer.loading_message = "BAKING PROCEDURAL ATLAS...".to_string();
-                            renderer.loading_progress = 0.15;
-                            let start = Instant::now();
+                            renderer.loading_progress = 0.1;
                             let atlas = texture::TextureAtlas::new();
-                            log::info!("[BOOT] Atlas generated in {:?}. Uploading to VRAM...", start.elapsed());
                             renderer.upload_atlas(&atlas.data);
                             load_step += 1;
                         }
-                        2 => {
-                            renderer.loading_message = "SYNCHRONIZING BIOME VECTORS...".to_string();
-                            renderer.loading_progress = 0.35;
-                            world.generate_terrain_around(0, 0, 6); // Larger initial radius
-                            log::info!("[BOOT] World seed {} heightmap calibrated.", world.seed);
-                            load_step += 1;
+                        2..=170 => {
+                            let terrain_step = load_step - 2;
+                            renderer.loading_message = format!("GENERATING VOXEL TOPOLOGY... {}%", (terrain_step as f32 / 169.0 * 100.0) as u32);
+                            renderer.loading_progress = 0.1 + (terrain_step as f32 / 169.0) * 0.4;
+                            if world.bootstrap_terrain_step(terrain_step) { load_step = 171; }
+                            else { load_step += 1; }
                         }
-                        3 => {
-                            renderer.loading_message = "DISPATCHING MESH WORKERS...".to_string();
-                            renderer.loading_progress = 0.60;
+                        171 => {
+                            renderer.loading_message = "DISPATCHING ASYNC MESHERS...".to_string();
+                            renderer.loading_progress = 0.6;
                             renderer.rebuild_all_chunks(&world);
-                            log::info!("[BOOT] Mesh generation threads dispatched.");
                             load_step += 1;
                         }
-                        4 => {
+                        172 => {
                             renderer.loading_message = "CALCULATING SPATIAL INTEGRITY...".to_string();
-                            renderer.loading_progress = 0.85;
-                            'spawn_search: for r in 0..200i32 {
-                                for x in -r..=r {
-                                    for z in -r..=r {
-                                        if x.abs() != r && z.abs() != r { continue; }
-                                        let h = world.get_height_at(x, z);
-                                        if h > world::WATER_LEVEL as i32 + 2 {
-                                            player.position = glam::Vec3::new(x as f32 + 0.5, h as f32 + 2.5, z as f32 + 0.5);
-                                            spawn_found = true;
-                                            log::info!("[BOOT] Ground collision confirmed at ({}, {})", x, z);
-                                            break 'spawn_search;
-                                        }
-                                    }
-                                }
-                            }
+                            renderer.loading_progress = 0.8;
+                            let h = world.get_height_at(0, 0);
+                            player.position = glam::Vec3::new(0.5, h as f32 + 2.5, 0.5);
                             load_step += 1;
                         }
                         _ => {
-                            // DIABOLICAL TRANSITION SEQUENCE: Fade-in and World Handshake
-                            // Use calculated frame delta for smooth transition
-                            renderer.transition_alpha = (renderer.transition_alpha - _dt_frame * 0.8).max(0.0);
+                            renderer.transition_alpha = (renderer.transition_alpha - _dt_frame * 1.2).max(0.0);
                             renderer.loading_progress = 1.0;
                             renderer.loading_message = "SYSTEMS NOMINAL. READY.".to_string();
 
                             if renderer.transition_alpha <= 0.0 {
-                                log::info!("🚀 RADICAL DEPLOY: ENTERING WORLD");
                                 if was_playing {
                                     game_state = GameState::Playing;
                                     let _ = window.set_cursor_grab(CursorGrabMode::Locked);
@@ -672,9 +653,7 @@ world.entities.push(ent);
                         }
                     }
                     
-                    if let Err(e) = renderer.render_loading_screen() {
-                        log::error!("Loading render error: {:?}", e);
-                    }
+                    if let Err(e) = renderer.render_loading_screen() { log::error!("Loading error: {:?}", e); }
                     window.request_redraw();
                     return; 
                 }
