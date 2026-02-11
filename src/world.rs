@@ -392,6 +392,19 @@ pub fn _update_occlusion(&mut self, _px: i32, _py: i32, _pz: i32) {
                     if y_world < 2 { block = BlockType::Bedrock; }
 
                     if block != BlockType::Air {
+                        // DIABOLICAL ORE GENERATION
+                        if block == BlockType::Stone {
+                            let ore_rng = (wx as u64).wrapping_mul(31234) ^ (y_world as u64).wrapping_mul(7123) ^ (wz as u64).wrapping_mul(1234);
+                            let ore_chance = (ore_rng % 1000) as f32 / 10.0;
+                            
+                            if y_world < 16 && ore_chance < 0.2 { block = BlockType::DiamondOre; }
+                            else if y_world < 32 && ore_chance < 0.5 { block = BlockType::GoldOre; }
+                            else if y_world < 48 && ore_chance < 0.8 { block = BlockType::LapisOre; }
+                            else if y_world < 64 && ore_chance < 1.2 { block = BlockType::RedstoneOre; }
+                            else if y_world < 64 && ore_chance < 2.5 { block = BlockType::IronOre; }
+                            else if ore_chance < 4.0 { block = BlockType::CoalOre; }
+                        }
+
                         chunk.set_block(lx, ly, lz, block);
                         chunk.is_empty = false;
                     }
@@ -428,7 +441,7 @@ pub fn _update_occlusion(&mut self, _px: i32, _py: i32, _pz: i32) {
                                     }
 
                                     // 2. PLACE CANOPY (RADICAL FIX: Natural Tapering)
-                                    for dy in (tree_h - 2)..=(tree_h + 2) {
+                                    for dy in (tree_h - 2)..=(tree_h + 1) { // Reduced top layer height
                                         let radius: i32 = if dy > tree_h { 0 } else if dy == tree_h { 1 } else { 2 };
                                         for dx in -radius..=radius {
                                             for dz in -radius..=radius {

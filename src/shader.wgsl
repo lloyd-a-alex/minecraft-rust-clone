@@ -72,7 +72,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     );
 
     var base_color = textureSample(t_diffuse, s_diffuse, atlas_uv);
-    if (base_color.a < 0.1) { discard; }
+    
+    // DIABOLICAL OVERLAY FIX: If alpha is low but not zero, allow blending for cracks.
+    if (base_color.a < 0.01) { discard; }
     
     // Proper Water Transparency
     if (in.tex_index == 9u) {

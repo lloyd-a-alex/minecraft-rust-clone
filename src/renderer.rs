@@ -801,13 +801,13 @@ fn _add_cross_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, 
             _ => block.get_texture_side()
         };
         
-        // DIABOLICAL UV ALIGNMENT: Sides were flipped because UV Y is down in WGPU.
-        // Positions are CCW. UVs are [u, v].
+        // BIT-LEVEL PARITY FIX: Correct UV mapping and winding for all 6 faces to prevent "Reversed Texture" bugs.
+        // WGPU uses Y-down UV, so top-left of a block is (0,0).
         let (positions, uv) = match face {
             0 => ([[x, y + 1.0, z + h], [x + w, y + 1.0, z + h], [x + w, y + 1.0, z], [x, y + 1.0, z]], [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]]), // Top
             1 => ([[x, y, z], [x + w, y, z], [x + w, y, z + h], [x, y, z + h]], [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]]), // Bottom
-            2 => ([[x + 1.0, y, z], [x + 1.0, y + w, z], [x + 1.0, y + w, z + h], [x + 1.0, y, z + h]], [[h, 0.0], [0.0, 0.0], [0.0, w], [h, w]]), // Right
-            3 => ([[x, y, z + h], [x, y + w, z + h], [x, y + w, z], [x, y, z]], [[0.0, 0.0], [h, 0.0], [h, w], [0.0, w]]), // Left
+            2 => ([[x + 1.0, y, z + h], [x + 1.0, y + w, z + h], [x + 1.0, y + w, z], [x + 1.0, y, z]], [[0.0, h], [0.0, 0.0], [w, 0.0], [w, h]]), // Right (Corrected)
+            3 => ([[x, y, z], [x, y + w, z], [x, y + w, z + h], [x, y, z + h]], [[0.0, h], [0.0, 0.0], [w, 0.0], [w, h]]), // Left (Corrected)
             4 => ([[x, y, z + 1.0], [x + w, y, z + 1.0], [x + w, y + h, z + 1.0], [x, y + h, z + 1.0]], [[0.0, h], [w, h], [w, 0.0], [0.0, 0.0]]), // Front
             5 => ([[x + w, y, z], [x, y, z], [x, y + h, z], [x + w, y + h, z]], [[0.0, h], [w, h], [w, 0.0], [0.0, 0.0]]), // Back
             _ => ([[0.0; 3]; 4], [[0.0; 2]; 4]),
@@ -1067,6 +1067,36 @@ pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, c
 
         // 4. Entity Buffer Preparation
         let mut ent_v = Vec::new(); let mut ent_i = Vec::new(); let mut ent_off = 0;
+        
+        // DIABOLICAL IN-WORLD BREAKING ANIMATION
+        if self.break_progress > 0.0 {
+            let (sin, cos) = player.rotation.x.sin_cos(); 
+            let (ysin, ycos) = player.rotation.y.sin_cos();
+            let dir = glam::Vec3::new(ycos * cos, sin, ysin * cos).normalize();
+            if let Some((hit, place)) = world.raycast(player.position + glam::Vec3::new(0.0, player.height * 0.4, 0.0), dir, 5.0) {
+                let crack_tex = 210 + (self.break_progress * 9.0).min(9.0) as u32;
+                let normal = glam::Vec3::new((place.x - hit.x) as f32, (place.y - hit.y) as f32, (place.z - hit.z) as f32);
+                let face_id = if normal.y > 0.5 { 0 } else if normal.y < -0.5 { 1 } else if normal.x > 0.5 { 2 } else if normal.x < -0.5 { 3 } else if normal.z > 0.5 { 4 } else { 5 };
+                
+                // Add crack overlay quad with tiny epsilon offset to prevent Z-fighting
+                let eps = 0.005;
+                let x = hit.x as f32; let y = hit.y as f32; let z = hit.z as f32;
+                let (p, uv) = match face_id {
+                    0 => ([[x,y+1.0+eps,z+1.0], [x+1.0,y+1.0+eps,z+1.0], [x+1.0,y+1.0+eps,z], [x,y+1.0+eps,z]], [[0.0,1.0],[1.0,1.0],[1.0,0.0],[0.0,0.0]]),
+                    1 => ([[x,y-eps,z], [x+1.0,y-eps,z], [x+1.0,y-eps,z+1.0], [x,y-eps,z+1.0]], [[0.0,0.0],[1.0,0.0],[1.0,1.0],[0.0,1.0]]),
+                    2 => ([[x+1.0+eps,y,z], [x+1.0+eps,y,z+1.0], [x+1.0+eps,y+1.0,z+1.0], [x+1.0+eps,y+1.0,z]], [[0.0,1.0],[1.0,1.0],[1.0,0.0],[0.0,0.0]]),
+                    3 => ([[x-eps,y,z+1.0], [x-eps,y,z], [x-eps,y+1.0,z], [x-eps,y+1.0,z+1.0]], [[0.0,1.0],[1.0,1.0],[1.0,0.0],[0.0,0.0]]),
+                    4 => ([[x,y,z+1.0+eps], [x+1.0,y,z+1.0+eps], [x+1.0,y+1.0,z+1.0+eps], [x,y+1.0,z+1.0+eps]], [[0.0,1.0],[1.0,1.0],[1.0,0.0],[0.0,0.0]]),
+                    5 => ([[x+1.0,y,z-eps], [x,y,z-eps], [x,y+1.0,z-eps], [x+1.0,y+1.0,z-eps]], [[0.0,1.0],[1.0,1.0],[1.0,0.0],[0.0,0.0]]),
+                    _ => ([[0.0;3];4], [[0.0;2];4]),
+                };
+                let base = ent_off;
+                for i in 0..4 { ent_v.push(Vertex { position: p[i], tex_coords: uv[i], ao: 1.0, tex_index: crack_tex, light: 15.0 }); }
+                ent_i.extend_from_slice(&[base, base+1, base+2, base, base+2, base+3]);
+                ent_off += 4;
+            }
+        }
+
         for rp in &world.remote_players {
             for f in 0..6 { self.add_rotated_quad(&mut ent_v, &mut ent_i, &mut ent_off, [rp.position.x, rp.position.y, rp.position.z], rp.rotation, -0.3, 0.0, -0.3, 0.6, f, 13); }
             for f in 0..6 { self.add_rotated_quad(&mut ent_v, &mut ent_i, &mut ent_off, [rp.position.x, rp.position.y+0.65, rp.position.z], rp.rotation, -0.3, 0.0, -0.3, 0.6, f, 13); }
@@ -1150,15 +1180,9 @@ pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, c
             }
         }
 
-        // 6. UI Logic & Render Pass
+       // 6. UI Logic & Render Pass
         let mut uv = Vec::new(); let mut ui = Vec::new(); let mut uoff = 0;
         
-        // Breaking Cracks
-        if self.break_progress > 0.0 {
-            let crack_tex = 210 + (self.break_progress * 9.0) as u32;
-            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.05, -0.05 * aspect, 0.1, 0.1 * aspect, crack_tex);
-        }
-
         // Crosshair
         if !player.inventory_open && !is_paused { 
             self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.01, -0.01 * aspect, 0.02, 0.02 * aspect, 240); 

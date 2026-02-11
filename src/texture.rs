@@ -121,10 +121,15 @@ pub fn new() -> Self {
         Self::generate_meat(&mut data, block_size, atlas_width, 84, [200, 100, 60]);    // Cooked Porkchop
 
         // Tools
-        for i in 21..=25 { Self::generate_tool(&mut data, block_size, atlas_width, i, [150, 100, 50]); } // Wood
-        for i in 26..=30 { Self::generate_tool(&mut data, block_size, atlas_width, i, [120, 120, 120]); } // Stone
-        for i in 31..=35 { Self::generate_tool(&mut data, block_size, atlas_width, i, [200, 200, 200]); } // Iron
-        for i in 36..=40 { Self::generate_tool(&mut data, block_size, atlas_width, i, [255, 215, 0]); }   // Gold (Indices reused for example)
+        Self::generate_tool(&mut data, block_size, atlas_width, 21, [130, 90, 50]);   // Wood Pickaxe
+        Self::generate_tool(&mut data, block_size, atlas_width, 22, [100, 100, 100]); // Stone Pickaxe
+        Self::generate_tool(&mut data, block_size, atlas_width, 23, [220, 220, 220]); // Iron Pickaxe
+        Self::generate_tool(&mut data, block_size, atlas_width, 24, [255, 240, 50]);  // Gold Pickaxe
+        Self::generate_tool(&mut data, block_size, atlas_width, 25, [80, 240, 255]);  // Diamond Pickaxe
+
+        for i in 26..=30 { Self::generate_tool(&mut data, block_size, atlas_width, i, [120, 120, 120]); } // Axes
+        for i in 31..=35 { Self::generate_tool(&mut data, block_size, atlas_width, i, [200, 200, 200]); } // Shovels
+        for i in 36..=40 { Self::generate_tool(&mut data, block_size, atlas_width, i, [255, 215, 0]); }   // Swords
 
         // --- 8. UI ELEMENTS ---
         const UI_HOTBAR_SLOT: u32 = 240;
