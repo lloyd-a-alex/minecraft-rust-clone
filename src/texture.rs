@@ -900,12 +900,12 @@ fn generate_deadbush(data: &mut [u8], size: u32, w: u32, idx: u32) {
                 // 2. DIABOLICAL SHAPE DEFINITIONS
                 let is_head = match tool_type {
                     "pick" => {
-                        let is_arc = (y > size - 5 && (x as i32 - (size as i32 - 1 - y as i32)).abs() < 2);
+                        let is_arc = y > size - 5 && (x as i32 - (size as i32 - 1 - y as i32)).abs() < 2;
                         let is_tip = (y == size - 2 && x < 6) || (x == size - 2 && y < 6);
                         is_arc || is_tip
                     },
-                    "axe" => (x < 7 && y > size - 8 && (x as i32 + (size as i32 - y as i32)) < 12),
-                    "shovel" => (x < 6 && y > size - 6 && (x as i32 - (size as i32 - y as i32)).abs() < 3),
+                    "axe" => x < 7 && y > size - 8 && (x as i32 + (size as i32 - y as i32)) < 12,
+                    "shovel" => x < 6 && y > size - 6 && (x as i32 - (size as i32 - y as i32)).abs() < 3,
                     "sword" => {
                         let dist_from_diag = (x as i32 + y as i32 - (size as i32 + 2)).abs();
                         dist_from_diag < 3 && x + y > size + 2

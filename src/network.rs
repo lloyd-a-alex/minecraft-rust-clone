@@ -28,7 +28,7 @@ impl NetworkManager {
         let (tx_in, rx_in) = unbounded();
         let (tx_out, rx_out) = unbounded();
         
-        let address = format!("0.0.0.0:{}", port);
+        let address = "0.0.0.0:25565";
         println!("🔥 HOSTING SERVER ON: {}", address);
         
         let listener = TcpListener::bind(&address).expect("Failed to bind to port");

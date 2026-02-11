@@ -1,211 +1,110 @@
-use std::fs::{self, File};
-use std::io::{self, Cursor, Write, BufRead, BufReader, Read};
-use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Command, Child, Stdio};
+use std::io::{BufRead, BufReader};
+use std::net::UdpSocket;
 use std::thread;
 use std::time::Duration;
-use std::sync::mpsc;
-use std::env;
+use std::fs;
+use std::path::Path;
 
-#[cfg(target_os = "windows")] const NGROK_BIN: &str = "ngrok.exe";
-#[cfg(not(target_os = "windows"))] const NGROK_BIN: &str = "ngrok";
-
-pub fn start_ngrok_tunnel(port: &str) -> Option<String> {
-    let os = env::consts::OS.to_uppercase();
-    println!("----------------------------------------------------------");
-    println!("🔌 NETWORK INIT | OS: {}", os);
-
-    cleanup_processes();
-
-    // 2. NGROK ATTEMPT
-    println!("🚀 Attempting Ngrok Tunnel...");
-    println!("   (Press ENTER to skip if stuck)");
-    if let Some(url) = attempt_ngrok(port) {
-        return Some(url);
-    }
-
-    // 3. SSH FALLBACK
-    println!("⚠️  Ngrok failed/skipped. Attempting SSH Tunnel...");
-    println!("   (Press ENTER to skip to LAN Only)");
-    attempt_ssh_tunnel(port)
+pub struct HostingManager {
+    pub ngrok_process: Option<Child>,
+    pub public_url: String,
+    pub hamachi_ip: Option<String>,
 }
 
-fn attempt_ngrok(port: &str) -> Option<String> {
-    let token_file = Path::new("ngrok_token.txt");
-    if !token_file.exists() {
-        log::warn!("🚫 Ngrok token missing. Asking user...");
-        if let Some(url) = handle_ngrok_auth(port) { return Some(url); }
-        return None; 
-    }
-    
-    let path = Path::new(NGROK_BIN);
-    if !path.exists() {
-        println!("⬇️  Ngrok binary missing. Downloading...");
-        if let Err(_) = download_ngrok() { println!("❌ Download failed."); return None; }
+impl HostingManager {
+    pub fn new() -> Self {
+        Self {
+            ngrok_process: None,
+            public_url: "Local Only".to_string(),
+            hamachi_ip: None,
+        }
     }
 
-    if let Ok(token) = fs::read_to_string(token_file) {
-        configure_ngrok(token.trim());
-    }
-
-    let exe = if cfg!(target_os = "windows") { "ngrok.exe" } else { "./ngrok" };
-    let mut child = Command::new(exe).arg("tcp").arg(port).stdout(Stdio::null()).stderr(Stdio::piped()).spawn().ok()?;
-
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move || { let mut s = String::new(); let _ = io::stdin().read_line(&mut s); let _ = tx.send(()); });
-
-    println!("⏳ Waiting for Ngrok...");
-    for _ in 0..40 { // 20 seconds
-        if rx.try_recv().is_ok() { let _ = child.kill(); return None; }
+    pub fn init(&mut self) {
+        log::info!("🌐 INITIALIZING HYPER-HOSTING PROTOCOL...");
         
-        if let Ok(resp) = reqwest::blocking::get("http://127.0.0.1:4040/api/tunnels") {
-            if let Ok(json) = resp.json::<serde_json::Value>() {
-                if let Some(tunnels) = json["tunnels"].as_array() {
-                    if let Some(t) = tunnels.first() {
-                        if let Some(url) = t["public_url"].as_str() {
-                            let clean = url.replace("tcp://", "");
-                            log::info!("✅ NGROK CONNECTED: {}", clean);
-                            return Some(clean);
+        // 1. Detect Hamachi
+        self.hamachi_ip = self.detect_hamachi();
+        if let Some(ref ip) = self.hamachi_ip {
+            log::info!("🛡️  HAMACHI DETECTED: {}", ip);
+        }
+
+        // 2. Setup Ngrok (Zero-Setup Downloader)
+        self.setup_ngrok();
+
+        // 3. Start LAN Discovery Beacon
+        self.start_lan_beacon();
+    }
+
+    fn detect_hamachi(&self) -> Option<String> {
+        let output = if cfg!(target_os = "windows") {
+            Command::new("ipconfig").output().ok()?
+        } else {
+            Command::new("ifconfig").output().ok()?
+        };
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut found_hamachi = false;
+        
+        for line in stdout.lines() {
+            if line.contains("Hamachi") { found_hamachi = true; }
+            if found_hamachi && (line.contains("IPv4 Address") || line.contains("inet ")) {
+                return line.split(':').last()?.trim().to_string().into();
+            }
+        }
+        None
+    }
+
+    fn setup_ngrok(&mut self) {
+        let ngrok_path = if cfg!(target_os = "windows") { "./ngrok.exe" } else { "./ngrok" };
+        
+        if !Path::new(ngrok_path).exists() {
+            log::warn!("⚠️  NGROK MISSING. ATTEMPTING DIABOLICAL AUTO-DOWNLOAD...");
+            if cfg!(target_os = "windows") {
+                let download_cmd = "Invoke-WebRequest -Uri 'https://bin.equinox.io/c/bPR9thYdyFv/ngrok-v3-stable-windows-amd64.zip' -OutFile 'ngrok.zip'; Expand-Archive -Path 'ngrok.zip' -DestinationPath '.'; Remove-Item 'ngrok.zip'";
+                let _ = Command::new("powershell").args(&["-Command", download_cmd]).status();
+            }
+        }
+
+        // Apply Auth Token if present
+        if let Ok(token) = fs::read_to_string("ngrok_token.txt") {
+            let _ = Command::new(ngrok_path).args(&["config", "add-authtoken", token.trim()]).output();
+        }
+
+        // Start Ngrok Tunnel on Minecraft Port 25565
+        let child = Command::new(ngrok_path)
+            .args(&["tcp", "25565", "--log=stdout"])
+            .stdout(Stdio::piped())
+            .spawn();
+
+        if let Ok(mut c) = child {
+            if let Some(stdout) = c.stdout.take() {
+                let reader = BufReader::new(stdout);
+                for line in reader.lines().flatten() {
+                    if line.contains("url=tcp://") {
+                        if let Some(pos) = line.find("url=tcp://") {
+                            self.public_url = line[pos + 4..].split_whitespace().next().unwrap_or("Error").to_string();
+                            log::info!("🚀 NGROK TUNNEL ACTIVE: {}", self.public_url);
+                            break;
                         }
                     }
                 }
             }
+            self.ngrok_process = Some(c);
         }
-        
-        if let Ok(Some(_)) = child.try_wait() {
-            if let Some(mut stderr) = child.stderr.take() {
-                let mut err = String::new(); let _ = stderr.read_to_string(&mut err);
-                if err.contains("authentication failed") || err.contains("authtoken") {
-                    println!("❌ Ngrok Auth Failed. Deleting invalid token.");
-                    let _ = fs::remove_file("ngrok_token.txt");
-                    return handle_ngrok_auth(port);
-                }
+    }
+
+    fn start_lan_beacon(&self) {
+        thread::spawn(|| {
+            let socket = UdpSocket::bind("0.0.0.0:0").expect("Beacon bind fail");
+            socket.set_broadcast(true).ok();
+            let msg = "MC_RUST_CLONE_SERVER:25565";
+            loop {
+                let _ = socket.send_to(msg.as_bytes(), "255.255.255.255:25566");
+                thread::sleep(Duration::from_secs(5));
             }
-            return None;
-        }
-        thread::sleep(Duration::from_millis(500));
+        });
+        log::info!("📡 LAN DISCOVERY BEACON ACTIVE (Port 25566)");
     }
-    let _ = child.kill();
-    None
-}
-
-fn attempt_ssh_tunnel(port: &str) -> Option<String> {
-    println!("🔄 Launching SSH Tunnel (localhost.run)...");
-    let mut child = Command::new("ssh")
-        .arg("-R")
-        .arg(format!("80:localhost:{}", port))
-        .arg("-o").arg("StrictHostKeyChecking=no")
-        .arg("nokey@localhost.run")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit()) 
-        .spawn()
-        .ok()?;
-
-    let (tx_url, rx_url) = mpsc::channel();
-    let stdout = child.stdout.take().unwrap();
-    
-    thread::spawn(move || {
-        let reader = BufReader::new(stdout);
-        for line in reader.lines() {
-            if let Ok(l) = line {
-                if l.contains(".localhost.run") {
-                     if let Some(start) = l.find("https://") {
-                         let url = l[start..].trim().to_string();
-                         let _ = tx_url.send(url.replace("https://", ""));
-                         return;
-                     }
-                }
-            }
-        }
-    });
-
-    let (tx_skip, rx_skip) = mpsc::channel();
-    thread::spawn(move || {
-        let mut buffer = String::new();
-        let _ = io::stdin().read_line(&mut buffer);
-        let _ = tx_skip.send(());
-    });
-
-    log::info!("🔄 Starting SSH tunnel (faster connect)...");
-    
-// FIX: Wait up to 60 * 500ms = 30 seconds for SSH to shake hands
-    for _ in 0..60 {
-        if rx_skip.try_recv().is_ok() {
-            log::info!("⏩ User skipped SSH.");
-            let _ = child.kill();
-            return None;
-        }
-        if let Ok(url) = rx_url.try_recv() {
-            println!("✅ SSH TUNNEL CONNECTED: {}", url);
-            return Some(url);
-        }
-        thread::sleep(Duration::from_millis(500));
-    }
-    
-    println!("❌ SSH Timed out.");
-    let _ = child.kill();
-    None
-}
-
-fn handle_ngrok_auth(port: &str) -> Option<String> {
-    println!("🔑 NGROK AUTH NEEDED!");
-    println!("   Go to: https://dashboard.ngrok.com/get-started/your-authtoken");
-    println!("   Paste token below and hit ENTER:");
-    print!("> ");
-    io::stdout().flush().unwrap();
-    
-    let mut token = String::new();
-    if io::stdin().read_line(&mut token).is_ok() {
-        let token = token.trim();
-        let _ = fs::write("ngrok_token.txt", token);
-        configure_ngrok(token);
-        return attempt_ngrok(port);
-    }
-    None
-}
-
-fn configure_ngrok(token: &str) {
-    let exe = if cfg!(target_os = "windows") { "ngrok.exe" } else { "./ngrok" };
-    let _ = Command::new(exe).arg("config").arg("add-authtoken").arg(token).output();
-}
-
-fn cleanup_processes() {
-    if cfg!(target_os = "windows") {
-        let _ = Command::new("taskkill").args(&["/F", "/IM", "ngrok.exe"]).output();
-        let _ = Command::new("taskkill").args(&["/F", "/IM", "ssh.exe"]).output();
-    } else {
-        let _ = Command::new("pkill").arg("ngrok").output();
-    }
-}
-
-fn download_ngrok() -> Result<(), Box<dyn std::error::Error>> {
-    let target = match (env::consts::OS, env::consts::ARCH) {
-        ("windows", "x86")    => "windows-386",
-        ("windows", _)        => "windows-amd64",
-        ("macos", "aarch64")  => "darwin-arm64",
-        ("macos", _)          => "darwin-amd64",
-        ("linux", "aarch64")  => "linux-arm64",
-        ("linux", "arm")      => "linux-arm",
-        ("linux", _)          => "linux-amd64",
-        ("freebsd", "x86")    => "freebsd-386",
-        ("freebsd", _)        => "freebsd-amd64",
-        _ => return Err("OS not supported".into()), 
-    };
-
-    let url = format!("https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-{}.zip", target);
-    println!("⬇️  Target: {}", target);
-    
-    let resp = reqwest::blocking::get(url)?;
-    let bytes = resp.bytes()?;
-    let mut archive = zip::ZipArchive::new(Cursor::new(bytes))?;
-    
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i)?;
-        if file.name().contains("ngrok") {
-            let mut out = File::create(NGROK_BIN)?;
-            io::copy(&mut file, &mut out)?;
-            return Ok(());
-        }
-    }
-    Err("Not found".into())
 }

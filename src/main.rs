@@ -296,8 +296,9 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                                 spawn_found = false;
                             },
                             MenuAction::Host => {
-                                if let Some(addr) = ngrok_utils::start_ngrok_tunnel("7878") { log::info!("✅ SERVER LIVE: {}", addr); } 
-                                network_mgr = Some(NetworkManager::host("7878".to_string(), master_seed));
+                                let mut hosting = ngrok_utils::HostingManager::new();
+                                hosting.init();
+                                network_mgr = Some(NetworkManager::host("25565".to_string(), master_seed));
                                 world = World::new(master_seed);
                                 renderer.rebuild_all_chunks(&world);
                                 game_state = GameState::Playing;
