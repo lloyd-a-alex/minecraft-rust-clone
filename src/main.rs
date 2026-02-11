@@ -189,7 +189,6 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     // RADICAL FIX: Always start in Loading state to prevent "Not Responding"
     let mut game_state = GameState::Loading;
     let mut load_step = 0;
-    let mut spawn_found = false;
     if was_playing {
         let _ = window.set_cursor_grab(CursorGrabMode::Locked);
         window.set_cursor_visible(false);
@@ -657,12 +656,7 @@ world.entities.push(ent);
                         log::error!("Loading render error: {:?}", e);
                     }
                     window.request_redraw();
-                    return; // EXITING HERE PREVENTS PLAYER.UPDATE FROM RUNNING
-                }
-
-                // --- TRANSITION VERIFICATION ---
-                if game_state == GameState::Playing && !window.cursor_visible() {
-                    // Logic continues below to physics and input
+                    return;
                 }
                 let dt = (now - last_frame).as_secs_f32().min(0.1);
                 last_frame = now;
