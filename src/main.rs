@@ -574,7 +574,11 @@ world.entities.push(ent);
                             player.velocity.y = 0.0;
                             log::info!("🚀 Teleported to surface: {}", top_y);
                         }
-                        if pressed && key == KeyCode::KeyN { player.is_noclip = !player.is_noclip; player.is_flying = player.is_noclip; }
+                        if pressed && key == KeyCode::KeyN { 
+                            player.is_noclip = !player.is_noclip; 
+                            player.is_flying = player.is_noclip; 
+                            player.admin_speed = if player.is_noclip { 5.0 } else { 1.0 }; 
+                        }
                         if pressed && key == KeyCode::Equal { player.admin_speed = (player.admin_speed + 1.0).min(10.0); }
                         if pressed && key == KeyCode::Minus { player.admin_speed = (player.admin_speed - 1.0).max(1.0); }
                         if key == KeyCode::ControlLeft { player.is_sprinting = pressed; }
@@ -712,7 +716,12 @@ world.entities.push(ent);
                 accumulator += _dt_frame.min(0.1); // Cap to 100ms to prevent spiral of death
 
                 if game_state == GameState::Playing {
-                    // DIABOLICAL JITTER FIX: Capture state ONCE before the substep loop starts
+                    // 1. INFINITE GENERATION CALL
+                    let p_cx = (player.position.x / 16.0).floor() as i32;
+                    let p_cy = (player.position.y / 16.0).floor() as i32;
+                    let p_cz = (player.position.z / 16.0).floor() as i32;
+                    world.generate_one_chunk_around(p_cx, p_cy, p_cz, 8);
+
                     player.capture_state(); 
 
                     while accumulator >= FIXED_TIME {
@@ -887,11 +896,7 @@ if !is_paused {
                     }
                     renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.0 };
                     
-                    let result = if is_paused {
-                        renderer.render_game(&world, &player, Some(&pause_menu), cursor_pos)
-                    } else {
-                        renderer.render_game(&world, &player, None, cursor_pos)
-                    };
+                    let result = renderer.render(&world, &player, is_paused, cursor_pos, win_size.0, win_size.1);
 
                     // RADICAL SYNC: Clear priority flags ONLY after the render call consumes them.
                     world.mesh_dirty = false;

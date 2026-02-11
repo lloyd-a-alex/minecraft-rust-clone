@@ -402,10 +402,9 @@ pub fn _update_occlusion(&mut self, _px: i32, _py: i32, _pz: i32) {
                                         }
                                     }
 
-                                    // 2. PLACE CANOPY (Spherical Leaf Logic)
-                                    // We ensure the canopy starts slightly below the top and extends above it
-                                    for dy in (tree_h - 3)..=(tree_h + 2) {
-                                        let radius: i32 = if dy >= tree_h { 1 } else { 2 };
+                                    // 2. PLACE CANOPY (RADICAL FIX: Natural Tapering)
+                                    for dy in (tree_h - 2)..=(tree_h + 2) {
+                                        let radius: i32 = if dy > tree_h { 0 } else if dy == tree_h { 1 } else { 2 };
                                         for dx in -radius..=radius {
                                             for dz in -radius..=radius {
                                                 // Manhattan distance check for "Minecraft-y" leaf clusters

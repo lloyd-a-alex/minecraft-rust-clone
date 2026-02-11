@@ -842,7 +842,7 @@ fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Ve
                       else if c == '-' { 300 + 36 } 
                       else if c == '>' { 300 + 37 } 
                       else if c == '/' { 300 + 38 } // DIABOLICAL SLASH SUPPORT
-                      else { 999 }; // Fallback to hidden index to prevent "AAA" prefixing
+                      else { 999 };
             
             if idx != 999 {
                 self.add_ui_quad(v, i, off, x, y, final_scale, final_scale * aspect, idx);
@@ -1255,24 +1255,67 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
         Ok(())
     }
 
-    pub fn render_game(&mut self, world: &World, player: &Player, pause_menu: Option<&MainMenu>, _cursor_pos: (f64, f64)) -> Result<(), wgpu::SurfaceError> {
-        // 1. FPS Calculation
+    pub fn render_game(&mut self, world: &World, player: &Player, pause_menu: Option<&MainMenu>, _cursor_pos: (f64, f64)) -> Result<(), wgpu::SurfaceError> {pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor_pos: (f64, f64), _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
+        // 1. FPS Calculation & Diabolical Telemetry
         self.frame_count += 1;
         let time_since_last = self.last_fps_time.elapsed();
         if time_since_last.as_secs_f32() >= 1.0 {
             self.fps = self.frame_count as f32 / time_since_last.as_secs_f32();
+            
+            let p = player.position; let v = player.velocity;
+            let dt_val = time_since_last.as_secs_f32() / self.frame_count as f32;
+            log::info!("[STAT] FPS:{:<3.0} | DT:{:.4}s | CHK:{} | PND:{} | POS:({:.1},{:.1},{:.1}) | VEL:({:.2},{:.2},{:.2}) | GRD:{} FLY:{} SPR:{} | DIRTY:{}", 
+                self.fps, dt_val, self.chunk_meshes.len(), self.pending_chunks.len(),
+                p.x, p.y, p.z, v.x, v.y, v.z,
+                if player.on_ground {'Y'} else {'N'}, if player.is_flying {'Y'} else {'N'}, if player.is_sprinting {'Y'} else {'N'},
+                world.dirty_chunks.len()
+            );
+            
             self.frame_count = 0;
             self.last_fps_time = Instant::now();
         }
 
+        // 2. DIABOLICAL MESH BARRIER: Consistently process incoming meshes
         self.process_mesh_queue();
 
+        // 3. PRIORITY MESH UPDATER: Handles Infinite Loading & Movement
+        let p_cx = (player.position.x / 16.0).floor() as i32;
+        let p_cz = (player.position.z / 16.0).floor() as i32;
+        let player_moved = (p_cx, p_cz) != (self.last_player_chunk.0, self.last_player_chunk.2);
+        let world_arc = std::sync::Arc::new(world.clone());
+
+        for &target in &world.dirty_chunks {
+            if !self.pending_chunks.contains(&target) {
+                self.pending_chunks.insert(target);
+                let _ = self.mesh_tx.send((target.0, target.1, target.2, 0, world_arc.clone()));
+            }
+        }
+
+        if player_moved || self.frame_count % 60 == 0 {
+            self.last_player_chunk = (p_cx, 0, p_cz);
+            let r_dist = 10;
+            for dx in -r_dist..=r_dist {
+                for dz in -r_dist..=r_dist {
+                    if dx*dx + dz*dz > r_dist*r_dist { continue; }
+                    for dy in 0..8 {
+                        let target = (p_cx + dx, dy, p_cz + dz);
+                        if !self.chunk_meshes.contains_key(&target) && !self.pending_chunks.contains(&target) {
+                            if world.chunks.contains_key(&target) {
+                                self.pending_chunks.insert(target);
+                                let _ = self.mesh_tx.send((target.0, target.1, target.2, 0, world_arc.clone()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Setup Surface and Uniforms
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&TextureViewDescriptor::default());
         let aspect = self.config.width as f32 / self.config.height as f32;
         let time = self.start_time.elapsed().as_secs_f32();
 
-        // Setup Uniforms
         let eye_bp = BlockPos { x: player.position.x.floor() as i32, y: (player.position.y + player.height * 0.4).floor() as i32, z: player.position.z.floor() as i32 };
         let is_underwater = if world.get_block(eye_bp).is_water() { 1.0f32 } else { 0.0f32 };
         let noise_gen = crate::noise_gen::NoiseGenerator::new(world.seed); 
@@ -1284,9 +1327,32 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
         };
         self.queue.write_buffer(&self.time_buffer, 0, bytemuck::cast_slice(&[fog_color[0], fog_color[1], fog_color[2], fog_color[3], time, is_underwater, 0.0, 0.0]));
 
-        let mut encoder = self.device.create_command_encoder(&CommandEncoderDescriptor { label: Some("Primary Encoder") });
+        // 5. Entity Buffer Preparation
+        let mut ent_v = Vec::new(); let mut ent_i = Vec::new(); let mut ent_off = 0;
+        for rp in &world.remote_players {
+            for f in 0..6 { self.add_rotated_quad(&mut ent_v, &mut ent_i, &mut ent_off, [rp.position.x, rp.position.y, rp.position.z], rp.rotation, -0.3, 0.0, -0.3, 0.6, f, 13); }
+            for f in 0..6 { self.add_rotated_quad(&mut ent_v, &mut ent_i, &mut ent_off, [rp.position.x, rp.position.y+0.65, rp.position.z], rp.rotation, -0.3, 0.0, -0.3, 0.6, f, 13); }
+            for f in 0..6 { self.add_rotated_quad(&mut ent_v, &mut ent_i, &mut ent_off, [rp.position.x, rp.position.y+1.3, rp.position.z], rp.rotation, -0.25, 0.0, -0.25, 0.5, f, 13); }
+        }
+        for e in &world.entities {
+            let (t, _, _) = e.item_type.get_texture_indices();
+            let rot = time * 1.5 + e.bob_offset; let by = ((time * 4.0 + e.bob_offset).sin() * 0.05) + 0.12;
+            for f in 0..6 { self.add_rotated_quad(&mut ent_v, &mut ent_i, &mut ent_off, [e.position.x, e.position.y+by, e.position.z], rot, -0.125, -0.125, -0.125, 0.25, f, t); }
+        }
+        
+        if !ent_v.is_empty() {
+            let v_size = (ent_v.len() * std::mem::size_of::<Vertex>()) as u64;
+            let i_size = (ent_i.len() * 4) as u64;
+            if v_size > self.entity_vertex_buffer.size() || i_size > self.entity_index_buffer.size() {
+                self.entity_vertex_buffer = self.device.create_buffer(&BufferDescriptor { label: Some("Entity VB"), size: v_size * 2, usage: BufferUsages::VERTEX | BufferUsages::COPY_DST, mapped_at_creation: false });
+                self.entity_index_buffer = self.device.create_buffer(&BufferDescriptor { label: Some("Entity IB"), size: i_size * 2, usage: BufferUsages::INDEX | BufferUsages::COPY_DST, mapped_at_creation: false });
+            }
+            self.queue.write_buffer(&self.entity_vertex_buffer, 0, bytemuck::cast_slice(&ent_v));
+            self.queue.write_buffer(&self.entity_index_buffer, 0, bytemuck::cast_slice(&ent_i));
+        }
 
-        // --- 3D WORLD PASS ---
+        // 6. 3D PASS
+        let mut encoder = self.device.create_command_encoder(&CommandEncoderDescriptor { label: Some("Primary Encoder") });
         {
             let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { 
                 label: Some("3D Pass"), 
@@ -1317,40 +1383,72 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
                     pass.draw_indexed(0..mesh.total_indices, 0, 0..1);
                 }
             }
+
+            if let Some((m, _)) = self.chunk_meshes.get(&(999, 999, 999)) {
+                pass.set_vertex_buffer(0, m.vertex_buffer.slice(..));
+                pass.set_index_buffer(m.index_buffer.slice(..), IndexFormat::Uint32);
+                pass.draw_indexed(0..m.total_indices, 0, 0..1);
+            }
+
+            if !ent_v.is_empty() { 
+                pass.set_vertex_buffer(0, self.entity_vertex_buffer.slice(..)); 
+                pass.set_index_buffer(self.entity_index_buffer.slice(..), IndexFormat::Uint32); 
+                pass.draw_indexed(0..ent_i.len() as u32, 0, 0..1); 
+            }
         }
 
-        // --- UI PASS (Overlay) ---
+        // 7. UI PASS
         let mut uv = Vec::new(); let mut ui = Vec::new(); let mut uoff = 0;
         
-        if let Some(menu) = pause_menu {
-            // Darken the background
+        // Darken for menus
+        if is_paused || player.inventory_open {
             self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240);
-            for btn in &menu.buttons {
-                let tex_id = if btn.hovered { 251 } else { 250 };
-                let rect = &btn.rect;
-                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, rect.x - rect.w/2.0, rect.y - rect.h/2.0, rect.w, rect.h, tex_id);
-                let text_scale = 0.05;
-                let center_off = (btn.text.len() as f32 * text_scale) / 2.0;
-                self.draw_text(&btn.text, rect.x - center_off, rect.y - 0.02, text_scale, &mut uv, &mut ui, &mut uoff);
-            }
-        } else {
-            // Standard Game UI
+        }
+
+        if !is_paused && !player.inventory_open {
+            // Crosshair
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.01, -0.01 * aspect, 0.02, 0.02 * aspect, 240); 
+            
+            // Breaking Cracks
             if self.break_progress > 0.0 {
                 let crack_tex = 210 + (self.break_progress * 9.0) as u32;
                 self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.05, -0.05 * aspect, 0.1, 0.1 * aspect, crack_tex);
             }
-            if !player.inventory_open { 
-                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -0.01, -0.01 * aspect, 0.02, 0.02 * aspect, 240); 
-            }
-            // Hotbar
+        }
+
+        // Hotbar & Hearts
+        if !is_paused || player.inventory_open {
             let sw = 0.12; let sh = sw * aspect; let sx = -(sw * 9.0) / 2.0; let by = -0.9;
             for i in 0..9 {
                 let x = sx + (i as f32 * sw);
                 if i == player.inventory.selected_hotbar_slot { self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x - 0.005, by - 0.005 * aspect, sw + 0.01, sh + 0.01 * aspect, 241); }
                 self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x, by, sw, sh, 240);
+                if let Some(stack) = &player.inventory.slots[i] {
+                    let (t, _, _) = stack.item.get_texture_indices();
+                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, by+0.02*aspect, sw-0.04, sh-0.04*aspect, t);
+                }
             }
-            self.draw_text(&format!("FPS {}", self.fps as u32), -0.98, 0.94, 0.03, &mut uv, &mut ui, &mut uoff);
+            // Hearts (RADICAL FIX: Restore missing heart logic)
+            for i in 0..10 { 
+                if player.health > (i as f32) * 2.0 { 
+                    self.add_ui_quad(&mut uv, &mut ui, &mut uoff, sx + i as f32 * 0.05, by + sh + 0.02 * aspect, 0.045, 0.045 * aspect, 242); 
+                } 
+            }
         }
+
+        if player.inventory_open {
+            self.draw_text("INVENTORY", -0.2, 0.8, 0.08, &mut uv, &mut ui, &mut uoff);
+            // ... Cursor item logic ...
+            let (mx, my) = cursor_pos; 
+            let ndc_x = (mx as f32 / self.config.width as f32)*2.0-1.0; 
+            let ndc_y = -((my as f32 / self.config.height as f32)*2.0-1.0);
+            if let Some(stack) = &player.inventory.cursor_item {
+                let (t, _, _) = stack.item.get_texture_indices();
+                self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ndc_x - 0.06, ndc_y - 0.06 * aspect, 0.12, 0.12 * aspect, t);
+            }
+        }
+
+        self.draw_text(&format!("FPS {}", self.fps as u32), -0.98, 0.94, 0.03, &mut uv, &mut ui, &mut uoff);
 
         if !uv.is_empty() {
             let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("UI VB"), contents: bytemuck::cast_slice(&uv), usage: BufferUsages::VERTEX });
