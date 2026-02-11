@@ -927,7 +927,7 @@ self.queue.submit(std::iter::once(encoder.finish()));
 
 pub fn render_pause_menu(&mut self, menu: &MainMenu, world: &World, player: &Player, cursor_pos: (f64, f64), width: u32, height: u32) -> Result<(), wgpu::SurfaceError> {
     // First render the world as a background
-    self.render(world, player, true, cursor_pos, width, height)?;
+    self.render_game(world, player, true, cursor_pos, width, height)?;
     
     let output = self.surface.get_current_texture()?;
     let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -972,7 +972,7 @@ pub fn render_pause_menu(&mut self, menu: &MainMenu, world: &World, player: &Pla
     Ok(())
 }
 
-pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor_pos: (f64, f64), _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
+pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, cursor_pos: (f64, f64), _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
         // 1. FPS Calculation & Console Output
         self.frame_count += 1;
         let time_since_last = self.last_fps_time.elapsed();
@@ -1255,7 +1255,6 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
         Ok(())
     }
 }
-        // 1. FPS Calculation & Diabolical Telemetry
         self.frame_count += 1;
         let time_since_last = self.last_fps_time.elapsed();
         if time_since_last.as_secs_f32() >= 1.0 {
