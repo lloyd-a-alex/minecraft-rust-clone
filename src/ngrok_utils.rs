@@ -29,7 +29,7 @@ impl HostingManager {
         let manager = Self {
             ngrok_process: None,
             ssh_process: None,
-            public_url: "Initializing...".to_string(),
+            public_url: Arc::new(Mutex::new("Initializing...".to_string())),
             hamachi_ip: None,
             wan_ip: None,
             discovered_servers: Arc::new(Mutex::new(Vec::new())),
@@ -56,7 +56,8 @@ impl HostingManager {
         self.setup_ngrok();
 
         // 4. Setup SSH Fallback (localhost.run)
-        if self.public_url == "Initializing..." || self.public_url.is_empty() {
+        let url_val = self.public_url.lock().unwrap().clone();
+        if url_val == "Initializing..." || url_val.is_empty() {
             self.setup_ssh_tunnel();
         }
 
@@ -64,7 +65,8 @@ impl HostingManager {
         self.start_lan_beacon();
         
         log::info!("✅ HYPER-HOSTING ACTIVE. MULTI-CHANNEL ADVERTISING:");
-        if !self.public_url.is_empty() { log::info!("   - TUNNEL:  {}", self.public_url); }
+        let final_url = self.public_url.lock().unwrap().clone();
+        if !final_url.is_empty() { log::info!("   - TUNNEL:  {}", final_url); }
         if let Some(ref ip) = self.wan_ip { log::info!("   - WAN IP:  {} (Req. Port Forward 25565)", ip); }
         if let Some(ref h) = self.hamachi_ip { log::info!("   - VPN:     {}", h); }
     }
@@ -91,8 +93,13 @@ impl HostingManager {
                 for line in reader.lines().flatten() {
                     if line.contains(".lhr.life") {
                         let parts: Vec<&str> = line.split_whitespace().collect();
-                        for p in parts { if p.contains(".lhr.life") { self.public_url = p.to_string(); break; } }
-                        log::info!("🚀 SSH TUNNEL ACTIVE: {}", self.public_url);
+                        for p in parts { 
+                            if p.contains(".lhr.life") { 
+                                *self.public_url.lock().unwrap() = p.to_string(); 
+                                break; 
+                            } 
+                        }
+                        log::info!("🚀 SSH TUNNEL ACTIVE: {}", self.public_url.lock().unwrap());
                         break;
                     }
                 }
@@ -149,8 +156,9 @@ impl HostingManager {
                 for line in reader.lines().flatten() {
                     if line.contains("url=tcp://") {
                         if let Some(pos) = line.find("url=tcp://") {
-                            self.public_url = line[pos + 4..].split_whitespace().next().unwrap_or("Error").to_string();
-                            log::info!("🚀 GLOBAL TUNNEL ACTIVE: {}", self.public_url);
+                            let extracted_url = line[pos + 4..].split_whitespace().next().unwrap_or("Error").to_string();
+                            *self.public_url.lock().unwrap() = extracted_url;
+                            log::info!("🚀 GLOBAL TUNNEL ACTIVE: {}", self.public_url.lock().unwrap());
                             break;
                         }
                     }
