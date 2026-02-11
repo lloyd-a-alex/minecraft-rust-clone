@@ -988,7 +988,6 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
                 p.x, p.y, p.z, v.x, v.y, v.z,
                 if player.on_ground {'Y'} else {'N'}, if player.is_flying {'Y'} else {'N'}, if player.is_sprinting {'Y'} else {'N'},
                 self.particles.len(),
-                world.tree_map.len(), // Track active tree nodes
                 world.dirty_chunks.len() // Track pending mesh updates
             );
             
@@ -1250,7 +1249,7 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
         Ok(())
     }
 
-    pub fn render_game(&mut self, world: &World, player: &Player, pause_menu: Option<&MainMenu>, cursor_pos: (f64, f64)) -> Result<(), wgpu::SurfaceError> {
+    pub fn render_game(&mut self, world: &World, player: &Player, pause_menu: Option<&MainMenu>, _cursor_pos: (f64, f64)) -> Result<(), wgpu::SurfaceError> {
         // 1. FPS Calculation
         self.frame_count += 1;
         let time_since_last = self.last_fps_time.elapsed();
