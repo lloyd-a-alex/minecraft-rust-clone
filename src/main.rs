@@ -621,19 +621,34 @@ world.entities.push(ent);
                             if world.bootstrap_terrain_step(terrain_step) { load_step = 171; }
                             else { load_step += 1; }
                         }
-                        171 => {
-                            renderer.loading_message = "DISPATCHING ASYNC MESHERS...".to_string();
-                            renderer.loading_progress = 0.6;
-                            renderer.rebuild_all_chunks(&world);
+                        171..=240 => {
+                            let mesh_step = load_step - 171;
+                            renderer.loading_message = format!("MESHLING TOPOLOGY... {}%", (mesh_step as f32 / 69.0 * 100.0) as u32);
+                            renderer.loading_progress = 0.6 + (mesh_step as f32 / 69.0) * 0.3;
+                            
+                            // DIABOLICAL INCREMENTAL DISPATCH
+                            // Instead of stalling for 5 seconds at 99%, we mesh 1/70th of the world per frame.
+                            let chunk_keys: Vec<_> = world.chunks.keys().cloned().collect();
+                            let start_idx = (mesh_step as usize * chunk_keys.len()) / 70;
+                            let end_idx = ((mesh_step as usize + 1) * chunk_keys.len()) / 70;
+                            
+                            let world_arc = Arc::new(world.clone());
+                            for i in start_idx..end_idx.min(chunk_keys.len()) {
+                                let key = chunk_keys[i];
+                                renderer.update_chunk(key.0, key.1, key.2, &world_arc);
+                            }
+                            
+                            if mesh_step == 0 { log::info!("[RENDER] Starting Incremental Mesh Dispatch..."); }
                             load_step += 1;
                         }
-                        172 => {
+                        241 => {
                             renderer.loading_message = "CALCULATING SPATIAL INTEGRITY...".to_string();
-                            renderer.loading_progress = 0.8;
+                            renderer.loading_progress = 0.95;
                             let h = world.get_height_at(0, 0);
                             player.position = glam::Vec3::new(0.5, h as f32 + 2.5, 0.5);
                             load_step += 1;
                         }
+                        
                         _ => {
                             renderer.transition_alpha = (renderer.transition_alpha - _dt_frame * 1.2).max(0.0);
                             renderer.loading_progress = 1.0;

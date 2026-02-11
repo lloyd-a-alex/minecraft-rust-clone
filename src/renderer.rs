@@ -445,32 +445,17 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
         };
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Loading Encoder") });
-        let aspect = self.config.width as f32 / self.config.height as f32;
-        let time = self.init_time.elapsed().as_secs_f32();
+        let _aspect = self.config.width as f32 / self.config.height as f32;
+        let _time = self.init_time.elapsed().as_secs_f32();
 
         let mut uv = Vec::new();
         let mut ui = Vec::new();
         let mut uoff = 0;
 
-        // 1. DIABOLICAL BACKGROUND: Dynamic Scanning Matrix
+        // 1. CLEAN BACKGROUND
         self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240); // Dark base
         
-        let grid_count = 24;
-        let grid_w = 2.0 / grid_count as f32;
-        for i in 0..grid_count {
-            let scroll = (time * 0.2 + i as f32 * 0.1) % 2.0;
-            let alpha_pulse = ((time * 3.0 + i as f32).sin() * 0.5 + 0.5) * 0.1;
-            // Vertical Matrix Rain effect
-            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0 + i as f32 * grid_w, -1.0, 0.003, 2.0, 245);
-            // Scanline overlay
-            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, 1.0 - scroll, 2.0, 0.01, 241);
-        }
-
-        // 2. Title with Bloom (Shadow layers)
-        self.draw_text("MINECRAFT", -0.42, 0.42, 0.12, &mut uv, &mut ui, &mut uoff);
-        self.draw_text("RUST EDITION", -0.32, 0.32, 0.05, &mut uv, &mut ui, &mut uoff);
-
-        // 2. Title with Bloom (Shadow layers)
+        // 2. Title - Single Layer (Clean)
         self.draw_text("MINECRAFT", -0.32, 0.42, 0.12, &mut uv, &mut ui, &mut uoff);
         self.draw_text("RUST EDITION", -0.25, 0.32, 0.05, &mut uv, &mut ui, &mut uoff);
 
