@@ -422,7 +422,7 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
         let grid_count = 12;
         let grid_w = 2.0 / grid_count as f32;
         for i in 0..grid_count {
-            let pulse = ((time * 2.0 + i as f32 * 0.5).sin() * 0.5 + 0.5) * 0.05;
+            let _pulse = ((time * 2.0 + i as f32 * 0.5).sin() * 0.5 + 0.5) * 0.05;
             self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0 + i as f32 * grid_w, -1.0, 0.002, 2.0, 245); // Vertical scanlines
             self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0 + i as f32 * grid_w * aspect, 2.0, 0.002, 245); // Horizontal
         }
@@ -463,63 +463,6 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
         if !uv.is_empty() {
             let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("L VB"), contents: bytemuck::cast_slice(&uv), usage: BufferUsages::VERTEX });
             let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("L IB"), contents: bytemuck::cast_slice(&ui), usage: BufferUsages::INDEX });
-            {
-                let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { 
-                    label: Some("Load Pass"), 
-                    color_attachments: &[Some(RenderPassColorAttachment { view: &view, resolve_target: None, ops: Operations { load: LoadOp::Clear(Color::BLACK), store: StoreOp::Store } })], 
-                    depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None 
-                });
-                pass.set_pipeline(&self.ui_pipeline);
-                pass.set_bind_group(0, &self.bind_group, &[]);
-                pass.set_vertex_buffer(0, vb.slice(..));
-                pass.set_index_buffer(ib.slice(..), IndexFormat::Uint32);
-                pass.draw_indexed(0..ui.len() as u32, 0, 0..1);
-            }
-        }
-
-        self.queue.submit(std::iter::once(encoder.finish()));
-        output.present();
-        Ok(())
-    }
-        let output = self.surface.get_current_texture()?;
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Loading Encoder") });
-        let aspect = self.config.width as f32 / self.config.height as f32;
-
-        let mut uv = Vec::new();
-        let mut ui = Vec::new();
-        let mut uoff = 0;
-
-        // 1. Background (Darkened Slate)
-        self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240);
-
-        // 2. Title
-        self.draw_text("MINECRAFT RUST", -0.4, 0.4, 0.1, &mut uv, &mut ui, &mut uoff);
-
-        // 3. Progress Bar Container
-        let bar_w = 1.2;
-        let bar_h = 0.08;
-        let bar_x = -0.6;
-        let bar_y = -0.2;
-        
-        // Background of bar
-        self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bar_x - 0.01, bar_y - 0.01 * aspect, bar_w + 0.02, bar_h + 0.02 * aspect, 240);
-        
-        // The Progress itself (Animated Green)
-        if self.loading_progress > 0.01 {
-            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bar_x, bar_y, bar_w * self.loading_progress, bar_h, 1);
-        }
-
-        // 4. Status Message
-        let msg = self.loading_message.to_uppercase();
-        let msg_scale = 0.03;
-        let msg_x = -(msg.len() as f32 * msg_scale) / 2.0;
-        self.draw_text(&msg, msg_x, bar_y - 0.15, msg_scale, &mut uv, &mut ui, &mut uoff);
-
-        if !uv.is_empty() {
-            let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("L VB"), contents: bytemuck::cast_slice(&uv), usage: BufferUsages::VERTEX });
-            let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("L IB"), contents: bytemuck::cast_slice(&ui), usage: BufferUsages::INDEX });
-            
             {
                 let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { 
                     label: Some("Load Pass"), 
@@ -958,13 +901,13 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
         if time_since_last.as_secs_f32() >= 1.0 {
             self.fps = self.frame_count as f32 / time_since_last.as_secs_f32();
             
-            // RADICAL DEBUG LOGGING: Everything needed to diagnose jitter and jumping
-            println!("--------------------------------------------------");
-            println!("[PERF] FPS: {:.1} | Chunks: {}", self.fps, self.chunk_meshes.len());
-            println!("[PHYS] Pos: ({:.2}, {:.2}, {:.2})", player.position.x, player.position.y, player.position.z);
-            println!("[PHYS] Vel: ({:.3}, {:.3}, {:.3})", player.velocity.x, player.velocity.y, player.velocity.z);
-            println!("[PHYS] Grounded: {} | Flying: {} | Sprint: {}", player.on_ground, player.is_flying, player.is_sprinting);
-            println!("--------------------------------------------------");
+            // DIABOLICAL TELEMETRY SNAPSHOT: High-density, single-line diagnostic for AI/Humans
+            let p = player.position; let v = player.velocity;
+            log::info!("[STAT] FPS:{:.0} | CHK:{} | POS:({:.1},{:.1},{:.1}) | VEL:({:.2},{:.2},{:.2}) | G:{} F:{} S:{} | INV:{}", 
+                self.fps, self.chunk_meshes.len(), p.x, p.y, p.z, v.x, v.y, v.z, 
+                if player.on_ground {'Y'} else {'N'}, if player.is_flying {'Y'} else {'N'}, if player.is_sprinting {'Y'} else {'N'},
+                player.inventory_open
+            );
             
             self.frame_count = 0;
             self.last_fps_time = Instant::now();
