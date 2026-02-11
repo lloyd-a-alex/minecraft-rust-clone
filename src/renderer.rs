@@ -227,13 +227,136 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
 // DIABOLICAL THREADED LOD MESH GENERATOR
         let (task_tx, task_rx) = unbounded::<(i32, i32, i32, u32, Arc<World>)>();
         let (result_tx, result_rx) = unbounded::<MeshTask>();
-// RADICAL FIX: Single-threaded mesh generation to eliminate race conditions and coordinate chaos
-        // The threaded worker had catastrophic bugs with dimensions and coordinate mapping
-        let _worker_thread = {
+// DIABOLICAL MULTI-THREADED MESH GENERATION: Scaling to all available CPU cores
+        let thread_count = std::thread::available_parallelism().map(|p| p.get()).unwrap_or(16);
+        log::info!("🚀 SPAWNING {} DIABOLICAL MESH WORKER THREADS", thread_count);
+
+        for _ in 0..thread_count {
             let t_rx = task_rx.clone();
             let r_tx = result_tx.clone();
             std::thread::spawn(move || {
                 while let Ok((cx, cy, cz, lod, world)) = t_rx.recv() {
+                    let mut vertices = Vec::new();
+                    let mut indices = Vec::new();
+                    let mut i_cnt = 0;
+                    
+                    if let Some(chunk) = world.chunks.get(&(cx, cy, cz)) {
+                        if chunk.is_empty {
+                            let _ = r_tx.send(MeshTask { cx, cy, cz, lod, vertices: Vec::new(), indices: Vec::new(), ranges: Vec::new() });
+                            continue;
+                        }
+
+                        let bx = (cx * 16) as f32;
+                        let by = (cy * 16) as f32;
+                        let bz = (cz * 16) as f32;
+                        let step = 1 << lod;
+                        
+                        for axis in 0..3 {
+                            for d in (0..16usize).step_by(step as usize) {
+                                for dir in 0..2 {
+                                    let face_id = match axis { 
+                                        0 => if dir==0 {0} else {1},
+                                        1 => if dir==0 {2} else {3},
+                                        _ => if dir==0 {4} else {5}
+                                    };
+                                    
+                                    let mask_dim = 16 / step as usize;
+                                    let mut mask = vec![BlockType::Air; mask_dim * mask_dim];
+                                    
+                                    for u_m in 0..mask_dim {
+                                        for v_m in 0..mask_dim {
+                                            let u = u_m * step as usize;
+                                            let v = v_m * step as usize;
+                                            let (lx, ly, lz) = match axis {
+                                                0 => (u, d, v), 1 => (d, u, v), _ => (u, v, d)
+                                            };
+                                            
+                                            let blk = chunk.get_block(lx, ly, lz);
+                                            if !blk.is_solid() { continue; }
+                                            
+                                            let (nx, ny, nz) = match face_id { 
+                                                0 => (lx as i32, ly as i32 + step as i32, lz as i32), 
+                                                1 => (lx as i32, ly as i32 - 1, lz as i32), 
+                                                2 => (lx as i32 + step as i32, ly as i32, lz as i32), 
+                                                3 => (lx as i32 - 1, ly as i32, lz as i32), 
+                                                4 => (lx as i32, ly as i32, lz as i32 + step as i32), 
+                                                5 => (lx as i32, ly as i32, lz as i32 - 1), 
+                                                _ => (0, 0, 0)
+                                            };
+                                            
+                                            let neighbor = if nx >= 0 && nx < 16 && ny >= 0 && ny < 16 && nz >= 0 && nz < 16 {
+                                                chunk.get_block(nx as usize, ny as usize, nz as usize)
+                                            } else {
+                                                BlockType::Air
+                                            };
+                                            
+                                            if !neighbor.is_solid() || (neighbor.is_transparent() && neighbor != blk) { 
+                                                mask[v_m * mask_dim + u_m] = blk; 
+                                            }
+                                        }
+                                    }
+                                    
+                                    let mut n = 0;
+                                    while n < mask.len() {
+                                        let blk = mask[n];
+                                        if blk != BlockType::Air {
+                                            let mut w = 1;
+                                            while (n + w) % mask_dim != 0 && mask[n + w] == blk { w += 1; }
+                                            let mut h = 1;
+                                            'h_loop: while (n / mask_dim + h) < mask_dim {
+                                                for k in 0..w { if mask[n + k + h * mask_dim] != blk { break 'h_loop; } }
+                                                h += 1;
+                                            }
+                                            
+                                            let u_g = (n % mask_dim) as f32 * step as f32;
+                                            let v_g = (n / mask_dim) as f32 * step as f32;
+                                            let world_w = w as f32 * step as f32;
+                                            let world_h = h as f32 * step as f32;
+                                            let d_f = d as f32;
+                                            let s_f = step as f32;
+                                            
+                                            let (wx, wy, wz) = match axis {
+                                                0 => (bx + u_g, by + d_f, bz + v_g),
+                                                1 => (bx + d_f, by + u_g, bz + v_g),
+                                                _ => (bx + u_g, by + v_g, bz + d_f)
+                                            };
+                                            
+                                            let tex_index = match face_id { 0 => blk.get_texture_top(), 1 => blk.get_texture_bottom(), _ => blk.get_texture_side() };
+                                            
+                                            // CORRECTED CCW WINDING ORDERS FOR LOD MESHES
+                                            let (positions, uv) = match face_id {
+                                                0 => ([[wx, wy+s_f, wz+world_h], [wx+world_w, wy+s_f, wz+world_h], [wx+world_w, wy+s_f, wz], [wx, wy+s_f, wz]], [[0.0, world_h], [world_w, world_h], [world_w, 0.0], [0.0, 0.0]]),
+                                                1 => ([[wx, wy, wz], [wx+world_w, wy, wz], [wx+world_w, wy, wz+world_h], [wx, wy, wz+world_h]], [[0.0, 0.0], [world_w, 0.0], [world_w, world_h], [0.0, world_h]]),
+                                                2 => ([[wx+s_f, wy, wz], [wx+s_f, wy+world_w, wz], [wx+s_f, wy+world_w, wz+world_h], [wx+s_f, wy, wz+world_h]], [[0.0, 0.0], [world_w, 0.0], [world_w, world_h], [0.0, world_h]]),
+                                                3 => ([[wx, wy, wz+world_h], [wx, wy+world_w, wz+world_h], [wx, wy+world_w, wz], [wx, wy, wz]], [[0.0, world_h], [world_w, world_h], [world_w, 0.0], [0.0, 0.0]]),
+                                                4 => ([[wx, wy, wz+s_f], [wx+world_w, wy, wz+s_f], [wx+world_w, wy+world_h, wz+s_f], [wx, wy+world_h, wz+s_f]], [[0.0, 0.0], [world_w, 0.0], [world_w, world_h], [0.0, world_h]]),
+                                                5 => ([[wx+world_w, wy, wz], [wx, wy, wz], [wx, wy+world_h, wz], [wx+world_w, wy+world_h, wz]], [[world_w, 0.0], [0.0, 0.0], [0.0, world_h], [world_w, world_h]]),
+                                                _ => ([[0.0; 3]; 4], [[0.0; 2]; 4]),
+                                            };
+                                            
+                                            let base_i = i_cnt;
+                                            vertices.push(Vertex { position: positions[0], tex_coords: uv[0], ao: 1.0, tex_index, light: 15.0 });
+                                            vertices.push(Vertex { position: positions[1], tex_coords: uv[1], ao: 1.0, tex_index, light: 15.0 });
+                                            vertices.push(Vertex { position: positions[2], tex_coords: uv[2], ao: 1.0, tex_index, light: 15.0 });
+                                            vertices.push(Vertex { position: positions[3], tex_coords: uv[3], ao: 1.0, tex_index, light: 15.0 });
+                                            indices.extend_from_slice(&[base_i, base_i + 1, base_i + 2, base_i, base_i + 2, base_i + 3]);
+                                            i_cnt += 4;
+                                            
+                                            for l in 0..h { for k in 0..w { mask[n + k + l * mask_dim] = BlockType::Air; } }
+                                        }
+                                        n += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let mut final_ranges = Vec::new();
+                    if !indices.is_empty() { final_ranges.push(TextureRange { _tex_index: 0, _index_start: 0, _index_count: indices.len() as u32 }); }
+                    let _ = r_tx.send(MeshTask { cx, cy, cz, lod, vertices, indices, ranges: final_ranges });
+                }
+            });
+        }
                     let mut vertices = Vec::new();
                     let mut indices = Vec::new();
                     let mut i_cnt = 0;
@@ -865,7 +988,7 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
                     if dx*dx + dz*dz > r_dist*r_dist { continue; }
                     for dy in 0..max_vertical {
                         let target = (p_cx + dx, dy, p_cz + dz);
-                        if let Some(c) = world.chunks.get(&target) {
+                        if let Some(_c) = world.chunks.get(&target) {
                             if !self.chunk_meshes.contains_key(&target) && !self.pending_chunks.contains(&target) {
                                 self.pending_chunks.insert(target);
                                 let _ = self.mesh_tx.send((target.0, target.1, target.2, 0, world_arc.clone()));

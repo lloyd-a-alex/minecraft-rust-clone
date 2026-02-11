@@ -282,7 +282,6 @@ pub fn update(&mut self, world: &crate::world::World, dt: f32, audio: &crate::Au
         }
 
         // RADICAL FIX: Recalculate on_ground status IMMEDIATELY to prevent frame-lag jitter
-        let feet_y = self.position.y - self.height / 2.0;
         let ground_check = self.check_ground(world, self.position);
         self.on_ground = ground_check.is_some() || self.grounded_latch > 0.0;
 
