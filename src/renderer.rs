@@ -92,6 +92,8 @@ pub start_time: Instant,
     // LOADING SCREEN STATE
     pub loading_progress: f32,
     pub loading_message: String,
+    pub transition_alpha: f32,
+    pub init_time: Instant,
 }
 
 #[repr(C)]
@@ -134,10 +136,10 @@ let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         let config = SurfaceConfiguration { usage: TextureUsages::RENDER_ATTACHMENT, format: surface_format, width: window.inner_size().width, height: window.inner_size().height, present_mode: PresentMode::Fifo, alpha_mode: surface_caps.alpha_modes[0], view_formats: vec![], desired_maximum_frame_latency: 2 };
         surface.configure(&device, &config);
 
-        let atlas = TextureAtlas::new();
+        // DIABOLICAL FAST-BOOT: Create a dummy texture immediately to show the loading screen
+        // without waiting for the CPU-heavy Atlas generation.
         let atlas_size = Extent3d { width: 512, height: 512, depth_or_array_layers: 1 };
         let texture = device.create_texture(&TextureDescriptor { label: Some("atlas"), size: atlas_size, mip_level_count: 1, sample_count: 1, dimension: TextureDimension::D2, format: TextureFormat::Rgba8UnormSrgb, usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST, view_formats: &[] });
-        queue.write_texture(ImageCopyTexture { texture: &texture, mip_level: 0, origin: Origin3d::ZERO, aspect: TextureAspect::All }, &atlas.data, ImageDataLayout { offset: 0, bytes_per_row: Some(512 * 4), rows_per_image: Some(512) }, atlas_size);
         let texture_view = texture.create_view(&TextureViewDescriptor::default());
         let sampler = device.create_sampler(&SamplerDescriptor { 
             mag_filter: FilterMode::Nearest, 
@@ -381,10 +383,104 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
             cull_bind_group,
             loading_progress: 0.0,
             loading_message: "INITIALIZING...".to_string(),
+            transition_alpha: 1.0,
+            init_time: Instant::now(),
         }
     }
 
+    pub fn upload_atlas(&mut self, atlas_data: &[u8]) {
+        let atlas_size = Extent3d { width: 512, height: 512, depth_or_array_layers: 1 };
+        let texture = self.device.create_texture(&TextureDescriptor { label: Some("atlas_final"), size: atlas_size, mip_level_count: 1, sample_count: 1, dimension: TextureDimension::D2, format: TextureFormat::Rgba8UnormSrgb, usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST, view_formats: &[] });
+        self.queue.write_texture(ImageCopyTexture { texture: &texture, mip_level: 0, origin: Origin3d::ZERO, aspect: TextureAspect::All }, atlas_data, ImageDataLayout { offset: 0, bytes_per_row: Some(512 * 4), rows_per_image: Some(512) }, atlas_size);
+        let texture_view = texture.create_view(&TextureViewDescriptor::default());
+        
+        // Re-bind the textures globally
+        self.bind_group = self.device.create_bind_group(&BindGroupDescriptor { 
+            label: Some("texture_bind_final"), 
+            layout: &self.pipeline.get_bind_group_layout(0), 
+            entries: &[
+                BindGroupEntry { binding: 0, resource: BindingResource::TextureView(&texture_view) }, 
+                BindGroupEntry { binding: 1, resource: BindingResource::Sampler(&self.device.create_sampler(&SamplerDescriptor { mag_filter: FilterMode::Nearest, min_filter: FilterMode::Nearest, ..Default::default() })) }
+            ] 
+        });
+    }
+
     pub fn render_loading_screen(&mut self) -> Result<(), wgpu::SurfaceError> {
+        let output = self.surface.get_current_texture()?;
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Loading Encoder") });
+        let aspect = self.config.width as f32 / self.config.height as f32;
+        let time = self.init_time.elapsed().as_secs_f32();
+
+        let mut uv = Vec::new();
+        let mut ui = Vec::new();
+        let mut uoff = 0;
+
+        // 1. DIABOLICAL BACKGROUND: Dynamic Scanning Grid
+        self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240); // Base dim
+        
+        let grid_count = 12;
+        let grid_w = 2.0 / grid_count as f32;
+        for i in 0..grid_count {
+            let pulse = ((time * 2.0 + i as f32 * 0.5).sin() * 0.5 + 0.5) * 0.05;
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0 + i as f32 * grid_w, -1.0, 0.002, 2.0, 245); // Vertical scanlines
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0 + i as f32 * grid_w * aspect, 2.0, 0.002, 245); // Horizontal
+        }
+
+        // 2. Title with Bloom (Shadow layers)
+        self.draw_text("MINECRAFT", -0.32, 0.42, 0.12, &mut uv, &mut ui, &mut uoff);
+        self.draw_text("RUST EDITION", -0.25, 0.32, 0.05, &mut uv, &mut ui, &mut uoff);
+
+        // 3. Progress Bar: Procedural Glow
+        let bar_w = 1.4;
+        let bar_h = 0.04;
+        let bar_x = -0.7;
+        let bar_y = -0.4;
+        
+        // Shadow/Container
+        self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bar_x - 0.01, bar_y - 0.01, bar_w + 0.02, bar_h + 0.02, 240);
+        
+        // Active Bar (Pulse Green)
+        if self.loading_progress > 0.001 {
+            let p_w = bar_w * self.loading_progress;
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bar_x, bar_y, p_w, bar_h, 1);
+            // Tip Glow
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bar_x + p_w - 0.02, bar_y - 0.01, 0.04, bar_h + 0.02, 241);
+        }
+
+        // 4. Status Message: Real-time Telemetry
+        let msg = self.loading_message.to_uppercase();
+        let msg_scale = 0.035;
+        let msg_x = -(msg.len() as f32 * msg_scale * 0.6) / 2.0;
+        self.draw_text(&msg, msg_x, bar_y - 0.12, msg_scale, &mut uv, &mut ui, &mut uoff);
+
+        // 5. Procedural Wipe (When finishing)
+        if self.transition_alpha < 1.0 {
+            let wipe_size = (1.0 - self.transition_alpha) * 4.0;
+            self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, wipe_size, 2.0, 240);
+        }
+
+        if !uv.is_empty() {
+            let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("L VB"), contents: bytemuck::cast_slice(&uv), usage: BufferUsages::VERTEX });
+            let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("L IB"), contents: bytemuck::cast_slice(&ui), usage: BufferUsages::INDEX });
+            {
+                let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { 
+                    label: Some("Load Pass"), 
+                    color_attachments: &[Some(RenderPassColorAttachment { view: &view, resolve_target: None, ops: Operations { load: LoadOp::Clear(Color::BLACK), store: StoreOp::Store } })], 
+                    depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None 
+                });
+                pass.set_pipeline(&self.ui_pipeline);
+                pass.set_bind_group(0, &self.bind_group, &[]);
+                pass.set_vertex_buffer(0, vb.slice(..));
+                pass.set_index_buffer(ib.slice(..), IndexFormat::Uint32);
+                pass.draw_indexed(0..ui.len() as u32, 0, 0..1);
+            }
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+        Ok(())
+    }
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Loading Encoder") });

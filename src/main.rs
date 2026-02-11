@@ -600,28 +600,41 @@ world.entities.push(ent);
                 last_frame = now;
 
                 if game_state == GameState::Loading {
-                    // DIABOLICAL LOADING PIPELINE: Execute heavy work and render bar in real-time
+                    // RADICAL TELEMETRY PIPELINE: High-precision state reporting
                     match load_step {
                         0 => {
-                            renderer.loading_message = "INITIALIZING GPU...".to_string();
-                            renderer.loading_progress = 0.1;
+                            renderer.loading_message = "ESTABLISHING GPU CONTEXT...".to_string();
+                            renderer.loading_progress = 0.05;
+                            log::info!("[BOOT] GPU Pipeline warm-up started.");
                             load_step += 1;
                         }
                         1 => {
-                            renderer.loading_message = "GENERATING BIOMES...".to_string();
-                            world.generate_terrain_around(0, 0, 4);
-                            renderer.loading_progress = 0.4;
+                            renderer.loading_message = "BAKING PROCEDURAL ATLAS...".to_string();
+                            renderer.loading_progress = 0.15;
+                            let start = Instant::now();
+                            let atlas = texture::TextureAtlas::new();
+                            log::info!("[BOOT] Atlas generated in {:?}. Uploading to VRAM...", start.elapsed());
+                            renderer.upload_atlas(&atlas.data);
                             load_step += 1;
                         }
                         2 => {
-                            renderer.loading_message = "COMPILING MESHES...".to_string();
-                            renderer.rebuild_all_chunks(&world);
-                            renderer.loading_progress = 0.7;
+                            renderer.loading_message = "SYNCHRONIZING BIOME VECTORS...".to_string();
+                            renderer.loading_progress = 0.35;
+                            world.generate_terrain_around(0, 0, 6); // Larger initial radius
+                            log::info!("[BOOT] World seed {} heightmap calibrated.", world.seed);
                             load_step += 1;
                         }
                         3 => {
-                            renderer.loading_message = "MAPPING WORLD...".to_string();
-                            'spawn_search: for r in 0..150i32 {
+                            renderer.loading_message = "DISPATCHING MESH WORKERS...".to_string();
+                            renderer.loading_progress = 0.60;
+                            renderer.rebuild_all_chunks(&world);
+                            log::info!("[BOOT] Mesh generation threads dispatched.");
+                            load_step += 1;
+                        }
+                        4 => {
+                            renderer.loading_message = "CALCULATING SPATIAL INTEGRITY...".to_string();
+                            renderer.loading_progress = 0.85;
+                            'spawn_search: for r in 0..200i32 {
                                 for x in -r..=r {
                                     for z in -r..=r {
                                         if x.abs() != r && z.abs() != r { continue; }
@@ -629,30 +642,32 @@ world.entities.push(ent);
                                         if h > world::WATER_LEVEL as i32 + 2 {
                                             player.position = glam::Vec3::new(x as f32 + 0.5, h as f32 + 2.5, z as f32 + 0.5);
                                             spawn_found = true;
+                                            log::info!("[BOOT] Ground collision confirmed at ({}, {})", x, z);
                                             break 'spawn_search;
                                         }
                                     }
                                 }
                             }
-                            renderer.loading_progress = 0.9;
                             load_step += 1;
                         }
                         _ => {
-                            // DIABOLICAL TRANSITION: Smooth handover to game engine
-                            log::info!("[TRANSITION] Finalizing world meshes and physics sync...");
-                            if was_playing {
-                                game_state = GameState::Playing;
-                                // SAFE CURSOR GRAB: Try grab, log failure instead of panicking
-                                if let Err(e) = window.set_cursor_grab(CursorGrabMode::Locked) {
-                                    log::warn!("[OS] Cursor grab deferred: {:?}", e);
-                                }
-                                window.set_cursor_visible(false);
+                            // DIABOLICAL TRANSITION SEQUENCE: Fade-in and World Handshake
+                            renderer.transition_alpha -= dt * 0.8; // Smooth 1.2s fade
+                            renderer.loading_progress = 1.0;
+                            renderer.loading_message = "SYSTEMS NOMINAL. READY.".to_string();
+
+                            if renderer.transition_alpha <= 0.0 {
                                 log::info!("🚀 RADICAL DEPLOY: ENTERING WORLD");
-                            } else {
-                                game_state = GameState::Menu;
-                                log::info!("🏠 RADICAL DEPLOY: ENTERING MENU");
+                                if was_playing {
+                                    game_state = GameState::Playing;
+                                    let _ = window.set_cursor_grab(CursorGrabMode::Locked);
+                                    window.set_cursor_visible(false);
+                                } else {
+                                    game_state = GameState::Menu;
+                                    window.set_cursor_visible(true);
+                                }
+                                first_build_done = true;
                             }
-                            first_build_done = true;
                         }
                     }
                     
@@ -660,7 +675,7 @@ world.entities.push(ent);
                         log::error!("Loading render error: {:?}", e);
                     }
                     window.request_redraw();
-                    return; // EXIT frame early during loading to skip physics/logic
+                    return; 
                 }
                 
                 // Root Cause Fix: Use the time calculated at the start of the RedrawRequested block
