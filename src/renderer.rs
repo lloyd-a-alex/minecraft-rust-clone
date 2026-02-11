@@ -813,18 +813,27 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
         while let Ok(task) = self.mesh_rx.try_recv() {
             self.pending_chunks.remove(&(task.cx, task.cy, task.cz));
             
-            // If the new mesh is empty, or if we are refreshing this chunk, kill the old one first.
+            // ROOT CAUSE FIX: Remove the old mesh regardless of whether the new one has vertices.
+            // This ensures "Air" chunks or newly emptied chunks don't keep their old geometry.
             self.chunk_meshes.remove(&(task.cx, task.cy, task.cz));
 
             if !task.vertices.is_empty() {
-                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk VB"), contents: bytemuck::cast_slice(&task.vertices), usage: BufferUsages::VERTEX | BufferUsages::COPY_DST });
-                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk IB"), contents: bytemuck::cast_slice(&task.indices), usage: BufferUsages::INDEX | BufferUsages::COPY_DST });
-                self.chunk_meshes.insert((task.cx, task.cy, task.cz), (ChunkMesh { vertex_buffer: vb, index_buffer: ib, _ranges: task.ranges, total_indices: task.indices.len() as u32 }, task.lod));
-            }
-        }
-                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk VB"), contents: bytemuck::cast_slice(&task.vertices), usage: BufferUsages::VERTEX | BufferUsages::COPY_DST });
-                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Chunk IB"), contents: bytemuck::cast_slice(&task.indices), usage: BufferUsages::INDEX | BufferUsages::COPY_DST });
-                self.chunk_meshes.insert((task.cx, task.cy, task.cz), (ChunkMesh { vertex_buffer: vb, index_buffer: ib, _ranges: task.ranges, total_indices: task.indices.len() as u32 }, task.lod));
+                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { 
+                    label: Some("Chunk VB"), 
+                    contents: bytemuck::cast_slice(&task.vertices), 
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST 
+                });
+                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { 
+                    label: Some("Chunk IB"), 
+                    contents: bytemuck::cast_slice(&task.indices), 
+                    usage: BufferUsages::INDEX | BufferUsages::COPY_DST 
+                });
+                self.chunk_meshes.insert((task.cx, task.cy, task.cz), (ChunkMesh { 
+                    vertex_buffer: vb, 
+                    index_buffer: ib, 
+                    _ranges: task.ranges, 
+                    total_indices: task.indices.len() as u32 
+                }, task.lod));
             }
         }
 
@@ -838,10 +847,14 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
             self.last_player_chunk = (p_cx, p_cy, p_cz);
             let world_arc = Arc::new(world.clone());
             let r_dist = 8; // Slightly tighter radius for 1800FPS stability
+            
+            // ROOT CAUSE FIX: Calculate exactly how many vertical chunks exist
+            let max_vertical_chunks = crate::world::WORLD_HEIGHT / 16;
+            
             for dx in -r_dist..=r_dist {
                 for dz in -r_dist..=r_dist {
                     if dx*dx + dz*dz > r_dist*r_dist { continue; }
-                    for dy in 0..8 {
+                    for dy in 0..max_vertical_chunks {
                         let target = (p_cx + dx, dy, p_cz + dz);
                         if !self.pending_chunks.contains(&target) {
                             let current = self.chunk_meshes.get(&target);
@@ -1069,4 +1082,3 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
         Ok(())
     }
 }
-

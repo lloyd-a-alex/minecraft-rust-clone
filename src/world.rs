@@ -504,49 +504,78 @@ pub fn set_block_world(&mut self, pos: BlockPos, block: BlockType) {
         affected.sort(); affected.dedup();
         affected
     }
-    pub fn get_affected_chunks(&self, pos: BlockPos) -> Vec<(i32, i32)> {
+    pub fn get_affected_chunks(&self, pos: BlockPos) -> Vec<(i32, i32, i32)> {
         // DIABOLICAL 3D RADIUS: Ghost blocks occur because boundary neighbors don't know they need to redraw.
-        // We calculate the exact chunk coordinates.
         let cx = pos.x.div_euclid(16);
         let cy = pos.y.div_euclid(16);
         let cz = pos.z.div_euclid(16);
         
-        // We use a set to ensure we don't return duplicates
         let mut affected = Vec::new();
         
-        // Add the primary chunk and all immediate 6 neighbors to be safe.
-        // This is "Overwork" logic—it ensures that any greedy quad touching this block is purged.
+        // ROOT CAUSE FIX: We must update a 3x3x3 cube of chunks around the change.
+        // Greedy meshing can stretch faces across chunk boundaries; if a block on the edge
+        // is removed, the neighbor chunk's mesh MUST be invalidated.
         for dx in -1..=1 {
-            for dz in -1..=1 {
-                affected.push((cx + dx, cz + dz));
+            for dy in -1..=1 {
+                for dz in -1..=1 {
+                    let target_y = cy + dy;
+                    if target_y >= 0 && target_y < (WORLD_HEIGHT / 16) {
+                        affected.push((cx + dx, target_y, cz + dz));
+                    }
+                }
             }
         }
         
-        affected.sort();
+        affected.sort_unstable();
         affected.dedup();
         affected
     }
 
-    pub fn break_block(&mut self, pos: BlockPos) -> Vec<(i32, i32)> {
+    pub fn break_block(&mut self, pos: BlockPos) -> Vec<(i32, i32, i32)> {
         let block_type = self.get_block(pos);
         if block_type != BlockType::Air && block_type != BlockType::Bedrock && !block_type.is_water() {
-            // DIABOLICAL FIX: Mark world as dirty immediately to prevent logic skips
             self.mesh_dirty = true;
-             let mut rng = SimpleRng::new(pos.x as u64 ^ pos.z as u64 ^ pos.y as u64);
-             let velocity = Vec3::new(rng.gen_range(-2.0, 2.0), 4.0, rng.gen_range(-2.0, 2.0));
-             let drop_item = match block_type { BlockType::Stone => BlockType::Cobblestone, BlockType::CoalOre => BlockType::Coal, BlockType::IronOre => BlockType::IronOre, BlockType::DiamondOre => BlockType::DiamondItem, BlockType::Grass => BlockType::Dirt, _ => block_type };
-             self.entities.push(ItemEntity { position: Vec3::new(pos.x as f32 + 0.5, pos.y as f32 + 0.5, pos.z as f32 + 0.5), velocity, item_type: drop_item, count: 1, pickup_delay: 1.0, lifetime: 300.0, rotation: 0.0, bob_offset: rng.next_f32() * 10.0 });
+            let mut rng = SimpleRng::new(pos.x as u64 ^ pos.z as u64 ^ pos.y as u64);
+            let velocity = Vec3::new(rng.gen_range(-2.0, 2.0), 4.0, rng.gen_range(-2.0, 2.0));
+            let drop_item = match block_type { 
+                BlockType::Stone => BlockType::Cobblestone, 
+                BlockType::CoalOre => BlockType::Coal, 
+                BlockType::Grass => BlockType::Dirt, 
+                _ => block_type 
+            };
+            self.entities.push(ItemEntity { 
+                position: Vec3::new(pos.x as f32 + 0.5, pos.y as f32 + 0.5, pos.z as f32 + 0.5), 
+                velocity, 
+                item_type: drop_item, 
+                count: 1, 
+                pickup_delay: 1.0, 
+                lifetime: 300.0, 
+                rotation: 0.0, 
+                bob_offset: rng.next_f32() * 10.0 
+            });
         }
-self.set_block_world(pos, BlockType::Air);
-        let mut c = self.trigger_water_update(pos);
-        c.extend(self.get_affected_chunks(pos));
-        c.sort(); c.dedup(); c
+        
+        self.set_block_world(pos, BlockType::Air);
+        let affected = self.get_affected_chunks(pos);
+        
+        // ROOT CAUSE FIX: Explicitly mark every affected chunk as dirty.
+        // This forces the Renderer to re-mesh neighbors that might be showing "Ghost faces".
+        for &(cx, cy, cz) in &affected {
+            if let Some(chunk) = self.chunks.get_mut(&(cx, cy, cz)) {
+                chunk.mesh_dirty = true;
+            }
+        }
+        affected
     }
-    pub fn place_block(&mut self, pos: BlockPos, block: BlockType) -> Vec<(i32, i32)> { 
+    pub fn place_block(&mut self, pos: BlockPos, block: BlockType) -> Vec<(i32, i32, i32)> { 
         self.set_block_world(pos, block); 
-        let mut c = self.trigger_water_update(pos);
-        c.extend(self.get_affected_chunks(pos));
-        c.sort(); c.dedup(); c
+        let affected = self.get_affected_chunks(pos);
+        for &(cx, cy, cz) in &affected {
+            if let Some(chunk) = self.chunks.get_mut(&(cx, cy, cz)) {
+                chunk.mesh_dirty = true;
+            }
+        }
+        affected
     }
 fn trigger_water_update(&mut self, start_pos: BlockPos) -> Vec<(i32, i32)> {
         let mut updates = Vec::new();
