@@ -119,7 +119,7 @@ use serde_json::json;
 use std::fs;
 
 // --- MENU SYSTEM ---  
-#[derive(PartialEq)] enum GameState { Menu, Playing }
+#[derive(PartialEq)] enum GameState { Loading, Menu, Playing }
 struct Rect { x: f32, y: f32, w: f32, h: f32 }
 impl Rect { fn contains(&self, nx: f32, ny: f32) -> bool { nx >= self.x - self.w/2.0 && nx <= self.x + self.w/2.0 && ny >= self.y - self.h/2.0 && ny <= self.y + self.h/2.0 } }
 enum MenuAction { Singleplayer, Host, Join, Stress, Resume, Quit }
@@ -186,8 +186,9 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     let mut last_persist = Instant::now();
     
     // --- GAME STATE ---
-    // If we were playing before the code changed, jump STRAIGHT back in
-    let mut game_state = if was_playing { GameState::Playing } else { GameState::Menu };
+    // RADICAL FIX: Always start in Loading state to prevent "Not Responding"
+    let mut game_state = GameState::Loading;
+    let mut load_step = 0;
     if was_playing {
         let _ = window.set_cursor_grab(CursorGrabMode::Locked);
         window.set_cursor_visible(false);
@@ -599,6 +600,67 @@ world.entities.push(ent);
                 let dt = (now - last_frame).as_secs_f32().min(0.1);
                 last_frame = now;
 
+                if game_state == GameState::Loading {
+                    // DIABOLICAL LOADING PIPELINE: Execute one heavy step per frame to keep OS happy
+                    match load_step {
+                        0 => {
+                            renderer.loading_message = "GENERATING TERRAIN...".to_string();
+                            renderer.loading_progress = 0.2;
+                            load_step += 1;
+                        }
+                        1 => {
+                            // Seeded terrain generation around spawn
+                            world.generate_terrain_around(0, 0, 4);
+                            renderer.loading_progress = 0.5;
+                            load_step += 1;
+                        }
+                        2 => {
+                            renderer.loading_message = "BUILDING MESHES...".to_string();
+                            renderer.rebuild_all_chunks(&world);
+                            renderer.loading_progress = 0.8;
+                            load_step += 1;
+                        }
+                        3 => {
+                            renderer.loading_message = "SEARCHING FOR DRY LAND...".to_string();
+                            // Run the spawn search non-blockingly
+                            'spawn_search: for r in 0..200i32 {
+                                for x in -r..=r {
+                                    for z in -r..=r {
+                                        if x.abs() != r && z.abs() != r { continue; }
+                                        let h = world.get_height_at(x, z);
+                                        if h > world::WATER_LEVEL as i32 + 2 {
+                                            player.position = glam::Vec3::new(x as f32 + 0.5, h as f32 + 2.5, z as f32 + 0.5);
+                                            spawn_found = true;
+                                            break 'spawn_search;
+                                        }
+                                    }
+                                }
+                            }
+                            renderer.loading_progress = 0.95;
+                            load_step += 1;
+                        }
+                        _ => {
+                            // Finish loading
+                            if was_playing {
+                                game_state = GameState::Playing;
+                                let _ = window.set_cursor_grab(CursorGrabMode::Locked);
+                                window.set_cursor_visible(false);
+                            } else {
+                                game_state = GameState::Menu;
+                            }
+                            first_build_done = true;
+                        }
+                    }
+                    
+                    if let Err(e) = renderer.render_loading_screen() {
+                        log::error!("Loading render error: {:?}", e);
+                    }
+                    window.request_redraw();
+                    return;
+                }
+                let dt = (now - last_frame).as_secs_f32().min(0.1);
+                last_frame = now;
+
 if game_state == GameState::Playing {
                     // DIABOLICAL FIRST-FRAME STABILITY
                     if !first_build_done {
@@ -621,7 +683,6 @@ let target = (p_cx + dx, 0, p_cz + dz); // Check base chunk for existence
 
                     // --- DAY/NIGHT CYCLE ---
                     let day_time = (renderer.start_time.elapsed().as_secs_f32() % 600.0) / 600.0;
-                    let _sky_brightness = (day_time * std::f32::consts::PI * 2.0).sin().max(0.1);
 
 // DIABOLICAL AUTO-SAVE: Save every 10 seconds to stop cargo-watch restart loops
                     if last_persist.elapsed().as_millis() >= 10000 {
