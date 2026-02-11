@@ -68,7 +68,7 @@ pub struct Renderer<'a> {
     camera_buffer: Buffer, camera_bind_group: BindGroup,
     time_buffer: Buffer, time_bind_group: BindGroup,
 pub start_time: Instant, 
-    chunk_meshes: HashMap<(i32, i32, i32), (ChunkMesh, u32)>, // (x, y, z) -> (Mesh, LOD_Level)
+    pub chunk_meshes: HashMap<(i32, i32, i32), (ChunkMesh, u32)>, // (x, y, z) -> (Mesh, LOD_Level)
     entity_vertex_buffer: Buffer, entity_index_buffer: Buffer,
     pub break_progress: f32,
     
@@ -79,9 +79,9 @@ pub start_time: Instant,
     last_player_chunk: (i32, i32, i32),
 
     // DIABOLICAL THREADING
-    mesh_tx: Sender<(i32, i32, i32, u32, Arc<World>)>,
+    pub mesh_tx: Sender<(i32, i32, i32, u32, Arc<World>)>,
     mesh_rx: Receiver<MeshTask>,
-    pending_chunks: HashSet<(i32, i32, i32)>,
+    pub pending_chunks: HashSet<(i32, i32, i32)>,
 
     // DIABOLICAL GPU CULLING FIELDS
     #[allow(dead_code)] compute_pipeline: ComputePipeline,
@@ -482,7 +482,7 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
 
         // 5. Clean Fade Out
         if self.transition_alpha < 0.99 {
-            let alpha_box = 2.0 * (1.0 - self.transition_alpha);
+            // Full-screen overlay that fades based on transition_alpha logic in main.rs
             self.add_ui_quad(&mut uv, &mut ui, &mut uoff, -1.0, -1.0, 2.0, 2.0, 240);
         }
 
