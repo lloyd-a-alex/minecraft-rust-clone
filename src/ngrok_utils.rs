@@ -18,7 +18,7 @@ pub struct DiscoveredServer {
 pub struct HostingManager {
     pub ngrok_process: Option<Child>,
     pub ssh_process: Option<Child>,
-    pub public_url: String,
+    pub public_url: Arc<Mutex<String>>, // ARC for safe in-game UI access
     pub hamachi_ip: Option<String>,
     pub wan_ip: Option<String>,
     pub discovered_servers: Arc<Mutex<Vec<DiscoveredServer>>>,

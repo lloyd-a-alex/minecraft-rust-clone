@@ -630,13 +630,11 @@ world.entities.push(ent);
                     match load_step {
                         0 => {
                             renderer.loading_message = "INITIALIZING CORE KERNEL...".to_string();
-                            renderer.loading_progress = 0.01;
-                            load_step = 1;
+                            renderer.loading_progress = 0.05;
+                            // Atlas is already baked in Renderer::new, skip to Stage 2
+                            load_step = 2;
                         }
                         1 => {
-                            renderer.loading_message = "BAKING PROCEDURAL ATLAS...".to_string();
-                            let atlas = texture::TextureAtlas::new();
-                            renderer.upload_atlas(&atlas.data);
                             load_step = 2;
                         }
                         2 => {
@@ -740,11 +738,12 @@ world.entities.push(ent);
                                 log::info!("║ 🚀 LOAD COMPLETED IN {:<5.2} SECONDS                      ║", total_load_time);
                                 log::info!("╚════════════════════════════════════════════════════════════╝");
                                 
-                                // FORCE MAIN MENU ON BOOT
-                                game_state = GameState::Menu;
-                                window.set_cursor_visible(true);
-                                let _ = window.set_cursor_grab(winit::window::CursorGrabMode::None);
+                                // DIABOLICAL TRANSITION: Enter Play mode and capture cursor
+                                game_state = GameState::Playing;
+                                window.set_cursor_visible(false);
+                                let _ = window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
                                 
+                                renderer.transition_alpha = 1.0; // Reset for next load
                                 first_build_done = true;
                             }
                         }
