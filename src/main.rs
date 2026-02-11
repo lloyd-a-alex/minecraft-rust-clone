@@ -792,7 +792,7 @@ if !spawn_found { player.position = glam::Vec3::new(0.0, 80.0, 0.0); player.velo
                                 _ => {}
                             }
                         }
-                        net_timer += dt; 
+                        net_timer += _dt_frame; 
                         if net_timer > 0.05 { net_timer = 0.0; network.send_packet(Packet::PlayerMove { id: network.my_id, x: player.position.x, y: player.position.y, z: player.position.z, ry: player.rotation.y }); }
                     }
 
@@ -875,8 +875,7 @@ if !is_paused {
                             } else { breaking_pos = None; break_progress = 0.0; }
                         }
                     }
-renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.0 };
-                    renderer.update_camera(&player, win_size.0 as f32 / win_size.1 as f32);
+                    renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.0 };
                     
                     let result = if is_paused {
                         renderer.render_pause_menu(&pause_menu, &world, &player, cursor_pos, win_size.0, win_size.1)
