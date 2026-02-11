@@ -691,7 +691,7 @@ world.entities.push(ent);
                                             let wz = dz * 16;
                                             
                                             // Force column generation immediately
-                                            let noise = crate::noise_gen::NoiseGenerator::new(world.seed);
+                                            let _noise = crate::noise_gen::NoiseGenerator::new(world.seed);
                                             for y_chunk in 0..8 {
                                                 if !world.chunks.contains_key(&(dx, y_chunk, dz)) {
                                                     world.bootstrap_terrain_step(dx * 1337 + dz); // Dummy step for force gen
@@ -716,7 +716,9 @@ world.entities.push(ent);
                                     let final_h = world.get_height_at(scout_x, scout_z) as f32;
                                     player.position = glam::Vec3::new(scout_x as f32 + 0.5, final_h + 2.5, scout_z as f32 + 0.5);
                                     player.prev_position = player.position;
-                                    player.health = 20.0; // Reset health to full after any suffocation during generation
+                                    player.velocity = glam::Vec3::ZERO; // Kill any falling momentum
+                                    player.health = 20.0; // Reset health to full
+                                    player.stasis = false; // RELEASE PLAYER FROM STASIS
                                     spawn_found = true;
                                     log::info!("✅ DIABOLICAL SPAWN SECURED: ({}, {}, {})", scout_x, final_h, scout_z);
                                 } else {
@@ -994,12 +996,19 @@ if !is_paused {
 Event::AboutToWait => {
                 // DIABOLICAL THREADING: Only process world-gen and cursor logic if we are actually in the game.
                 if game_state == GameState::Playing && !is_paused && !player.inventory_open {
+                    // DIABOLICAL SPAWN SAFETY: If player falls into void/water on load (Y < 20), launch them up.
+                    if player.position.y < 20.0 {
+                        player.position.y = 80.0; // Force surface respawn
+                        player.velocity = glam::Vec3::ZERO; // Kill momentum
+                    }
+
                     let p_cx = (player.position.x / 16.0).floor() as i32;
                     let p_cy = (player.position.y / 16.0).floor() as i32;
                     let p_cz = (player.position.z / 16.0).floor() as i32;
                     world.generate_one_chunk_around(p_cx, p_cy, p_cz, 8);
 
                     // Ensure cursor state is always correct
+                    let _noise = crate::noise_gen::NoiseGenerator::new(world.seed); // DIABOLICAL FIX: Prefix unused var
                     let _ = window.set_cursor_grab(CursorGrabMode::Locked);
                     window.set_cursor_visible(false);
                 }

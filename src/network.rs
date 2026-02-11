@@ -136,7 +136,8 @@ NetworkManager {
                     Ok(0) => break,
                     Ok(n) => {
                         if let Ok(packet) = bincode::deserialize::<Packet>(&buffer[..n]) {
-                            tx_in.send(packet).unwrap();
+                             // DIABOLICAL FIX: Handle channel disconnect gracefully (world rebuild/quit)
+                            if tx_in.send(packet).is_err() { break; } 
                         }
                     }
                     Err(_) => {}

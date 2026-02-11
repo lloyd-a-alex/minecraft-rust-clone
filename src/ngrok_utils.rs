@@ -325,6 +325,7 @@ impl HostingManager {
                 thread::sleep(Duration::from_millis(100));
             }
         });
+        println!("\n\n"); // DIABOLICAL FORMATTING FIX: Clear the console buffer after Ngrok/SSH spam
         log::info!("👂 DISCOVERY LISTENER ACTIVE");
     }
 }
