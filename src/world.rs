@@ -556,25 +556,34 @@ pub fn set_block_world(&mut self, pos: BlockPos, block: BlockType) {
         }
         
         self.set_block_world(pos, BlockType::Air);
-        let affected = self.get_affected_chunks(pos);
         
-        // ROOT CAUSE FIX: Explicitly mark every affected chunk as dirty.
-        // This forces the Renderer to re-mesh neighbors that might be showing "Ghost faces".
+        // ROOT FIX: Trigger fluid logic and aggregate ALL affected 3D chunks
+        let mut affected = self.trigger_water_update(pos);
+        affected.extend(self.get_affected_chunks(pos));
+        affected.sort_unstable();
+        affected.dedup();
+        
         for &(cx, cy, cz) in &affected {
             if let Some(chunk) = self.chunks.get_mut(&(cx, cy, cz)) {
                 chunk.mesh_dirty = true;
             }
         }
+        self.mesh_dirty = true; // Global signal to Renderer
         affected
     }
     pub fn place_block(&mut self, pos: BlockPos, block: BlockType) -> Vec<(i32, i32, i32)> { 
         self.set_block_world(pos, block); 
-        let affected = self.get_affected_chunks(pos);
+        let mut affected = self.trigger_water_update(pos);
+        affected.extend(self.get_affected_chunks(pos));
+        affected.sort_unstable();
+        affected.dedup();
+        
         for &(cx, cy, cz) in &affected {
             if let Some(chunk) = self.chunks.get_mut(&(cx, cy, cz)) {
                 chunk.mesh_dirty = true;
             }
         }
+        self.mesh_dirty = true;
         affected
     }
     fn trigger_water_update(&mut self, start_pos: BlockPos) -> Vec<(i32, i32, i32)> {

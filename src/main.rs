@@ -495,13 +495,14 @@ player.inventory.craft();
                                                     }
                                                 }
                                             }
-let c = world.place_block(place, actual_blk);
+let _c = world.place_block(place, actual_blk);
                                             let head_p = BlockPos { x: player.position.x as i32, y: (player.position.y + 1.5) as i32, z: player.position.z as i32 };
                                             let is_submerged = world.get_block(head_p).is_water();
                                             audio.play("place", is_submerged);
                                             player.inventory.remove_one_from_hand();
                                             if let Some(net) = &network_mgr { net.send_packet(Packet::BlockUpdate { pos: place, block: actual_blk }); }
-                                            for (cx, cy, cz) in c { renderer.update_chunk(cx, cy, cz, &world); }
+                                            // ROOT FIX: Removed renderer.update_chunk loops to eliminate lag spikes. 
+                                            // The Renderer will now detect 'mesh_dirty' and handle it off-thread.
                                         }
                                     }
                                 }
@@ -665,8 +666,8 @@ if !spawn_found { player.position = glam::Vec3::new(0.0, 80.0, 0.0); player.velo
                                     else { world.remote_players.push(world::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); }
                                 },
                                 Packet::BlockUpdate { pos, block } => { 
-                                    let c = world.place_block(pos, block); 
-                                    for (cx, cy, cz) in c { renderer.update_chunk(cx, cy, cz, &world); } 
+                                    let _c = world.place_block(pos, block); 
+                                    // Renderer automatically picks up world.mesh_dirty flag
                                 },
                                 _ => {}
                             }
@@ -756,10 +757,10 @@ let head_p = BlockPos { x: player.position.x as i32, y: (player.position.y + 1.5
                                             let is_submerged = world.get_block(head_p).is_water();
                                             let is_cave = world.get_light_world(head_p) < 6;
                                             audio.play(s_type, is_submerged || is_cave);
-                                            let c = world.break_block(hit);
+                                            let _c = world.break_block(hit);
                                             if let Some(net) = &network_mgr { net.send_packet(Packet::BlockUpdate { pos: hit, block: BlockType::Air }); }
-                                            for (cx, cy, cz) in c { renderer.update_chunk(cx, cy, cz, &world); }
                                             breaking_pos = None; break_progress = 0.0;
+                                            // ROOT FIX: Background thread takes over automatically
                                         }
                                     }
                                 } else { if breaking_pos.is_some() && break_grace_timer > 0.0 { break_grace_timer -= dt; } else { breaking_pos = None; break_progress = 0.0; } }
@@ -769,6 +770,8 @@ let head_p = BlockPos { x: player.position.x as i32, y: (player.position.y + 1.5
                     }
 renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.0 };
                     renderer.update_camera(&player, win_size.0 as f32 / win_size.1 as f32);
+                    // ROOT FIX: Reset world dirty flag after the Renderer has had a chance to evict meshes.
+                    world.mesh_dirty = false;
                     
                     let result = if is_paused {
                         renderer.render_pause_menu(&pause_menu, &world, &player, cursor_pos, win_size.0, win_size.1)
