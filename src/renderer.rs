@@ -975,12 +975,12 @@ self.queue.submit(std::iter::once(encoder.finish()));
 }
 
 pub fn render_pause_menu(&mut self, menu: &MainMenu, world: &World, player: &Player, cursor_pos: (f64, f64), width: u32, height: u32) -> Result<(), wgpu::SurfaceError> {
-    // First render the world as a background
-    self.render_game(world, player, true, cursor_pos, width, height)?;
-    
     let output = self.surface.get_current_texture()?;
     let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
     let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Pause") });
+
+    // Composite Call: Render the world FIRST into the SAME view and encoder
+    self.render_internal(world, player, true, cursor_pos, &view, &mut encoder);
 
     let mut vertices: Vec<Vertex> = Vec::new();
     let mut indices: Vec<u32> = Vec::new();
@@ -1022,6 +1022,19 @@ pub fn render_pause_menu(&mut self, menu: &MainMenu, world: &World, player: &Pla
 }
 
 pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, cursor_pos: (f64, f64), _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
+        let output = self.surface.get_current_texture()?;
+        let view = output.texture.create_view(&TextureViewDescriptor::default());
+        let mut encoder = self.device.create_command_encoder(&CommandEncoderDescriptor { label: Some("Render Encoder") });
+
+        self.render_internal(world, player, is_paused, cursor_pos, &view, &mut encoder);
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+        Ok(())
+    }
+
+    /// DIABOLICAL RENDER CORE: Separated from presentation to allow composite passes (like Pause Menu)
+    fn render_internal(&mut self, world: &World, player: &Player, is_paused: bool, cursor_pos: (f64, f64), view: &TextureView, encoder: &mut CommandEncoder) {
         // 1. FPS Calculation & Console Output
         self.frame_count += 1;
         let time_since_last = self.last_fps_time.elapsed();
@@ -1093,9 +1106,7 @@ pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, c
             }
         }
 
-        // 3. Setup Surface and Uniforms
-        let output = self.surface.get_current_texture()?;
-        let view = output.texture.create_view(&TextureViewDescriptor::default());
+        // 3. Setup Uniforms
         let aspect = self.config.width as f32 / self.config.height as f32;
 
         // DIABOLICAL FIX: camera_buffer is already written by main.rs via update_camera(). 
@@ -1172,9 +1183,8 @@ pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, c
         }
 
         // 5. 3D Pass
-        let mut encoder = self.device.create_command_encoder(&CommandEncoderDescriptor { label: Some("Render Encoder") });
         {
-            let mut pass = encoder.begin_render_pass(&RenderPassDescriptor { 
+            let mut pass = encoder.begin_render_pass(&RenderPassDescriptor {
                 label: Some("3D Pass"), 
                 color_attachments: &[Some(RenderPassColorAttachment { view: &view, resolve_target: None, ops: Operations { load: LoadOp::Clear(Color { r: fog_color[0] as f64, g: fog_color[1] as f64, b: fog_color[2] as f64, a: 1.0 }), store: StoreOp::Store } })], 
                 depth_stencil_attachment: Some(RenderPassDepthStencilAttachment { view: &self.depth_texture, depth_ops: Some(Operations { load: LoadOp::Clear(1.0), store: StoreOp::Store }), stencil_ops: None }), 
@@ -1322,9 +1332,4 @@ pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, c
             });
             pass.set_pipeline(&self.ui_pipeline); pass.set_bind_group(0, &self.bind_group, &[]); pass.set_vertex_buffer(0, vb.slice(..)); pass.set_index_buffer(ib.slice(..), IndexFormat::Uint32); pass.draw_indexed(0..ui.len() as u32, 0, 0..1);
         }
-
-        self.queue.submit(std::iter::once(encoder.finish()));
-        output.present();
-        Ok(())
     }
-}
