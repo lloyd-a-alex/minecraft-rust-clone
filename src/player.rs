@@ -411,14 +411,14 @@ let next_y = self.position.y + self.velocity.y * dt;
                     self.bob_timer = 0.0;
                 }
                 
-                self.position.y = ground_y + 0.005; 
-                if !in_water && self.velocity.y < -14.0 && self.invincible_timer <= 0.0 { 
-                    self.health -= (self.velocity.y.abs() - 12.0) * 0.5;
+                self.position.y = ground_y + 0.01; // Increased bias to prevent ground-fighting
+                if !in_water && self.velocity.y < -18.0 && self.invincible_timer <= 0.0 { 
+                    self.health -= (self.velocity.y.abs() - 16.0) * 0.5; // Mellowed fall damage
                 }
                 
                 self.velocity.y = 0.0; 
                 self.on_ground = true;
-                self.grounded_latch = 0.1; // Hold "grounded" state for 100ms
+                self.grounded_latch = 0.25; // Massive hysteresis buffer (250ms) to stop flickering
             } else { 
                 self.position.y = next_y; 
                 self.on_ground = false; 
@@ -451,8 +451,8 @@ fn check_ground(&self, world: &World, pos: Vec3) -> Option<f32> {
             let bp = BlockPos { x: x.floor() as i32, y: y.floor() as i32, z: z.floor() as i32 };
             if world.get_block(bp).is_solid() { 
                 let top = bp.y as f32 + 1.0; 
-                // ROOT FIX: Consistent snap window. If feet are within 0.15 of the top, we are grounded.
-                if top >= feet_y - 0.05 && top - feet_y <= 0.15 { 
+                // STABLE SNAP: Increased window and bias to ensure the player sticks to blocks like glue.
+                if top >= feet_y - 0.15 && top - feet_y <= 0.2 { 
                     return Some(top + self.height / 2.0); 
                 } 
             }
