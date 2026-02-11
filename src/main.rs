@@ -501,7 +501,7 @@ let c = world.place_block(place, actual_blk);
                                             audio.play("place", is_submerged);
                                             player.inventory.remove_one_from_hand();
                                             if let Some(net) = &network_mgr { net.send_packet(Packet::BlockUpdate { pos: place, block: actual_blk }); }
-                                            for (cx, cz) in c { for cy in 0..8 { renderer.update_chunk(cx, cy, cz, &world); } }
+                                            for (cx, cy, cz) in c { renderer.update_chunk(cx, cy, cz, &world); }
                                         }
                                     }
                                 }
@@ -664,7 +664,10 @@ if !spawn_found { player.position = glam::Vec3::new(0.0, 80.0, 0.0); player.velo
                                     if let Some(p) = world.remote_players.iter_mut().find(|p| p.id == id) { p.position = glam::Vec3::new(x,y,z); p.rotation = ry; } 
                                     else { world.remote_players.push(world::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); }
                                 },
-                                Packet::BlockUpdate { pos, block } => { let c = world.place_block(pos, block); for (cx, cz) in c { for cy in 0..8 { renderer.update_chunk(cx, cy, cz, &world); } } },
+                                Packet::BlockUpdate { pos, block } => { 
+                                    let c = world.place_block(pos, block); 
+                                    for (cx, cy, cz) in c { renderer.update_chunk(cx, cy, cz, &world); } 
+                                },
                                 _ => {}
                             }
                         }
@@ -755,7 +758,7 @@ let head_p = BlockPos { x: player.position.x as i32, y: (player.position.y + 1.5
                                             audio.play(s_type, is_submerged || is_cave);
                                             let c = world.break_block(hit);
                                             if let Some(net) = &network_mgr { net.send_packet(Packet::BlockUpdate { pos: hit, block: BlockType::Air }); }
-                                            for (cx, cz) in c { for cy in 0..8 { renderer.update_chunk(cx, cy, cz, &world); } }
+                                            for (cx, cy, cz) in c { renderer.update_chunk(cx, cy, cz, &world); }
                                             breaking_pos = None; break_progress = 0.0;
                                         }
                                     }

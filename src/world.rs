@@ -460,7 +460,7 @@ pub fn set_block_world(&mut self, pos: BlockPos, block: BlockType) {
     }
 // --- PHYSICS & LOGIC ---
 #[allow(dead_code)]
-    pub fn update_block_physics(&mut self, pos: BlockPos) -> Vec<(i32, i32)> {
+    pub fn update_block_physics(&mut self, pos: BlockPos) -> Vec<(i32, i32, i32)> {
         let mut affected = Vec::new();
         let b = self.get_block(pos);
         
@@ -501,7 +501,7 @@ pub fn set_block_world(&mut self, pos: BlockPos, block: BlockType) {
                  }
              }
         }
-        affected.sort(); affected.dedup();
+        affected.sort_unstable(); affected.dedup();
         affected
     }
     pub fn get_affected_chunks(&self, pos: BlockPos) -> Vec<(i32, i32, i32)> {
@@ -577,7 +577,7 @@ pub fn set_block_world(&mut self, pos: BlockPos, block: BlockType) {
         }
         affected
     }
-fn trigger_water_update(&mut self, start_pos: BlockPos) -> Vec<(i32, i32)> {
+    fn trigger_water_update(&mut self, start_pos: BlockPos) -> Vec<(i32, i32, i32)> {
         let mut updates = Vec::new();
         let mut queue = VecDeque::new();
         queue.push_back(start_pos);
@@ -591,8 +591,9 @@ fn trigger_water_update(&mut self, start_pos: BlockPos) -> Vec<(i32, i32)> {
 
             let current = self.get_block(pos);
             let cx = pos.x.div_euclid(16);
+            let cy = pos.y.div_euclid(16);
             let cz = pos.z.div_euclid(16);
-            updates.push((cx, cz));
+            updates.push((cx, cy, cz));
 
             if current.is_water() {
                 let below = BlockPos { x: pos.x, y: pos.y - 1, z: pos.z };
@@ -602,7 +603,7 @@ fn trigger_water_update(&mut self, start_pos: BlockPos) -> Vec<(i32, i32)> {
                 }
             }
         }
-        updates.sort();
+        updates.sort_unstable();
         updates.dedup();
         updates
     }
