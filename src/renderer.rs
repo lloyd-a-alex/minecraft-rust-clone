@@ -211,10 +211,11 @@ let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor { label: Some("Pipeline Layout"), bind_group_layouts: &[&bind_group_layout, &camera_bg_layout, &time_bg_layout], push_constant_ranges: &[] });
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor { label: Some("Pipeline"), layout: Some(&pipeline_layout), vertex: VertexState { module: &shader, entry_point: "vs_main", buffers: &[Vertex::desc()] }, fragment: Some(FragmentState { module: &shader, entry_point: "fs_main", targets: &[Some(ColorTargetState { format: config.format, blend: Some(BlendState::ALPHA_BLENDING), write_mask: ColorWrites::ALL })] }), primitive: PrimitiveState { topology: PrimitiveTopology::TriangleList, strip_index_format: None, front_face: FrontFace::Ccw, cull_mode: Some(Face::Back), ..Default::default() }, depth_stencil: Some(DepthStencilState { format: TextureFormat::Depth32Float, depth_write_enabled: true, depth_compare: CompareFunction::Less, stencil: StencilState::default(), bias: DepthBiasState::default() }), multisample: MultisampleState::default(), multiview: None });
 
-        let ui_pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor { label: Some("UI Layout"), bind_group_layouts: &[&bind_group_layout], push_constant_ranges: &[] });
+        // DIABOLICAL BINDING FIX: UI layout must include all groups to match the RenderPass expectations and prevent GPU validation crashes.
+        let ui_pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor { label: Some("UI Layout"), bind_group_layouts: &[&bind_group_layout, &camera_bg_layout, &time_bg_layout], push_constant_ranges: &[] });
         let ui_pipeline = device.create_render_pipeline(&RenderPipelineDescriptor { label: Some("UI Pipeline"), layout: Some(&ui_pipeline_layout), vertex: VertexState { module: &shader, entry_point: "vs_ui", buffers: &[Vertex::desc()] }, fragment: Some(FragmentState { module: &shader, entry_point: "fs_ui", targets: &[Some(ColorTargetState { format: config.format, blend: Some(BlendState::ALPHA_BLENDING), write_mask: ColorWrites::ALL })] }), primitive: PrimitiveState { topology: PrimitiveTopology::TriangleList, strip_index_format: None, front_face: FrontFace::Ccw, cull_mode: None, ..Default::default() }, depth_stencil: None, multisample: MultisampleState::default(), multiview: None });
 
-let depth_texture = device.create_texture(&TextureDescriptor { size: Extent3d { width: config.width, height: config.height, depth_or_array_layers: 1 }, mip_level_count: 1, sample_count: 1, dimension: TextureDimension::D2, format: TextureFormat::Depth32Float, usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING, label: Some("depth"), view_formats: &[] }).create_view(&TextureViewDescriptor::default());
+        let depth_texture = device.create_texture(&TextureDescriptor { size: Extent3d { width: config.width, height: config.height, depth_or_array_layers: 1 }, mip_level_count: 1, sample_count: 1, dimension: TextureDimension::D2, format: TextureFormat::Depth32Float, usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING, label: Some("depth"), view_formats: &[] }).create_view(&TextureViewDescriptor::default());
         let entity_vertex_buffer = device.create_buffer(&BufferDescriptor { label: Some("Entity VB"), size: 1024, usage: BufferUsages::VERTEX | BufferUsages::COPY_DST, mapped_at_creation: false });
 
         // --- DIABOLICAL COMPUTE CULLER INIT ---
@@ -543,6 +544,8 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
                 });
                 pass.set_pipeline(&self.ui_pipeline);
                 pass.set_bind_group(0, &self.bind_group, &[]);
+                pass.set_bind_group(1, &self.camera_bind_group, &[]);
+                pass.set_bind_group(2, &self.time_bind_group, &[]);
                 pass.set_vertex_buffer(0, vb.slice(..));
                 pass.set_index_buffer(ib.slice(..), IndexFormat::Uint32);
                 pass.draw_indexed(0..ui.len() as u32, 0, 0..1);
@@ -887,6 +890,8 @@ pub fn render_multiplayer_menu(&mut self, menu: &mut crate::MainMenu, hosting: &
         });
         rpass.set_pipeline(&self.ui_pipeline);
         rpass.set_bind_group(0, &self.bind_group, &[]);
+        rpass.set_bind_group(1, &self.camera_bind_group, &[]);
+        rpass.set_bind_group(2, &self.time_bind_group, &[]);
         rpass.set_vertex_buffer(0, vb.slice(..));
         rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
         rpass.draw_indexed(0..i.len() as u32, 0, 0..1);
@@ -922,15 +927,13 @@ pub fn render_main_menu(&mut self, menu: &MainMenu, _width: u32, _height: u32) -
     // 2. Buttons & Text
     for btn in &menu.buttons {
         let tex_id = if btn.hovered { 251 } else { 250 };
-        let u_min = (tex_id % 32) as f32 / 32.0; let v_min = (tex_id / 32) as f32 / 32.0;
-        let u_max = u_min + 1.0 / 32.0; let v_max = v_min + 1.0 / 32.0;
         let rect = &btn.rect;
         
-        // Button Quad
-        vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [u_min, v_max], ao: 1.0, tex_index: tex_id, light: 1.0 });
-        vertices.push(Vertex { position: [rect.x + rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [u_max, v_max], ao: 1.0, tex_index: tex_id, light: 1.0 });
-        vertices.push(Vertex { position: [rect.x + rect.w / 2.0, rect.y + rect.h / 2.0, 0.0], tex_coords: [u_max, v_min], ao: 1.0, tex_index: tex_id, light: 1.0 });
-        vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y + rect.h / 2.0, 0.0], tex_coords: [u_min, v_min], ao: 1.0, tex_index: tex_id, light: 1.0 });
+        // DIABOLICAL UV FIX: vs_ui shader handles atlas offsets. Buttons must pass 0.0-1.0 local UVs.
+        vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [0.0, 1.0], ao: 1.0, tex_index: tex_id, light: 1.0 });
+        vertices.push(Vertex { position: [rect.x + rect.w / 2.0, rect.y - rect.h / 2.0, 0.0], tex_coords: [1.0, 1.0], ao: 1.0, tex_index: tex_id, light: 1.0 });
+        vertices.push(Vertex { position: [rect.x + rect.w / 2.0, rect.y + rect.h / 2.0, 0.0], tex_coords: [1.0, 0.0], ao: 1.0, tex_index: tex_id, light: 1.0 });
+        vertices.push(Vertex { position: [rect.x - rect.w / 2.0, rect.y + rect.h / 2.0, 0.0], tex_coords: [0.0, 0.0], ao: 1.0, tex_index: tex_id, light: 1.0 });
         indices.extend_from_slice(&[idx_offset, idx_offset + 1, idx_offset + 2, idx_offset, idx_offset + 2, idx_offset + 3]);
         idx_offset += 4;
 
@@ -1001,6 +1004,8 @@ pub fn render_pause_menu(&mut self, menu: &MainMenu, world: &World, player: &Pla
         });
         rpass.set_pipeline(&self.ui_pipeline);
         rpass.set_bind_group(0, &self.bind_group, &[]);
+        rpass.set_bind_group(1, &self.camera_bind_group, &[]);
+        rpass.set_bind_group(2, &self.time_bind_group, &[]);
         rpass.set_vertex_buffer(0, vb.slice(..));
         rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
         rpass.draw_indexed(0..indices.len() as u32, 0, 0..1);

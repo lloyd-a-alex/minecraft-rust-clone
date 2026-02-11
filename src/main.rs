@@ -214,8 +214,8 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     const FIXED_TIME: f32 = 1.0 / 120.0; // 120Hz DIABOLICAL PHYSICS LOCK
     
     // --- GAME STATE ---
-    // RADICAL CHANGE: Start in Menu immediately for 0ms boot-to-UI.
-    let mut game_state = GameState::Menu;
+    // DIABOLICAL FIX: Start in Loading to ensure Texture Atlas is baked before Menu displays.
+    let mut game_state = GameState::Loading;
     let mut load_step = 0;
     if was_playing {
         let _ = window.set_cursor_grab(CursorGrabMode::Locked);
