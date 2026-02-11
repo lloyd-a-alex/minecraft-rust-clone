@@ -596,7 +596,7 @@ world.entities.push(ent);
             // --- GAME UPDATE & DRAW ---
             Event::WindowEvent { event: WindowEvent::RedrawRequested, .. } => {
                 let now = Instant::now();
-                let dt = (now - last_frame).as_secs_f32().min(0.1);
+                let _dt_frame = (now - last_frame).as_secs_f32().min(0.1);
                 last_frame = now;
 
                 if game_state == GameState::Loading {
@@ -638,15 +638,19 @@ world.entities.push(ent);
                             load_step += 1;
                         }
                         _ => {
-                            // FINAL TRANSITION: Once loading is complete, we NEVER return to this block.
+                            // DIABOLICAL TRANSITION: Smooth handover to game engine
+                            log::info!("[TRANSITION] Finalizing world meshes and physics sync...");
                             if was_playing {
                                 game_state = GameState::Playing;
-                                let _ = window.set_cursor_grab(CursorGrabMode::Locked).unwrap();
+                                // SAFE CURSOR GRAB: Try grab, log failure instead of panicking
+                                if let Err(e) = window.set_cursor_grab(CursorGrabMode::Locked) {
+                                    log::warn!("[OS] Cursor grab deferred: {:?}", e);
+                                }
                                 window.set_cursor_visible(false);
-                                log::info!("🚀 LOADING COMPLETE - ENTERING WORLD");
+                                log::info!("🚀 RADICAL DEPLOY: ENTERING WORLD");
                             } else {
                                 game_state = GameState::Menu;
-                                log::info!("🏠 LOADING COMPLETE - ENTERING MENU");
+                                log::info!("🏠 RADICAL DEPLOY: ENTERING MENU");
                             }
                             first_build_done = true;
                         }
@@ -658,8 +662,9 @@ world.entities.push(ent);
                     window.request_redraw();
                     return; // EXIT frame early during loading to skip physics/logic
                 }
-                let dt = (now - last_frame).as_secs_f32().min(0.1);
-                last_frame = now;
+                
+                // Root Cause Fix: Use the time calculated at the start of the RedrawRequested block
+                let dt = _dt_frame;
 
 if game_state == GameState::Playing {
                     // DIABOLICAL FIRST-FRAME STABILITY
@@ -682,7 +687,7 @@ let target = (p_cx + dx, 0, p_cz + dz); // Check base chunk for existence
                     }
 
                     // --- DAY/NIGHT CYCLE ---
-                    let day_time = (renderer.start_time.elapsed().as_secs_f32() % 600.0) / 600.0;
+                    let _day_time = (renderer.start_time.elapsed().as_secs_f32() % 600.0) / 600.0;
 
 // DIABOLICAL AUTO-SAVE: Save every 10 seconds to stop cargo-watch restart loops
                     if last_persist.elapsed().as_millis() >= 10000 {

@@ -254,7 +254,7 @@ pub struct World {
 
 impl World {
     pub fn new(seed: u32) -> Self {
-        let mut world = World { 
+        let world = World { 
             chunks: HashMap::new(), 
             entities: Vec::new(), 
             mesh_dirty: true,
