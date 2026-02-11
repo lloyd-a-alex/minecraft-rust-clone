@@ -83,14 +83,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let brightness = in.light; 
     var lit_color = base_color.rgb * in.ao * brightness;
     
-// DIABOLICAL CLOUD SHADOWS
-    // We use the world position (model.position passed through) to check cloud coverage
-    // Using a simplified hash of the X/Z position
-    let shadow_x = in.tex_coords.x * 100.0; // This is a dummy, in real use we pass world_pos
-    let cloud_check = sin(in.tex_coords.x * 10.0) * cos(in.tex_coords.y * 10.0);
-    if (cloud_check > 0.8) {
-        lit_color *= 0.85; // Ground gets slightly darker under clouds
-    }
+// DIABOLICAL CLOUD SHADOWS REMOVED: Caused flickering "dark circles" on blocks
+    let _shadow_x = in.tex_coords.x * 100.0;
 
     // Simple Fog
     let fog_density = 0.015; 

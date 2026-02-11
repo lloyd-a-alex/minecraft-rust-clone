@@ -439,7 +439,7 @@ let next_y = self.position.y + self.velocity.y * dt;
                 // Friction lock: Stop micro-drifting
                 if move_delta.length_squared() < 0.00001 { self.velocity.x = 0.0; self.velocity.z = 0.0; }
                 self.on_ground = true;
-                self.grounded_latch = 0.25;
+                self.grounded_latch = 0.05; // RADICAL PHYSICS FIX: Reduced from 0.25 to 0.05 to kill "Walk on Air" bug
             } else { 
                 self.position.y = next_y; 
                 self.on_ground = false; 

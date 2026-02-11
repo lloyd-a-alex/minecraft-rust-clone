@@ -801,15 +801,15 @@ fn _add_cross_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, 
             _ => block.get_texture_side()
         };
         
-        // POSITIONS ARE NOW CCW LOOKING AT THE FACE FROM THE OUTSIDE
-        // UV COORDS ARE Standard [0,0], [w,0], [w,h], [0,h] for fragment-shader tiling
+        // DIABOLICAL UV ALIGNMENT: Sides were flipped because UV Y is down in WGPU.
+        // Positions are CCW. UVs are [u, v].
         let (positions, uv) = match face {
-            0 => ([[x, y + 1.0, z + h], [x + w, y + 1.0, z + h], [x + w, y + 1.0, z], [x, y + 1.0, z]], [[0.0, h], [w, h], [w, 0.0], [0.0, 0.0]]), // Top
+            0 => ([[x, y + 1.0, z + h], [x + w, y + 1.0, z + h], [x + w, y + 1.0, z], [x, y + 1.0, z]], [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]]), // Top
             1 => ([[x, y, z], [x + w, y, z], [x + w, y, z + h], [x, y, z + h]], [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]]), // Bottom
-            2 => ([[x + 1.0, y, z], [x + 1.0, y + w, z], [x + 1.0, y + w, z + h], [x + 1.0, y, z + h]], [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]]), // Right
-            3 => ([[x, y, z + h], [x, y + w, z + h], [x, y + w, z], [x, y, z]], [[0.0, h], [w, h], [w, 0.0], [0.0, 0.0]]), // Left
-            4 => ([[x, y, z + 1.0], [x + w, y, z + 1.0], [x + w, y + h, z + 1.0], [x, y + h, z + 1.0]], [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]]), // Front
-            5 => ([[x + w, y, z], [x, y, z], [x, y + h, z], [x + w, y + h, z]], [[w, 0.0], [0.0, 0.0], [0.0, h], [w, h]]), // Back
+            2 => ([[x + 1.0, y, z], [x + 1.0, y + w, z], [x + 1.0, y + w, z + h], [x + 1.0, y, z + h]], [[h, 0.0], [0.0, 0.0], [0.0, w], [h, w]]), // Right
+            3 => ([[x, y, z + h], [x, y + w, z + h], [x, y + w, z], [x, y, z]], [[0.0, 0.0], [h, 0.0], [h, w], [0.0, w]]), // Left
+            4 => ([[x, y, z + 1.0], [x + w, y, z + 1.0], [x + w, y + h, z + 1.0], [x, y + h, z + 1.0]], [[0.0, h], [w, h], [w, 0.0], [0.0, 0.0]]), // Front
+            5 => ([[x + w, y, z], [x, y, z], [x, y + h, z], [x + w, y + h, z]], [[0.0, h], [w, h], [w, 0.0], [0.0, 0.0]]), // Back
             _ => ([[0.0; 3]; 4], [[0.0; 2]; 4]),
         };
 
@@ -837,13 +837,15 @@ fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Ve
 
         for c in text.to_uppercase().chars() {
             if c == ' ' { x += final_scale; continue; }
-let idx = if c >= 'A' && c <= 'Z' { 300 + (c as u32 - 'A' as u32) } 
+            let idx = if c >= 'A' && c <= 'Z' { 300 + (c as u32 - 'A' as u32) } 
                       else if c >= '0' && c <= '9' { 300 + 26 + (c as u32 - '0' as u32) } 
                       else if c == '-' { 300 + 36 } 
                       else if c == '>' { 300 + 37 } 
-                      else { 300 };
+                      else { 999 }; // Fallback to hidden index to prevent "AAA" prefixing
             
-            self.add_ui_quad(v, i, off, x, y, final_scale, final_scale * aspect, idx);
+            if idx != 999 {
+                self.add_ui_quad(v, i, off, x, y, final_scale, final_scale * aspect, idx);
+            }
             x += final_scale;
         }
     }
@@ -979,11 +981,11 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
             // DIABOLICAL TELEMETRY SNAPSHOT: Hyper-Exhaustive high-density diagnostic
             let p = player.position; let v = player.velocity;
             let info = &self.adapter_info;
-            log::info!("[STAT] FPS:{:<3.0} | DT:{:.4}s | CHK:{} | PND:{} | POS:({:.1},{:.1},{:.1}) | VEL:({:.2},{:.2},{:.2}) | GRD:{} FLY:{} SPR:{} | INV:{} | GPU:{:?}", 
+            log::info!("[STAT] FPS:{:<3.0} | DT:{:.4}s | CHK:{} | PND:{} | POS:({:.1},{:.1},{:.1}) | VEL:({:.2},{:.2},{:.2}) | GRD:{} FLY:{} SPR:{} | INV:{} | GPU:{:?} | DEV:{} | MEM:{}", 
                 self.fps, time_since_last.as_secs_f32() / self.frame_count as f32, self.chunk_meshes.len(), self.pending_chunks.len(),
                 p.x, p.y, p.z, v.x, v.y, v.z,
                 if player.on_ground {'Y'} else {'N'}, if player.is_flying {'Y'} else {'N'}, if player.is_sprinting {'Y'} else {'N'},
-                if player.inventory_open {'Y'} else {'N'}, info.backend
+                if player.inventory_open {'Y'} else {'N'}, info.backend, info.name, self.particles.len()
             );
             
             self.frame_count = 0;

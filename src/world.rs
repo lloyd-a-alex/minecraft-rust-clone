@@ -393,11 +393,29 @@ pub fn _update_occlusion(&mut self, _px: i32, _py: i32, _pz: i32) {
                             if !too_close {
                                 if (biome == "forest" || biome == "jungle") && r < 0.05 {
                                     tree_map.insert((lx as i32, lz as i32));
-                                    let tree_h = 5 + (rng.next_f32() * 3.0) as i32;
+                                    let tree_h = 5 + (rng.next_f32() * 2.0) as i32;
+                                    // PLACE LOGS
                                     for i in 1..=tree_h { 
                                         let ty = h_world + i;
                                         if ty >= chunk_y_world && ty < chunk_y_world + 16 {
                                             chunk.set_block(lx, (ty - chunk_y_world) as usize, lz, BlockType::Wood); 
+                                        }
+                                    }
+                                    // PLACE LEAF CANOPY
+                                    for dy in (tree_h - 2)..=(tree_h + 1) {
+                                        for dx in -2..=2 {
+                                            for dz in -2..=2 {
+                                                if dx*dx + dz*dz > 4 { continue; } // Rounded canopy
+                                                let ty = h_world + dy;
+                                                let tlx = lx as i32 + dx;
+                                                let tlz = lz as i32 + dz;
+                                                if ty >= chunk_y_world && ty < chunk_y_world + 16 && tlx >= 0 && tlx < 16 && tlz >= 0 && tlz < 16 {
+                                                    let cur = chunk.get_block(tlx as usize, (ty - chunk_y_world) as usize, tlz as usize);
+                                                    if cur == BlockType::Air {
+                                                        chunk.set_block(tlx as usize, (ty - chunk_y_world) as usize, tlz as usize, BlockType::Leaves);
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 } else if r < 0.02 {
