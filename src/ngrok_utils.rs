@@ -32,7 +32,7 @@ impl HostingManager {
             public_url: "Initializing...".to_string(),
             hamachi_ip: None,
             wan_ip: None,
-            discovered_servers: Arc<Mutex<Vec<DiscoveredServer>>>,
+            discovered_servers: Arc::new(Mutex::new(Vec::new())),
         };
         manager.start_discovery_listener();
         manager

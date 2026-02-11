@@ -667,8 +667,8 @@ world.entities.push(ent);
                             }
                             
                             let _progress = (current_col as f32 / 169.0).min(1.0);
-                            // DIABOLICAL COUNTER: Display visual increments every frame
-                            visual_load_step = (visual_load_step + 7).min(current_col);
+                            // DIABOLICAL COUNTER: Match counter to actual 64-col generation speed
+                            visual_load_step = (visual_load_step + 30).min(current_col);
                             renderer.loading_progress = 0.1 + (visual_load_step as f32 / 169.0) * 0.4;
                             renderer.loading_message = format!("GENERATING TOPOLOGY... [STEP {}/169]", visual_load_step);
                             
@@ -728,14 +728,12 @@ world.entities.push(ent);
                                 log::info!("╔════════════════════════════════════════════════════════════╗");
                                 log::info!("║ 🚀 LOAD COMPLETED IN {:<5.2} SECONDS                      ║", total_load_time);
                                 log::info!("╚════════════════════════════════════════════════════════════╝");
-                                if was_playing {
-                                    game_state = GameState::Playing;
-                                    let _ = window.set_cursor_grab(CursorGrabMode::Locked);
-                                    window.set_cursor_visible(false);
-                                } else {
-                                    game_state = GameState::Menu;
-                                    window.set_cursor_visible(true);
-                                }
+                                
+                                // FORCE MAIN MENU ON BOOT
+                                game_state = GameState::Menu;
+                                window.set_cursor_visible(true);
+                                let _ = window.set_cursor_grab(winit::window::CursorGrabMode::None);
+                                
                                 first_build_done = true;
                             }
                         }

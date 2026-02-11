@@ -850,7 +850,7 @@ fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Ve
             x += final_scale;
         }
     }
-pub fn render_multiplayer_menu(&mut self, menu: &mut crate::MainMenu, hosting: &crate::ngrok_utils::HostingManager, width: u32, height: u32) -> Result<(), wgpu::SurfaceError> {
+pub fn render_multiplayer_menu(&mut self, menu: &mut crate::MainMenu, hosting: &crate::ngrok_utils::HostingManager, _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
     let output = self.surface.get_current_texture()?;
     let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
     let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Multiplayer") });

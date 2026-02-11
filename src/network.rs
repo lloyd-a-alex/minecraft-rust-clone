@@ -24,7 +24,7 @@ pub struct NetworkManager {
 }
 
 impl NetworkManager {
-    pub fn host(port: String, seed: u32) -> Self {
+    pub fn host(_port: String, seed: u32) -> Self {
         let (tx_in, rx_in) = unbounded();
         let (tx_out, rx_out) = unbounded();
         
