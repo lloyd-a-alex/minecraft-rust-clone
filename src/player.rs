@@ -424,12 +424,14 @@ let next_y = self.position.y + self.velocity.y * dt;
                     self.bob_timer = 0.0;
                 }
                 
-                self.position.y = ground_y + 0.01; // Increased bias to prevent ground-fighting
+                self.position.y = ground_y + 0.015; // DIABOLICAL STABILITY: Increased bias to kill micro-jitter
                 if !in_water && self.velocity.y < -18.0 && self.invincible_timer <= 0.0 { 
-                    self.health -= (self.velocity.y.abs() - 16.0) * 0.5; // Mellowed fall damage
+                    self.health -= (self.velocity.y.abs() - 16.0) * 0.5; 
                 }
                 
                 self.velocity.y = 0.0; 
+                // Friction lock: Stop micro-drifting when standing still
+                if move_delta.length_squared() < 0.00001 { self.velocity.x = 0.0; self.velocity.z = 0.0; }
                 self.on_ground = true;
                 self.grounded_latch = 0.25; // Massive hysteresis buffer (250ms) to stop flickering
             } else { 

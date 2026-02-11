@@ -519,7 +519,7 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
         
         // Progress Fill (Green/White)
         if self.loading_progress > 0.001 {
-            let p_w = bar_w * self.loading_progress.clamp(0.0, 1.0);
+            let p_w = (bar_w * self.loading_progress).clamp(0.01, bar_w);
             self.add_ui_quad(&mut uv, &mut ui, &mut uoff, bar_x, bar_y, p_w, bar_h, 241);
         }
 

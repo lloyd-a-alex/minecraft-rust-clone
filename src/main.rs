@@ -212,7 +212,7 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     let mut breaking_pos: Option<BlockPos> = None;
     let mut break_progress = 0.0;
     let mut left_click = false;
-    let mut break_grace_timer = 0.0;
+    let mut _break_grace_timer = 0.0; // Fixed: Warning cleanup
     let mut net_timer = 0.0;
     let mut death_timer = 0.0;
     let mut is_paused = false;
@@ -617,9 +617,8 @@ world.entities.push(ent);
                         }
                         2 => {
                             // Stage 2: Parallel Column Generation
-                            // Radical Speedup: Process 32 columns per frame (approx 128 chunks).
-                            // This saturates the CPU for a short burst without triggering "Not Responding".
-                            let columns_per_frame = 32;
+                            // DIABOLICAL TURBO: Scaling to 64 columns for 7s target
+                            let columns_per_frame = 64;
                             let current_col = world.chunks.len() / (crate::world::WORLD_HEIGHT as usize / 16);
                             
                             for i in 0..columns_per_frame {
@@ -631,7 +630,7 @@ world.entities.push(ent);
                             
                             let progress = (current_col as f32 / 169.0).min(1.0);
                             renderer.loading_progress = 0.1 + progress * 0.4;
-                            renderer.loading_message = format!("GENERATING VOXEL TOPOLOGY... {}%", (progress * 100.0) as u32);
+                            renderer.loading_message = format!("GENERATING TOPOLOGY... [STEP {}/169]", current_col);
                             
                             if current_col >= 168 { load_step = 3; }
                         }
@@ -703,6 +702,9 @@ world.entities.push(ent);
                 accumulator += _dt_frame.min(0.1); // Cap to 100ms to prevent spiral of death
 
                 if game_state == GameState::Playing {
+                    // DIABOLICAL JITTER FIX: Capture state ONCE before the substep loop starts
+                    player.capture_state(); 
+
                     while accumulator >= FIXED_TIME {
                         let head_pos = BlockPos { 
                             x: player.position.x as i32, 
@@ -711,7 +713,6 @@ world.entities.push(ent);
                         };
                         let is_cave = world.get_light_world(head_pos) < 6;
                         
-                        player.capture_state();
                         player.update(&world, FIXED_TIME, &audio, is_cave);
                         world.update_entities(FIXED_TIME, &mut player);
                         accumulator -= FIXED_TIME;
@@ -830,7 +831,7 @@ if !is_paused {
                                     if Some(hit) != breaking_pos {
                                         breaking_pos = Some(hit); 
                                         break_progress = 0.0; 
-                                        break_grace_timer = 0.0; 
+                                        _break_grace_timer = 0.0; 
                                     }
                                     
                                     if Some(hit) == breaking_pos {
