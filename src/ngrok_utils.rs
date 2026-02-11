@@ -21,6 +21,7 @@ pub struct HostingManager {
     pub public_url: Arc<Mutex<String>>, // ARC for safe in-game UI access
     pub hamachi_ip: Option<String>,
     pub wan_ip: Option<String>,
+    pub lan_ip: Option<String>,
     pub discovered_servers: Arc<Mutex<Vec<DiscoveredServer>>>,
 }
 
@@ -49,7 +50,10 @@ impl HostingManager {
         log::info!("║ 🌐 INITIALIZING HYPER-HOSTING MULTIPLAYER PROTOCOL...      ║");
         log::info!("╚════════════════════════════════════════════════════════════╝");
 
-        // DIABOLICAL CLEANUP: Kill any lingering ngrok processes to prevent ERR_NGROK_108
+        // 1. Detect LAN IP (Primary for same-house play)
+        self.lan_ip = self.detect_lan_ip();
+
+        // 2. DIABOLICAL CLEANUP: Kill any lingering ngrok processes to prevent ERR_NGROK_108
         if cfg!(target_os = "windows") {
             let _ = Command::new("taskkill").args(&["/F", "/IM", "ngrok.exe", "/T"]).output();
         } else {
@@ -83,6 +87,44 @@ impl HostingManager {
         if !final_url.is_empty() { log::info!("   - TUNNEL:  {}", final_url); }
         if let Some(ref ip) = self.wan_ip { log::info!("   - WAN IP:  {} (Req. Port Forward 25565)", ip); }
         if let Some(ref h) = self.hamachi_ip { log::info!("   - VPN:     {}", h); }
+        
+        self.print_dashboard();
+    }
+
+    fn print_dashboard(&self) {
+        let lan_ip = self.lan_ip.clone().unwrap_or_else(|| "127.0.0.1".to_string());
+        let wan_url = self.public_url.lock().unwrap().clone();
+
+        log::info!("╔════════════════════════════════════════════════════════════╗");
+        log::info!("║            🌍 MULTIPLAYER JOIN DASHBOARD 🌍                ║");
+        log::info!("╠════════════════════════════════════════════════════════════╣");
+        log::info!("║  1. JOIN VIA LAN (Same House):                             ║");
+        log::info!("║     IP: {:<46} ║", format!("{}:25565", lan_ip));
+        log::info!("║                                                            ║");
+        log::info!("║  2. JOIN VIA WAN (Friends Anywhere):                       ║");
+        if wan_url == "Initializing..." || wan_url.is_empty() {
+            log::info!("║     IP: [TUNNEL STARTING... RE-CHECKING SOON]              ║");
+        } else {
+            log::info!("║     IP: {:<46} ║", wan_url);
+        }
+        log::info!("╠════════════════════════════════════════════════════════════╣");
+        log::info!("║  INSTRUCTIONS FOR FRIENDS:                                 ║");
+        log::info!("║  - Copy the WAN IP above (including the port).             ║");
+        log::info!("║  - Go to 'Connect to Server' in the game menu.             ║");
+        log::info!("║  - Paste and Hit Connect. Stay diabolical!                 ║");
+        log::info!("╚════════════════════════════════════════════════════════════╝");
+    }
+
+    fn detect_lan_ip(&self) -> Option<String> {
+        if cfg!(target_os = "windows") {
+            let output = Command::new("powershell")
+                .args(&["-Command", "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike '*Loopback*' -and $_.InterfaceAlias -notlike '*Virtual*' -and $_.IPv4Address -notlike '169.254.*'}).IPv4Address | Select-Object -First 1"])
+                .output().ok()?;
+            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        } else {
+            let output = Command::new("sh").arg("-c").arg("hostname -I | awk '{print $1}'").output().ok()?;
+            Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        }
     }
 
     fn fetch_public_ip(&self) -> Option<String> {
@@ -145,6 +187,9 @@ impl HostingManager {
         let ngrok_bin = if cfg!(target_os = "windows") { "ngrok.exe" } else { "ngrok" };
         let ngrok_path = format!("./{}", ngrok_bin);
         
+        // Ensure log indentation isn't ruined by child process output
+        let _ = std::io::stdout().flush();
+
         if !Path::new(&ngrok_path).exists() {
             log::warn!("⚠️  NGROK BINARY MISSING. ATTEMPTING AUTOMATIC CROSS-PLATFORM FETCH...");
             if let Err(e) = self.download_ngrok_cross_platform() {

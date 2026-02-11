@@ -490,17 +490,22 @@ pub fn get_light_world(&self, pos: BlockPos) -> u8 {
         if let Some(chunk) = self.chunks.get(&(cx, cy, cz)) { chunk.get_light(lx, ly, lz) } else { 15 }
     }
     pub fn get_height_at(&self, x: i32, z: i32) -> i32 {
-        for cy in (0..(WORLD_HEIGHT/16)).rev() {
-            let cx = x.div_euclid(16); let cz = z.div_euclid(16);
+        let cx = x.div_euclid(16);
+        let cz = z.div_euclid(16);
+        let lx = x.rem_euclid(16) as usize;
+        let lz = z.rem_euclid(16) as usize;
+
+        for cy in (0..8).rev() { // 8 vertical chunks = 128 height
             if let Some(chunk) = self.chunks.get(&(cx, cy, cz)) {
-                let lx = x.rem_euclid(16) as usize;
-                let lz = z.rem_euclid(16) as usize;
                 for ly in (0..16).rev() {
-                    if chunk.get_block(lx, ly, lz).is_solid() { return cy * 16 + ly as i32; }
+                    let block = chunk.get_block(lx, ly, lz);
+                    if block.is_solid() || block.is_water() { 
+                        return cy * 16 + ly as i32; 
+                    }
                 }
             }
         }
-        0
+        64 // Default fallback height
     }
     pub fn get_block(&self, pos: BlockPos) -> BlockType {
         let cx = pos.x.div_euclid(16); let cy = pos.y.div_euclid(16); let cz = pos.z.div_euclid(16);

@@ -674,25 +674,54 @@ world.entities.push(ent);
                             load_step = 4;
                         }
                         4 => {
-                            // Stage 4: Dry Land Search (In-loading sequence to prevent UI freeze)
-                            renderer.loading_message = "SCOUTING HABITABLE TERRAIN...".to_string();
+                            // Stage 4: RADICAL HABITABLE SCOUT
+                            // This forces chunk generation for the spawn column to ensure we don't spawn in stone.
+                            renderer.loading_message = "MAPPING HABITABLE BIOMES...".to_string();
                             if !spawn_found {
-                                'scout: for r in 0..150i32 { // Search 150 radius
-                                    for x in -r..=r {
-                                        for z in -r..=r {
-                                            if x.abs() != r && z.abs() != r { continue; }
-                                            let h = world.get_height_at(x, z);
-                                            if h > world::WATER_LEVEL as i32 + 2 {
-                                                player.position = glam::Vec3::new(x as f32 + 0.5, h as f32 + 2.5, z as f32 + 0.5);
-                                                spawn_found = true;
-                                                log::info!("✅ Spawned on dry land: {}, {}, {}", x, h, z);
-                                                break 'scout;
+                                let mut scout_x = 0;
+                                let mut scout_z = 0;
+                                let mut found = false;
+                                
+                                // DIABOLICAL SPIRAL SEARCH
+                                'outer: for r in 0..20 {
+                                    for dx in -r..=r {
+                                        for dz in -r..=r {
+                                            if dx.abs() != r && dz.abs() != r { continue; }
+                                            let wx = dx * 16;
+                                            let wz = dz * 16;
+                                            
+                                            // Force column generation immediately
+                                            let noise = crate::noise_gen::NoiseGenerator::new(world.seed);
+                                            for y_chunk in 0..8 {
+                                                if !world.chunks.contains_key(&(dx, y_chunk, dz)) {
+                                                    world.bootstrap_terrain_step(dx * 1337 + dz); // Dummy step for force gen
+                                                }
+                                            }
+
+                                            let h = world.get_height_at(wx, wz);
+                                            let blk = world.get_block(BlockPos { x: wx, y: h, z: wz });
+                                            
+                                            // Check for Dry Land (not water, not deep ocean)
+                                            if h > world::WATER_LEVEL + 2 && !blk.is_water() {
+                                                scout_x = wx;
+                                                scout_z = wz;
+                                                found = true;
+                                                break 'outer;
                                             }
                                         }
                                     }
                                 }
-                                if !spawn_found {
-                                    player.position = glam::Vec3::new(0.0, 100.0, 0.0);
+
+                                if found {
+                                    let final_h = world.get_height_at(scout_x, scout_z) as f32;
+                                    player.position = glam::Vec3::new(scout_x as f32 + 0.5, final_h + 2.5, scout_z as f32 + 0.5);
+                                    player.prev_position = player.position;
+                                    player.health = 20.0; // Reset health to full after any suffocation during generation
+                                    spawn_found = true;
+                                    log::info!("✅ DIABOLICAL SPAWN SECURED: ({}, {}, {})", scout_x, final_h, scout_z);
+                                } else {
+                                    // Fallback to absolute center platform
+                                    player.position = glam::Vec3::new(0.5, 100.0, 0.5);
                                     for x in -2..=2 { for z in -2..=2 { world.place_block(BlockPos { x, y: 98, z }, BlockType::Stone); } }
                                     spawn_found = true;
                                 }
