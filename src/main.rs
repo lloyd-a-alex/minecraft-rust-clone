@@ -777,13 +777,9 @@ renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.
                         renderer.render(&world, &player, is_paused, cursor_pos, win_size.0, win_size.1)
                     };
 
-                    // RADICAL SYNC: Only clear flags AFTER renderer has processed the priority queue
+                    // RADICAL SYNC: Clear priority flags ONLY after the render call consumes them.
                     world.mesh_dirty = false;
                     world.dirty_chunks.clear();
-                        renderer.render_pause_menu(&pause_menu, &world, &player, cursor_pos, win_size.0, win_size.1)
-                    } else {
-                        renderer.render(&world, &player, is_paused, cursor_pos, win_size.0, win_size.1)
-                    };
 
                     match result {
                         Ok(_) => {}
