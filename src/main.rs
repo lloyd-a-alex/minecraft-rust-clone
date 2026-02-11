@@ -168,7 +168,6 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     let mut current_seed = master_seed;
     let mut was_playing = false;
 
-    // DIABOLICAL FIX: Move save file to target/ to prevent cargo watch from restarting the game constantly
     let save_path = "target/.live_state.json";
     if let Ok(data) = fs::read_to_string(save_path) {
         if let Ok(val) = serde_json::from_str::<serde_json::Value>(&data) {
@@ -186,7 +185,7 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     let mut last_persist = Instant::now();
     
     // --- GAME STATE ---
-    // RADICAL FIX: Always start in Loading state to prevent "Not Responding"
+    // DIABOLICAL INITIALIZATION: game_state starts as Loading to show the bar during heavy work.
     let mut game_state = GameState::Loading;
     let mut load_step = 0;
     if was_playing {
@@ -601,29 +600,28 @@ world.entities.push(ent);
                 last_frame = now;
 
                 if game_state == GameState::Loading {
-                    // DIABOLICAL LOADING PIPELINE: Execute one heavy step per frame to keep OS happy
+                    // DIABOLICAL LOADING PIPELINE: Execute heavy work and render bar in real-time
                     match load_step {
                         0 => {
-                            renderer.loading_message = "GENERATING TERRAIN...".to_string();
-                            renderer.loading_progress = 0.2;
+                            renderer.loading_message = "INITIALIZING GPU...".to_string();
+                            renderer.loading_progress = 0.1;
                             load_step += 1;
                         }
                         1 => {
-                            // Seeded terrain generation around spawn
+                            renderer.loading_message = "GENERATING BIOMES...".to_string();
                             world.generate_terrain_around(0, 0, 4);
-                            renderer.loading_progress = 0.5;
+                            renderer.loading_progress = 0.4;
                             load_step += 1;
                         }
                         2 => {
-                            renderer.loading_message = "BUILDING MESHES...".to_string();
+                            renderer.loading_message = "COMPILING MESHES...".to_string();
                             renderer.rebuild_all_chunks(&world);
-                            renderer.loading_progress = 0.8;
+                            renderer.loading_progress = 0.7;
                             load_step += 1;
                         }
                         3 => {
-                            renderer.loading_message = "SEARCHING FOR DRY LAND...".to_string();
-                            // Run the spawn search non-blockingly
-                            'spawn_search: for r in 0..200i32 {
+                            renderer.loading_message = "MAPPING WORLD...".to_string();
+                            'spawn_search: for r in 0..150i32 {
                                 for x in -r..=r {
                                     for z in -r..=r {
                                         if x.abs() != r && z.abs() != r { continue; }
@@ -636,17 +634,19 @@ world.entities.push(ent);
                                     }
                                 }
                             }
-                            renderer.loading_progress = 0.95;
+                            renderer.loading_progress = 0.9;
                             load_step += 1;
                         }
                         _ => {
-                            // Finish loading
+                            // FINAL TRANSITION: Once loading is complete, we NEVER return to this block.
                             if was_playing {
                                 game_state = GameState::Playing;
-                                let _ = window.set_cursor_grab(CursorGrabMode::Locked);
+                                let _ = window.set_cursor_grab(CursorGrabMode::Locked).unwrap();
                                 window.set_cursor_visible(false);
+                                log::info!("🚀 LOADING COMPLETE - ENTERING WORLD");
                             } else {
                                 game_state = GameState::Menu;
+                                log::info!("🏠 LOADING COMPLETE - ENTERING MENU");
                             }
                             first_build_done = true;
                         }
@@ -656,7 +656,7 @@ world.entities.push(ent);
                         log::error!("Loading render error: {:?}", e);
                     }
                     window.request_redraw();
-                    return;
+                    return; // EXIT frame early during loading to skip physics/logic
                 }
                 let dt = (now - last_frame).as_secs_f32().min(0.1);
                 last_frame = now;
@@ -853,17 +853,14 @@ renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.
                 }
             }
 Event::AboutToWait => {
-                // ROOT FIX: Removed FPS cap to allow the engine to hit 1000+ FPS.
-                // RedrawRequested will be triggered immediately by the OS.
-                
-if game_state == GameState::Playing && !is_paused && !player.inventory_open {
-                    // ROOT FIX: World generation is non-blocking and UNTHROTTLED.
-                    // The background threads will handle the work; the main thread just asks.
+                // DIABOLICAL THREADING: Only process world-gen and cursor logic if we are actually in the game.
+                if game_state == GameState::Playing && !is_paused && !player.inventory_open {
                     let p_cx = (player.position.x / 16.0).floor() as i32;
                     let p_cy = (player.position.y / 16.0).floor() as i32;
                     let p_cz = (player.position.z / 16.0).floor() as i32;
                     world.generate_one_chunk_around(p_cx, p_cy, p_cz, 8);
 
+                    // Ensure cursor state is always correct
                     let _ = window.set_cursor_grab(CursorGrabMode::Locked);
                     window.set_cursor_visible(false);
                 }

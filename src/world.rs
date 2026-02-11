@@ -262,7 +262,8 @@ impl World {
             remote_players: Vec::new(), 
             seed 
         };
-        world.generate_terrain_around(0, 0, 6);
+        // DIABOLICAL STARTUP: Do NOT generate terrain here.
+        // The main loop will handle this during the Loading state to keep the OS responsive.
         world
     }
 
