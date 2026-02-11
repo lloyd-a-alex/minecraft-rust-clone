@@ -95,6 +95,7 @@ pub start_time: Instant,
     pub loading_message: String,
     pub transition_alpha: f32,
     pub init_time: Instant,
+    pub adapter_info: wgpu::AdapterInfo,
 }
 
 #[repr(C)]
@@ -131,6 +132,7 @@ let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         
         let surface = instance.create_surface(window).unwrap();
         let adapter = instance.request_adapter(&RequestAdapterOptions { power_preference: PowerPreference::HighPerformance, compatible_surface: Some(&surface), force_fallback_adapter: false }).await.unwrap();
+        let adapter_info = adapter.get_info();
         let (device, queue) = adapter.request_device(&DeviceDescriptor::default(), None).await.unwrap();
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(surface_caps.formats[0]);
@@ -386,6 +388,7 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
             loading_message: "INITIALIZING...".to_string(),
             transition_alpha: 1.0,
             init_time: Instant::now(),
+            adapter_info,
         }
     }
 
@@ -409,7 +412,7 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
     pub fn dump_crash_telemetry(&self, error: &str) {
         let path = "GPU_CRASH_DUMP.txt";
         let mut file = File::create(path).expect("Failed to create crash dump file");
-        let info = self.device.adapter_info();
+        let info = &self.adapter_info;
         
         let dump = format!(
             "--- DIABOLICAL GPU CRASH DUMP ---\n\
@@ -418,7 +421,7 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
              ADAPTER: {} ({:?})\n\
              BACKEND: {:?}\n\
              DEVICE TYPE: {:?}\n\
-             COMPUTE_UNITS: {:?}\n\
+             DRIVER: {}\n\
              WINDOW_SIZE: {}x{}\n\
              CHUNKS_LOADED: {}\n\
              PENDING_TASKS: {}\n\
@@ -936,10 +939,10 @@ pub fn render(&mut self, world: &World, player: &Player, is_paused: bool, cursor
             
             // DIABOLICAL TELEMETRY SNAPSHOT: Hyper-Exhaustive high-density diagnostic
             let p = player.position; let v = player.velocity;
-            let info = self.device.adapter_info();
+            let info = &self.adapter_info;
             log::info!("[STAT] FPS:{:<3.0} | DT:{:.4}s | CHK:{} | PND:{} | POS:({:.1},{:.1},{:.1}) | VEL:({:.2},{:.2},{:.2}) | GRD:{} FLY:{} SPR:{} | INV:{} | GPU:{}", 
                 self.fps, time_since_last.as_secs_f32() / self.frame_count as f32, self.chunk_meshes.len(), self.pending_chunks.len(),
-                p.x, p.y, p.z, v.x, v.y, v.z, 
+                p.x, p.y, p.z, v.x, v.y, v.z,
                 if player.on_ground {'Y'} else {'N'}, if player.is_flying {'Y'} else {'N'}, if player.is_sprinting {'Y'} else {'N'},
                 if player.inventory_open {'Y'} else {'N'}, info.backend
             );
