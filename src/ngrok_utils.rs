@@ -26,6 +26,12 @@ pub struct HostingManager {
 
 impl HostingManager {
     pub fn new() -> Self {
+        // DIABOLICAL CLEANUP: Forcefully kill any zombie ngrok processes before starting
+        #[cfg(target_os = "windows")]
+        let _ = Command::new("taskkill").args(&["/F", "/IM", "ngrok.exe", "/T"]).output();
+        #[cfg(not(target_os = "windows"))]
+        let _ = Command::new("pkill").arg("-9").arg("ngrok").output();
+
         let manager = Self {
             ngrok_process: None,
             ssh_process: None,
@@ -42,6 +48,14 @@ impl HostingManager {
         log::info!("╔════════════════════════════════════════════════════════════╗");
         log::info!("║ 🌐 INITIALIZING HYPER-HOSTING MULTIPLAYER PROTOCOL...      ║");
         log::info!("╚════════════════════════════════════════════════════════════╝");
+
+        // DIABOLICAL CLEANUP: Kill any lingering ngrok processes to prevent ERR_NGROK_108
+        if cfg!(target_os = "windows") {
+            let _ = Command::new("taskkill").args(&["/F", "/IM", "ngrok.exe", "/T"]).output();
+        } else {
+            let _ = Command::new("pkill").arg("-9").arg("ngrok").output();
+        }
+        thread::sleep(Duration::from_millis(500));
         
         // 1. Detect VPN/Hamachi Adapters
         self.hamachi_ip = self.detect_hamachi();
@@ -146,25 +160,38 @@ impl HostingManager {
 
         // Start Tunnel on the "Golden Port" 25565
         let child = Command::new(&ngrok_path)
-            .args(&["tcp", "25565", "--log=stdout"])
-            .stdout(Stdio::piped())
+            .args(&["tcp", "25565"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .spawn();
 
-        if let Ok(mut c) = child {
-            if let Some(stdout) = c.stdout.take() {
-                let reader = BufReader::new(stdout);
-                for line in reader.lines().flatten() {
-                    if line.contains("url=tcp://") {
-                        if let Some(pos) = line.find("url=tcp://") {
-                            let extracted_url = line[pos + 4..].split_whitespace().next().unwrap_or("Error").to_string();
-                            *self.public_url.lock().unwrap() = extracted_url;
-                            log::info!("🚀 GLOBAL TUNNEL ACTIVE: {}", self.public_url.lock().unwrap());
-                            break;
+        if let Ok(c) = child {
+            self.ngrok_process = Some(c);
+            
+            // DIABOLICAL API POLLING: Don't trust stdout, ask the ngrok daemon directly
+            let url_clone = Arc::clone(&self.public_url);
+            thread::spawn(move || {
+                for _ in 0..20 {
+                    thread::sleep(Duration::from_millis(1000));
+                    let output = if cfg!(target_os = "windows") {
+                        Command::new("powershell").args(&["-Command", "Invoke-RestMethod -Uri 'http://127.0.0.1:4040/api/tunnels' | ConvertTo-Json"]).output()
+                    } else {
+                        Command::new("curl").args(&["-s", "http://127.0.0.1:4040/api/tunnels"]).output()
+                    };
+
+                    if let Ok(out) = output {
+                        let body = String::from_utf8_lossy(&out.stdout);
+                        if let Some(pos) = body.find("tcp://") {
+                            let end = body[pos..].find("\"").unwrap_or(30);
+                            let found = body[pos..pos+end].replace("\\u0026", "&");
+                            *url_clone.lock().unwrap() = found.clone();
+                            log::info!("🚀 GLOBAL TUNNEL ACTIVE: {}", found);
+                            return;
                         }
                     }
                 }
-            }
-            self.ngrok_process = Some(c);
+                log::error!("❌ NGROK API TIMEOUT: Tunnel may have failed to start.");
+            });
         }
     }
 

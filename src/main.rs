@@ -722,9 +722,8 @@ world.entities.push(ent);
                             }
 
                             if local_done || renderer.pending_chunks.is_empty() {
-                                let h = world.get_height_at(0, 0);
-                                player.position = glam::Vec3::new(0.5, h as f32 + 2.5, 0.5);
-                                load_step = 5;
+                                // Transition to final fade step
+                                load_step = 6;
                             }
                         }
                         _ => {
@@ -742,6 +741,9 @@ world.entities.push(ent);
                                 game_state = GameState::Playing;
                                 window.set_cursor_visible(false);
                                 let _ = window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
+                                
+                                // FORCE POSITION RE-SYNC
+                                player.prev_position = player.position;
                                 
                                 renderer.transition_alpha = 1.0; // Reset for next load
                                 first_build_done = true;

@@ -417,6 +417,7 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
         }
     }
 
+    #[allow(dead_code)]
     pub fn upload_atlas(&mut self, atlas_data: &[u8]) {
         let atlas_size = Extent3d { width: 512, height: 512, depth_or_array_layers: 1 };
         let texture = self.device.create_texture(&TextureDescriptor { label: Some("atlas_final"), size: atlas_size, mip_level_count: 1, sample_count: 1, dimension: TextureDimension::D2, format: TextureFormat::Rgba8UnormSrgb, usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST, view_formats: &[] });
