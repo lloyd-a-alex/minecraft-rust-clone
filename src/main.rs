@@ -212,8 +212,8 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     let mut breaking_pos: Option<BlockPos> = None;
     let mut break_progress = 0.0;
     let mut left_click = false;
-    let mut _break_grace_timer = 0.0; // Fixed: Warning cleanup
     let mut net_timer = 0.0;
+    let mut visual_load_step = 0; // DIABOLICAL FIX: Smooth counter for UI
     let mut death_timer = 0.0;
     let mut is_paused = false;
     let mut cursor_pos = (0.0, 0.0);
@@ -629,8 +629,10 @@ world.entities.push(ent);
                             }
                             
                             let progress = (current_col as f32 / 169.0).min(1.0);
-                            renderer.loading_progress = 0.1 + progress * 0.4;
-                            renderer.loading_message = format!("GENERATING TOPOLOGY... [STEP {}/169]", current_col);
+                            // DIABOLICAL COUNTER: Display visual increments every frame
+                            visual_load_step = (visual_load_step + 7).min(current_col); 
+                            renderer.loading_progress = 0.1 + (visual_load_step as f32 / 169.0) * 0.4;
+                            renderer.loading_message = format!("GENERATING TOPOLOGY... [STEP {}/169]", visual_load_step);
                             
                             if current_col >= 168 { load_step = 3; }
                         }
@@ -639,7 +641,7 @@ world.entities.push(ent);
                             renderer.loading_message = "DISPATCHING ASYNC MESHERS...".to_string();
                             let world_arc = Arc::new(world.clone());
                             let mut keys: Vec<_> = world.chunks.keys().cloned().collect();
-                            // Sort keys by proximity to center (0,0) to mesh spawn area first
+                            // Priority Sort: Mesh spawn area first
                             keys.sort_by_key(|k| k.0 * k.0 + k.2 * k.2);
 
                             for key in keys {
@@ -651,7 +653,7 @@ world.entities.push(ent);
                             load_step = 4;
                         }
                         4 => {
-                            // Stage 4: DIABOLICAL FIX - DRAIN THE MESH RESULTS
+                            // Stage 4: Radical Boot - Exit as soon as spawn is meshed
                             renderer.process_mesh_queue(); 
 
                             let total = world.chunks.len() as f32;
@@ -661,10 +663,18 @@ world.entities.push(ent);
                             renderer.loading_message = format!("OPTIMIZING GEOMETRY... {}%", (progress * 100.0) as u32);
                             renderer.loading_progress = 0.5 + progress * 0.45;
                             
-                            // HYPER-EXHAUSTIVE EXIT: Proceed if all chunks done OR if we have waited 
-                            // long enough to have at least the spawn area (approx 100 chunks) ready.
-                            let minimum_ready = total > 100.0 && (total - remaining) > 100.0;
-                            if renderer.pending_chunks.is_empty() || (renderer.init_time.elapsed().as_secs_f32() > 10.0 && minimum_ready) {
+                            // DIABOLICAL 7-SECOND BYPASS: Launch if local chunks (radius 2) are meshed.
+                            // This gets the player in-game while distant chunks mesh in the background.
+                            let mut local_done = true;
+                            for dx in -2..=2 {
+                                for dz in -2..=2 {
+                                    for dy in 0..8 {
+                                        if renderer.pending_chunks.contains(&(dx, dy, dz)) { local_done = false; }
+                                    }
+                                }
+                            }
+
+                            if local_done || renderer.pending_chunks.is_empty() {
                                 let h = world.get_height_at(0, 0);
                                 player.position = glam::Vec3::new(0.5, h as f32 + 2.5, 0.5);
                                 load_step = 5;
@@ -831,7 +841,6 @@ if !is_paused {
                                     if Some(hit) != breaking_pos {
                                         breaking_pos = Some(hit); 
                                         break_progress = 0.0; 
-                                        _break_grace_timer = 0.0; 
                                     }
                                     
                                     if Some(hit) == breaking_pos {

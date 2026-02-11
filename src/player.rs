@@ -375,13 +375,19 @@ if in_water {
             }
             self.on_ground = false;
         } else if in_leaves {
-            move_delta *= 0.75; // Walk through leaves
-            self.velocity.y = (self.velocity.y - 5.0 * dt).max(-1.5); // Slow gravity in leaves
-            if self.keys.up { self.velocity.y = 3.0; } // Climb leaves
+            move_delta *= 0.75; 
+            self.velocity.y = (self.velocity.y - 5.0 * dt).max(-1.5); 
+            if self.keys.up { self.velocity.y = 3.0; } 
             self.on_ground = false;
-} else {
-            self.velocity.y -= 28.0 * dt; 
-if self.on_ground && (move_delta.length_squared() > 0.0) {
+        } else {
+            // DIABOLICAL JITTER KILLER: Only apply gravity if not grounded or jumping
+            if !self.on_ground || self.velocity.y > 0.0 {
+                self.velocity.y -= 28.0 * dt; 
+            } else {
+                self.velocity.y = -0.1; // Sticky floor force
+            }
+
+            if self.on_ground && (move_delta.length_squared() > 0.0) {
                 self.bob_timer += dt;
                 if self.bob_timer > 0.35 {
                     audio.play("walk", in_cave);
@@ -424,16 +430,16 @@ let next_y = self.position.y + self.velocity.y * dt;
                     self.bob_timer = 0.0;
                 }
                 
-                self.position.y = ground_y + 0.015; // DIABOLICAL STABILITY: Increased bias to kill micro-jitter
+                self.position.y = ground_y; // Pure Snap
                 if !in_water && self.velocity.y < -18.0 && self.invincible_timer <= 0.0 { 
                     self.health -= (self.velocity.y.abs() - 16.0) * 0.5; 
                 }
                 
                 self.velocity.y = 0.0; 
-                // Friction lock: Stop micro-drifting when standing still
+                // Friction lock: Stop micro-drifting
                 if move_delta.length_squared() < 0.00001 { self.velocity.x = 0.0; self.velocity.z = 0.0; }
                 self.on_ground = true;
-                self.grounded_latch = 0.25; // Massive hysteresis buffer (250ms) to stop flickering
+                self.grounded_latch = 0.25;
             } else { 
                 self.position.y = next_y; 
                 self.on_ground = false; 
