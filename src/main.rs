@@ -6,162 +6,21 @@
 };
 use std::sync::Arc;
 use std::time::Instant;
-use rodio::{Decoder, OutputStream, Sink};
-use std::io::Cursor;
 use std::time::{SystemTime, UNIX_EPOCH};
-use minecraft_clone::{Renderer, World, BlockType, BlockPos, Player, NetworkManager, Packet, GameState, MainMenu, Rect, MenuAction, MenuButton, Hotbar, AudioSystem};
+use minecraft_clone::{Renderer, World, BlockType, BlockPos, Player, NetworkManager, GameState, MainMenu, MenuAction, AudioSystem};
+use minecraft_clone::network::Packet;
 use glam::Vec3;
 use serde_json::json;
 use std::fs;
 
-pub struct AudioSystem {
-    _stream: Option<OutputStream>,
-    stream_handle: Option<rodio::OutputStreamHandle>,
-}
-
-impl AudioSystem {
-    pub fn new() -> Self {
-        let (stream, handle) = match OutputStream::try_default() {
-            Ok((s, h)) => (Some(s), Some(h)),
-            Err(_) => (None, None),
-        };
-        Self { _stream: stream, stream_handle: handle }
-    }
-
-    pub fn play_step(&self, category: &str, variant: usize, in_cave: bool) {
-        let handle = match &self.stream_handle {
-            Some(h) => h,
-            None => return,
-        };
-        let sink = Sink::try_new(handle).unwrap();
-        
-        // DIABOLICAL VARIANT MODULATION: Each variant (0-4) slightly shifts frequency and duration
-        let v_mod = 0.92 + (variant as f32 * 0.04); // Pitch range: 0.92 to 1.08
-        let d_mod = 0.85 + (variant as f32 * 0.06); // Duration range: 0.85 to 1.09
-        
-        let (freq_start, freq_end, duration) = match category {
-            "grass" => (140.0 * v_mod, 60.0 * v_mod, 0.12 * d_mod),
-            "gravel" => (280.0 * v_mod, 110.0 * v_mod, 0.14 * d_mod),
-            "stone" => (220.0 * v_mod, 180.0 * v_mod, 0.11 * d_mod),
-            "wood" => (180.0 * v_mod, 120.0 * v_mod, 0.15 * d_mod),
-            "leaves" => (1600.0 * v_mod, 400.0 * v_mod, 0.08 * d_mod),
-            "sand" => (120.0 * v_mod, 90.0 * v_mod, 0.18 * d_mod),
-            "snow" => (450.0 * v_mod, 350.0 * v_mod, 0.10 * d_mod),
-            "glass" => (2400.0 * v_mod, 2200.0 * v_mod, 0.05 * d_mod),
-            "metal" => (400.0 * v_mod, 380.0 * v_mod, 0.13 * d_mod),
-            "water" => (100.0 * v_mod, 250.0 * v_mod, 0.25 * d_mod),
-            "bedrock" => (60.0 * v_mod, 40.0 * v_mod, 0.30 * d_mod),
-            _ => (200.0, 100.0, 0.12),
-        };
-
-        let data = Self::gen_noise(duration, freq_start, freq_end, in_cave);
-        sink.append(Decoder::new(Cursor::new(data)).unwrap());
-        sink.detach();
-    }
-
-pub fn play(&self, sound_type: &str, in_cave: bool) {
-        let handle = match &self.stream_handle {
-            Some(h) => h,
-            None => return,
-        };
-        let sink = Sink::try_new(handle).unwrap();
-        let mut dur = match sound_type {
-            "click" | "pickup" => 0.05,
-"land" => 0.2,
-            "spooky" => 4.5,
-            _ => 0.12,
-        };
-        
-        // Diabolical Reverb: Increase duration and intensity if in cave
-        let reverb_factor = if in_cave { 2.5 } else { 1.0 };
-        dur *= reverb_factor;
-
-// Underwater Muffle: Shift frequencies down significantly
-        let muffle = sound_type != "click" && sound_type != "pickup" && in_cave;
-        let freq_mult = if muffle { 0.3 } else { 1.0 };
-
-        let data = match sound_type {
-            "grass" => Self::gen_noise(dur, 120.0 * freq_mult, 40.0 * freq_mult, in_cave),
-            "stone" => Self::gen_noise(dur, 300.0 * freq_mult, 150.0 * freq_mult, in_cave),
-            "sand" => Self::gen_noise(dur, 100.0 * freq_mult, 80.0 * freq_mult, in_cave),
-            "place" => Self::gen_noise(dur, 400.0 * freq_mult, 300.0 * freq_mult, in_cave),
-            "walk" => Self::gen_noise(dur, 150.0 * freq_mult, 100.0 * freq_mult, in_cave),
-            "land" => Self::gen_noise(dur, 100.0 * freq_mult, 50.0 * freq_mult, in_cave),
-            "click" => Self::gen_noise(dur, 1200.0, 1000.0, false),
-            "drop" => Self::gen_noise(dur, 600.0 * freq_mult, 400.0 * freq_mult, in_cave),
-"pickup" => Self::gen_noise(dur, 800.0, 1400.0, false),
-            "spooky" => Self::gen_noise(dur, 65.0, 40.0, true),
-            _ => Self::gen_noise(dur, 200.0 * freq_mult, 100.0 * freq_mult, in_cave),
-        };
-        sink.append(Decoder::new(Cursor::new(data)).unwrap());
-        sink.detach();
-    }
-
-fn gen_noise(dur: f32, freq_start: f32, freq_end: f32, reverb: bool) -> Vec<u8> {
-        let spec = hound::WavSpec { channels: 1, sample_rate: 44100, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
-        let mut buf = Vec::new();
-        let mut writer = hound::WavWriter::new(Cursor::new(&mut buf), spec).unwrap();
-        let samples = (dur * 44100.0) as u32;
-        
-        // ROOT FIX: Professional-grade envelope (20ms) and Master Limiter logic.
-        // This prevents the "ripping" sound by ensuring the wave never squares off at zero.
-        let env_size = 882; 
-
-        let mut history = vec![0i16; 8820]; 
-        let history_len = history.len();
-        
-        for i in 0..samples {
-            let t = i as f32 / 44100.0;
-            let progress = i as f32 / samples as f32;
-            let freq = freq_start + (freq_end - freq_start) * progress;
-            
-            // Generate base with reduced amplitude (5000.0) for thermal headroom
-            let mut sample_f = f32::sin(t * freq * 2.0 * std::f32::consts::PI) * 5000.0;
-            
-            // Smooth Attack/Release
-            if i < env_size {
-                sample_f *= i as f32 / env_size as f32;
-            } else if i > (samples.saturating_sub(env_size)) {
-                let remaining = samples.saturating_sub(i);
-                sample_f *= remaining as f32 / env_size as f32;
-            }
-
-            let mut current_sample_f = sample_f;
-
-            if reverb {
-                let delay_samples = [1102, 2205, 4410]; 
-                for &delay in &delay_samples {
-                    if i as usize >= delay {
-                        let echo_idx = (i as usize - delay) % history_len;
-                        let echo = history[echo_idx] as f32;
-                        // Use soft-mixing instead of hard saturation to prevent clipping
-                        current_sample_f += echo * 0.15;
-                    }
-                }
-            }
-            
-            // Hard Limit and convert
-            let final_sample = current_sample_f.clamp(-32767.0, 32767.0) as i16;
-            
-            if reverb {
-                let history_idx = (i as usize) % history_len;
-                history[history_idx] = final_sample;
-            }
-            
-            writer.write_sample(final_sample).unwrap();
-        }
-        writer.finalize().unwrap();
-        buf
-    }
-}
-
+// Audio system is now imported from lib.rs
 
 // --- UI STRUCTURES ---
 #[repr(C)] #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct UIElement { pub pos: [f32; 2], pub size: [f32; 2], pub tex_idx: u32, pub padding: u32 }
 
 fn main() {
-    logger::init_logger();
+    minecraft_clone::utils::init_logger();
     let master_seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u32;
     let args: Vec<String> = std::env::args().collect();
 
@@ -204,7 +63,7 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     }
     let mut main_menu = MainMenu::new_main();
     let pause_menu = MainMenu::new_pause();
-    let mut hosting_mgr = crate::ngrok_utils::HostingManager::new();
+    let mut hosting_mgr = minecraft_clone::network::HostingManager::new();
     let mut network_mgr: Option<NetworkManager> = None;
     
     // If CLI args provided, jump straight to game
@@ -385,7 +244,7 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                                     if let Some(s) = slot { 
                                         let half = s.count / 2; 
                                         if half > 0 { 
-                                            player.inventory.cursor_item = Some(player::ItemStack::new(s.item, half)); 
+                                            player.inventory.cursor_item = Some(minecraft_clone::engine::ItemStack::new(s.item, half)); 
                                             s.count -= half; 
                                             if s.count == 0 { *slot = None; } 
                                         } 
@@ -399,7 +258,7 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                                             if cursor.count == 0 { player.inventory.cursor_item = None; } 
                                         }
                                     } else { 
-                                        *slot = Some(player::ItemStack::new(cursor.item, 1)); 
+                                        *slot = Some(minecraft_clone::engine::ItemStack::new(cursor.item, 1)); 
                                         cursor.count -= 1; 
                                         if cursor.count == 0 { player.inventory.cursor_item = None; } 
                                     }
@@ -436,7 +295,7 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                             if let Some(o) = player.inventory.crafting_output { 
                                 if player.inventory.cursor_item.is_none() || (player.inventory.cursor_item.unwrap().item == o.item && player.inventory.cursor_item.unwrap().count + o.count <= 64) {
                                     if let Some(curr) = player.inventory.cursor_item { 
-                                        player.inventory.cursor_item = Some(player::ItemStack::new(curr.item, curr.count + o.count)); 
+                                        player.inventory.cursor_item = Some(minecraft_clone::engine::ItemStack::new(curr.item, curr.count + o.count)); 
                                     } else { 
                                         player.inventory.cursor_item = Some(o); 
                                     }
@@ -459,11 +318,11 @@ player.inventory.craft();
 
                             if held_item == BlockType::BucketEmpty && targeted_block == BlockType::Water {
                                 world.place_block(hit, BlockType::Air);
-                                player.inventory.slots[player.inventory.selected_hotbar_slot] = Some(player::ItemStack::new(BlockType::BucketWater, 1));
+                                player.inventory.slots[player.inventory.selected_hotbar_slot] = Some(minecraft_clone::engine::ItemStack::new(BlockType::BucketWater, 1));
                                 renderer.update_chunk(hit.x.div_euclid(16), hit.y.div_euclid(16), hit.z.div_euclid(16), &world);
                             } else if held_item == BlockType::BucketWater {
                                 world.place_block(place, BlockType::Water);
-                                player.inventory.slots[player.inventory.selected_hotbar_slot] = Some(player::ItemStack::new(BlockType::BucketEmpty, 1));
+                                player.inventory.slots[player.inventory.selected_hotbar_slot] = Some(minecraft_clone::engine::ItemStack::new(BlockType::BucketEmpty, 1));
                                 renderer.update_chunk(place.x.div_euclid(16), place.y.div_euclid(16), place.z.div_euclid(16), &world);
                             } else if held_item.get_tool_class() == "hoe" && (targeted_block == BlockType::Grass || targeted_block == BlockType::Dirt) {
                                 world.place_block(hit, BlockType::FarmlandDry);
@@ -558,7 +417,7 @@ audio.play("click", false); // Sound for opening inventory
                                 let r_y = (i_u32.wrapping_mul(7).wrapping_add(py_u32) % 20) as f32 / 40.0 - 0.25;
                                 let r_z = (i_u32.wrapping_mul(19).wrapping_add(pz_u32) % 20) as f32 / 40.0 - 0.25;
                                 let jitter = glam::Vec3::new(r_x, r_y, r_z);
-let ent = world::ItemEntity { position: player.position + glam::Vec3::new(0.0, 1.5, 0.0), velocity: (base_dir + jitter).normalize() * 10.0, item_type: stack.item, count: 1, pickup_delay: 1.5, lifetime: 300.0, rotation: 0.0, bob_offset: i as f32 * 0.5 };
+let ent = minecraft_clone::engine::ItemEntity { position: player.position + glam::Vec3::new(0.0, 1.5, 0.0), velocity: (base_dir + jitter).normalize() * 10.0, item_type: stack.item, count: 1, pickup_delay: 1.5, lifetime: 300.0, rotation: 0.0, bob_offset: i as f32 * 0.5 };
 world.entities.push(ent);
                                 let head_p = BlockPos { x: player.position.x as i32, y: (player.position.y + 1.5) as i32, z: player.position.z as i32 };
                                 let is_submerged = world.get_block(head_p).is_water();
@@ -622,7 +481,7 @@ world.entities.push(ent);
                             // Stage 2: Parallel Column Generation
                             // DIABOLICAL OPTIMIZATION: Generate only 4 columns per frame to keep OS responsive.
                             let columns_per_frame = 4; 
-                            let current_col = world.chunks.len() / (crate::world::WORLD_HEIGHT as usize / 16);
+                            let current_col = world.chunks.len() / (minecraft_clone::engine::WORLD_HEIGHT as usize / 16);
                             
                             for i in 0..columns_per_frame {
                                 let step = (current_col + i) as i32;
@@ -672,7 +531,7 @@ world.entities.push(ent);
                                             let wz = dz * 16;
                                             
                                             // Force column generation immediately
-                                            let _noise = crate::noise_gen::NoiseGenerator::new(world.seed);
+                                            let _noise = minecraft_clone::resources::NoiseGenerator::new(world.seed);
                                             for y_chunk in 0..8 {
                                                 if !world.chunks.contains_key(&(dx, y_chunk, dz)) {
                                                     world.bootstrap_terrain_step(dx * 1337 + dz); // Dummy step for force gen
@@ -683,7 +542,7 @@ world.entities.push(ent);
                                             let blk = world.get_block(BlockPos { x: wx, y: h, z: wz });
                                             
                                             // Check for Dry Land (not water, not deep ocean)
-                                            if h > world::WATER_LEVEL + 2 && !blk.is_water() {
+                                            if h > minecraft_clone::engine::WATER_LEVEL + 2 && !blk.is_water() {
                                                 scout_x = wx;
                                                 scout_z = wz;
                                                 found = true;
@@ -864,7 +723,7 @@ if !spawn_found { player.position = glam::Vec3::new(0.0, 80.0, 0.0); player.velo
                                 Packet::PlayerMove { id, x, y, z, ry } => {
 
                                     if let Some(p) = world.remote_players.iter_mut().find(|p| p.id == id) { p.position = glam::Vec3::new(x,y,z); p.rotation = ry; } 
-                                    else { world.remote_players.push(world::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); }
+                                    else { world.remote_players.push(minecraft_clone::engine::RemotePlayer{id, position:glam::Vec3::new(x,y,z), rotation:ry}); }
                                 },
                                 Packet::BlockUpdate { pos, block } => { 
                                     let _c = world.place_block(pos, block); 
@@ -940,7 +799,7 @@ if !is_paused {
                                             let b_type = world.get_block(hit);
                                             let (tex, _, _) = b_type.get_texture_indices();
                                             for _ in 0..8 {
-                                                renderer.particles.push(renderer::Particle {
+                                                renderer.particles.push(minecraft_clone::graphics::Particle {
                                                     pos: glam::Vec3::new(hit.x as f32 + 0.5, hit.y as f32 + 0.5, hit.z as f32 + 0.5),
                                                     vel: glam::Vec3::new((rand::random::<f32>() - 0.5) * 4.0, rand::random::<f32>() * 5.0, (rand::random::<f32>() - 0.5) * 4.0),
                                                     life: 1.0, color_idx: tex,
@@ -1005,7 +864,7 @@ Event::AboutToWait => {
                     world.generate_one_chunk_around(p_cx, p_cy, p_cz, 8);
 
                     // Ensure cursor state is always correct
-                    let _noise = crate::noise_gen::NoiseGenerator::new(world.seed); // DIABOLICAL FIX: Prefix unused var
+                    let _noise = minecraft_clone::resources::NoiseGenerator::new(world.seed); // DIABOLICAL FIX: Prefix unused var
                     let _ = window.set_cursor_grab(CursorGrabMode::Locked);
                     window.set_cursor_visible(false);
                 }
