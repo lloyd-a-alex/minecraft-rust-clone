@@ -1,8 +1,8 @@
 ﻿use winit::{
-    event::{Event, WindowEvent, ElementState, DeviceEvent, MouseButton, MouseScrollDelta, KeyEvent},
-    event_loop::EventLoop,
-    window::{WindowBuilder, CursorGrabMode},
-    keyboard::{KeyCode, PhysicalKey},
+    event::{Event, WindowEvent, ElementState, DeviceEvent, MouseButton, MouseScrollDelta, KeyEvent},
+    event_loop::EventLoop,
+    window::{WindowBuilder, CursorGrabMode},
+    keyboard::{KeyCode, PhysicalKey},
 };
 use std::sync::Arc;
 use std::time::Instant;

@@ -957,7 +957,7 @@ pub struct Player {
     pub radius: f32,
     pub on_ground: bool,
     pub inventory: Inventory,
-    pub keys: PlayerKeys,
+    pub input: PlayerInput, // ROOT FIX: Renamed 'keys' to 'input' for semantic parity
     pub hotbar: crate::Hotbar,
 
     // DIABOLICAL INTERPOLATION: Store previous state to kill visual jitter
@@ -989,15 +989,19 @@ pub bob_timer: f32,
 }
 
 #[derive(Default)]
-pub struct PlayerKeys { 
-    pub forward: bool, pub backward: bool, pub left: bool, pub right: bool, pub up: bool, pub down: bool,
+pub struct PlayerInput { 
+    pub forward: bool, pub backward: bool, pub left: bool, pub right: bool, 
+    pub jump: bool, // Renamed from 'up' to match main.rs usage
+    pub sneak: bool, // Renamed from 'down' to match main.rs usage
+    pub sprint: bool, // Added field
     pub jump_queued: bool, // DIABOLICAL FIX: Buffer the jump request to sync with physics sub-steps
 }
 
-impl PlayerKeys {
+impl PlayerInput {
     pub fn reset(&mut self) {
         self.forward = false; self.backward = false; self.left = false;
-        self.right = false; self.up = false; self.down = false;
+        self.right = false; self.jump = false; self.sneak = false;
+        self.sprint = false;
     }
 }
 
@@ -1011,9 +1015,9 @@ Player {
             height: 1.8,
             radius: 0.3,
             on_ground: false,
-            inventory: Inventory::new(),
-            keys: PlayerKeys::default(),
-            hotbar: crate::Hotbar::new(),
+        inventory: Inventory::new(),
+        input: PlayerInput::default(),
+        hotbar: crate::Hotbar::new(),
             prev_position: Vec3::new(0.0, 100.0, 0.0),
             prev_rotation: Vec3::ZERO,
             is_flying: false,
@@ -1051,12 +1055,13 @@ bob_timer: 0.0,
         }
     }
     
-    pub fn handle_input(&mut self, key: KeyCode, pressed: bool) {
+        pub fn handle_input(&mut self, key: KeyCode, pressed: bool) {
         match key {
-            KeyCode::KeyW => self.keys.forward = pressed, KeyCode::KeyS => self.keys.backward = pressed,
-            KeyCode::KeyA => self.keys.left = pressed, KeyCode::KeyD => self.keys.right = pressed,
-            KeyCode::Space => { self.keys.up = pressed; if pressed { self.keys.jump_queued = true; } },
-            KeyCode::ShiftLeft => self.keys.down = pressed,
+            KeyCode::KeyW => self.input.forward = pressed, KeyCode::KeyS => self.input.backward = pressed,
+            KeyCode::KeyA => self.input.left = pressed, KeyCode::KeyD => self.input.right = pressed,
+            KeyCode::Space => { self.input.jump = pressed; if pressed { self.input.jump_queued = true; } },
+            KeyCode::ShiftLeft => self.input.sneak = pressed,
+            KeyCode::ControlLeft => self.input.sprint = pressed,
             KeyCode::Digit1 => self.inventory.select_slot(0), KeyCode::Digit2 => self.inventory.select_slot(1),
             KeyCode::Digit3 => self.inventory.select_slot(2), KeyCode::Digit4 => self.inventory.select_slot(3),
             KeyCode::Digit5 => self.inventory.select_slot(4), KeyCode::Digit6 => self.inventory.select_slot(5),
@@ -1098,13 +1103,13 @@ pub fn update(&mut self, world: &crate::engine::World, dt: f32, audio: &crate::A
     fn internal_update(&mut self, world: &crate::engine::World, dt: f32, audio: &crate::AudioSystem, in_cave: bool) {
         if self.invincible_timer > 0.0 { self.invincible_timer -= dt; }
         
-        // --- DIABOLICAL GROUNDING HYSTERESIS ---
+                // --- DIABOLICAL GROUNDING HYSTERESIS ---
         if self.grounded_latch > 0.0 { self.grounded_latch -= dt; }
         if self.jump_buffer_timer > 0.0 { self.jump_buffer_timer -= dt; }
         
-        if self.keys.jump_queued {
+        if self.input.jump_queued {
             self.jump_buffer_timer = 0.15;
-            self.keys.jump_queued = false;
+            self.input.jump_queued = false;
         }
 
         // RADICAL FIX: Recalculate on_ground status IMMEDIATELY to prevent frame-lag jitter
@@ -1154,14 +1159,14 @@ let feet_bp = BlockPos { x: self.position.x.floor() as i32, y: self.position.y.f
              }
         }}
 
-        let (yaw_sin, yaw_cos) = self.rotation.y.sin_cos();
+               let (yaw_sin, yaw_cos) = self.rotation.y.sin_cos();
         let forward = Vec3::new(yaw_cos, 0.0, yaw_sin).normalize(); let right = Vec3::new(-yaw_sin, 0.0, yaw_cos).normalize();
         let mut move_delta = Vec3::ZERO;
-        if self.keys.forward { move_delta += forward; } if self.keys.backward { move_delta -= forward; }
-        if self.keys.right { move_delta += right; } if self.keys.left { move_delta -= right; }
+        if self.input.forward { move_delta += forward; } if self.input.backward { move_delta -= forward; }
+        if self.input.right { move_delta += right; } if self.input.left { move_delta -= right; }
 if move_delta.length_squared() > 0.0 { 
             let mut speed_mult = if self.is_flying { self.admin_speed * 4.0 } else { 1.0 };
-            if self.is_sprinting && !self.is_flying { speed_mult *= 1.5; }
+            if self.input.sprint && !self.is_flying { speed_mult *= 1.5; }
             move_delta = move_delta.normalize() * self.speed * speed_mult * dt; 
         }
         
@@ -1174,7 +1179,7 @@ let chest_bp = BlockPos { x: self.position.x.floor() as i32, y: (self.position.y
 
 if in_water {
             move_delta *= 0.65;
-            if self.keys.up { 
+            if self.input.jump { 
                 // Diabolical Fix: If we are near the surface, give a massive boost to "breach" onto land
                 let surface_check = world.get_block(BlockPos { x: self.position.x.floor() as i32, y: (self.position.y + 0.8).floor() as i32, z: self.position.z.floor() as i32 });
                 if surface_check == BlockType::Air {
@@ -1182,16 +1187,16 @@ if in_water {
                 } else {
                     self.velocity.y = (self.velocity.y + 20.0 * dt).min(4.5); 
                 }
-            } else if self.keys.down {
+            } else if self.input.sneak {
                 self.velocity.y = (self.velocity.y - 14.0 * dt).max(-4.0); 
             } else {
                 self.velocity.y = (self.velocity.y - 1.5 * dt).max(-1.2); // Slower sink
             }
             self.on_ground = false;
-        } else if in_leaves {
+                } else if in_leaves {
             move_delta *= 0.75; 
             self.velocity.y = (self.velocity.y - 5.0 * dt).max(-1.5); 
-            if self.keys.up { self.velocity.y = 3.0; } 
+            if self.input.jump { self.velocity.y = 3.0; } 
             self.on_ground = false;
         } else {
             // DIABOLICAL JITTER KILLER: Only apply gravity if not grounded or jumping
@@ -1201,8 +1206,8 @@ if in_water {
                 self.velocity.y = -0.1; // Sticky floor force
             }
 
-            if self.on_ground && (move_delta.length_squared() > 0.0) {
-                self.bob_timer += dt;
+                    if self.on_ground && (self.input.forward || self.input.backward || self.input.left || self.input.right) { 
+            self.bob_timer += dt;
                 if self.bob_timer > 0.35 {
                     // DIABOLICAL MATERIAL DETECTION
                     let feet_pos = BlockPos { 
@@ -1355,9 +1360,9 @@ pub fn build_view_projection_matrix(&self, aspect: f32) -> [[f32; 4]; 4] {
         let (yaw_sin, yaw_cos) = self.rotation.y.sin_cos();
         let mut eye_pos = self.position + Vec3::new(0.0, self.height * 0.4, 0.0);
         
-        if self.on_ground && (self.keys.forward || self.keys.backward || self.keys.left || self.keys.right) { 
-            eye_pos.y += (self.walk_time * 2.0).sin() * 0.02; 
-        }
+           if self.on_ground && (self.input.forward || self.input.backward || self.input.left || self.input.right) { 
+        eye_pos.y += (self.walk_time * 2.0).sin() * 0.02; 
+    }
         
         let forward = Vec3::new(yaw_cos * pitch_cos, pitch_sin, yaw_sin * pitch_cos).normalize();
         let view = Mat4::look_at_rh(eye_pos, eye_pos + forward, Vec3::Y);
