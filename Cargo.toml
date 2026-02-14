@@ -19,7 +19,7 @@ crossbeam-channel = "0.5" # Thread-safe communication
 glam = { version = "0.24", features = ["bytemuck", "serde"] }
 reqwest = { version = "0.11", features = ["blocking", "json"] }
 zip = "0.6"
-rand = "0.9.2"
+rand = "0.8.5"
 rodio = "0.17"
 hound = "3.5"
 num_cpus = "1.16"

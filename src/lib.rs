@@ -104,7 +104,7 @@ impl AudioSystem {
 }
 
 pub struct Hotbar { 
-    pub slots: [Option<(crate::world::BlockType, u32)>; 9], 
+    pub slots: [Option<(crate::engine::BlockType, u32)>; 9], 
     pub selected_slot: usize 
 }
 
@@ -117,43 +117,22 @@ impl Hotbar {
     } 
 }
 
-pub mod minecraft_rendering;
-pub mod traditional_textures;
-pub mod weather_system;
-pub mod combat_system;
-pub mod ui_system;
-pub mod config_system;
-pub mod logger;
-pub mod chat_system;
-pub mod time_system;
-pub mod advanced_logger;
-pub mod stress_test;
+pub mod engine;
+pub mod environment;
+pub mod graphics;
+pub mod interface;
+pub mod configuration;
 pub mod network;
-pub mod ngrok_utils;
-pub mod noise_gen;
-pub mod player;
-pub mod renderer;
-pub mod resource_manager;
-pub mod texture;
-pub mod ui_system;
-pub mod weather_system;
-pub mod combat_system;
-pub mod config_system;
-pub mod stress_test;
-pub mod save_menu;
-pub mod save_system;
-pub mod world;
+pub mod resources;
+pub mod utils;
 
 // Re-export commonly used types for convenience
-pub use crate::player::Player;
-pub use crate::world::{World, BlockPos, BlockType};
-pub use crate::renderer::Renderer;
+pub use crate::engine::{Player, World, BlockPos, BlockType};
+pub use crate::graphics::Renderer;
+pub use crate::resources::{ResourceTracker, track_chunk_usage, cleanup_if_needed};
 pub use crate::network::NetworkManager;
-pub use crate::resource_manager::{ResourceTracker, track_chunk_usage, cleanup_if_needed};
-pub use crate::ui_system::{AdvancedHUD, DiabolicalMenuSystem};
-pub use crate::weather_system::{WeatherSystem, WeatherType};
-pub use crate::combat_system::{CombatSystem, Mob, MobType, DamageType};
-pub use crate::config_system::{ConfigManager, GameConfig};
+pub use crate::environment::{WeatherSystem, WeatherType};
+pub use crate::configuration::{ConfigManager, GameConfig};
 
 // Version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -1074,3 +1074,1210 @@ fn generate_bucket(data: &mut [u8], size: u32, w: u32, idx: u32, water: bool) {
         Self::place_texture(data, size, w, idx, &p);
     }
 }
+// DIABOLICAL TRADITIONAL TEXTURE SYSTEM - Hand-Crafted Visual Enhancement
+// 
+// This module provides comprehensive traditional texture generation with:
+// - Artist-designed templates for authentic Minecraft aesthetics
+// - Layered texture composition for depth and detail
+// - Traditional color palettes inspired by classic Minecraft
+// - Material-specific rendering properties
+// - Biome and time-based texture variations
+
+use glam::Vec3;
+use std::collections::HashMap;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MaterialType {
+    Stone,
+    Wood,
+    Dirt,
+    Grass,
+    Sand,
+    Water,
+    Leaves,
+    Metal,
+    Glass,
+    Fabric,
+    Crystal,
+}
+
+#[derive(Debug, Clone)]
+pub struct TextureTemplate {
+    pub base_color: [u8; 3],
+    pub detail_colors: Vec<[u8; 3]>,
+    pub material_type: MaterialType,
+    pub pattern_type: PatternType,
+    pub roughness: f32,
+    pub metallic: f32,
+    pub transparency: f32,
+    pub emission: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PatternType {
+    Solid,
+    Grain,
+    Veined,
+    Crystalline,
+    Fabric,
+    Metallic,
+    Organic,
+    Geometric,
+}
+
+#[derive(Debug, Clone)]
+pub struct TextureLayer {
+    pub pattern: PatternType,
+    pub color: [u8; 3],
+    pub intensity: f32,
+    pub scale: f32,
+    pub offset: [f32; 2],
+}
+
+#[derive(Debug, Clone)]
+pub struct TraditionalPalette {
+    pub stone_colors: [[u8; 3]; 8],
+    pub wood_colors: [[u8; 3]; 6],
+    pub dirt_colors: [[u8; 3]; 4],
+    pub grass_colors: [[u8; 3]; 5],
+    pub sand_colors: [[u8; 3]; 3],
+    pub ore_colors: [[u8; 3]; 10],
+    pub plant_colors: [[u8; 3]; 12],
+    pub metal_colors: [[u8; 3]; 8],
+}
+
+pub struct TraditionalTextureGenerator {
+    pub palette: TraditionalPalette,
+    pub templates: HashMap<MaterialType, TextureTemplate>,
+    pub noise_scale: f32,
+    pub detail_level: f32,
+}
+
+impl TraditionalTextureGenerator {
+    pub fn new() -> Self {
+        let palette = Self::create_traditional_palette();
+        let templates = Self::create_texture_templates(&palette);
+        
+        Self {
+            palette,
+            templates,
+            noise_scale: 0.1,
+            detail_level: 0.8,
+        }
+    }
+
+    fn create_traditional_palette() -> TraditionalPalette {
+        TraditionalPalette {
+            // Warm, traditional stone colors
+            stone_colors: [
+                [136, 136, 136], // Light stone
+                [119, 119, 119], // Medium stone
+                [102, 102, 102], // Dark stone
+                [85, 85, 85],     // Very dark stone
+                [153, 153, 153], // Pale stone
+                [170, 170, 170], // Bright stone
+                [68, 68, 68],     // Shadow stone
+                [187, 187, 187], // Weathered stone
+            ],
+            // Natural wood colors with grain
+            wood_colors: [
+                [143, 101, 69],  // Oak wood
+                [92, 51, 23],    // Dark oak
+                [194, 178, 128], // Birch wood
+                [113, 67, 25],   // Spruce wood
+                [160, 106, 66],  // Jungle wood
+                [247, 233, 163], // Acacia wood
+            ],
+            // Earth tones
+            dirt_colors: [
+                [139, 90, 69],   // Light dirt
+                [121, 85, 61],   // Medium dirt
+                [109, 77, 54],   // Dark dirt
+                [155, 118, 87],  // Sandy dirt
+            ],
+            // Natural grass colors
+            grass_colors: [
+                [124, 169, 80],  // Healthy grass
+                [134, 179, 90],  // Lush grass
+                [114, 159, 70],  // Dry grass
+                [144, 189, 100], // Tropical grass
+                [104, 149, 60],  // Sparse grass
+            ],
+            // Sandy colors
+            sand_colors: [
+                [238, 220, 194], // Light sand
+                [218, 200, 174], // Medium sand
+                [198, 180, 154], // Dark sand
+            ],
+            // Rich ore colors
+            ore_colors: [
+                [24, 24, 24],     // Coal
+                [210, 180, 140], // Iron
+                [255, 215, 0],   // Gold
+                [0, 255, 255],    // Diamond
+                [255, 0, 0],     // Redstone
+                [20, 40, 180],   // Lapis
+                [160, 160, 160], // Silver
+                [255, 128, 0],   // Copper
+                [128, 0, 128],   // Amethyst
+                [255, 255, 255], // Quartz
+            ],
+            // Vibrant plant colors
+            plant_colors: [
+                [34, 89, 34],    // Green leaves
+                [124, 169, 80],  // Grass green
+                [255, 255, 0],   // Yellow flowers
+                [255, 0, 0],     // Red flowers
+                [128, 0, 128],   // Purple flowers
+                [255, 192, 203], // Pink flowers
+                [255, 165, 0],   // Orange flowers
+                [0, 0, 255],     // Blue flowers
+                [255, 255, 255], // White flowers
+                [165, 42, 42],   // Brown mushrooms
+                [255, 0, 255],   // Magenta flowers
+                [192, 192, 192], // Gray flowers
+            ],
+            // Metallic colors
+            metal_colors: [
+                [192, 192, 192], // Iron
+                [255, 215, 0],   // Gold
+                [192, 192, 192], // Steel
+                [184, 115, 51],  // Copper
+                [128, 128, 128], // Lead
+                [255, 255, 255], // Silver
+                [217, 217, 217], // Aluminum
+                [255, 140, 0],   // Bronze
+            ],
+        }
+    }
+
+    fn create_texture_templates(palette: &TraditionalPalette) -> HashMap<MaterialType, TextureTemplate> {
+        let mut templates = HashMap::new();
+
+        // Stone template with grain pattern
+        templates.insert(MaterialType::Stone, TextureTemplate {
+            base_color: palette.stone_colors[1],
+            detail_colors: palette.stone_colors[1..].to_vec(),
+            material_type: MaterialType::Stone,
+            pattern_type: PatternType::Grain,
+            roughness: 0.8,
+            metallic: 0.0,
+            transparency: 0.0,
+            emission: 0.0,
+        });
+
+        // Wood template with visible grain
+        templates.insert(MaterialType::Wood, TextureTemplate {
+            base_color: palette.wood_colors[0],
+            detail_colors: palette.wood_colors[1..].to_vec(),
+            material_type: MaterialType::Wood,
+            pattern_type: PatternType::Grain,
+            roughness: 0.6,
+            metallic: 0.0,
+            transparency: 0.0,
+            emission: 0.0,
+        });
+
+        // Dirt template with organic pattern
+        templates.insert(MaterialType::Dirt, TextureTemplate {
+            base_color: palette.dirt_colors[0],
+            detail_colors: palette.dirt_colors[1..].to_vec(),
+            material_type: MaterialType::Dirt,
+            pattern_type: PatternType::Organic,
+            roughness: 0.9,
+            metallic: 0.0,
+            transparency: 0.0,
+            emission: 0.0,
+        });
+
+        // Grass template with organic pattern
+        templates.insert(MaterialType::Grass, TextureTemplate {
+            base_color: palette.grass_colors[0],
+            detail_colors: palette.grass_colors[1..].to_vec(),
+            material_type: MaterialType::Grass,
+            pattern_type: PatternType::Organic,
+            roughness: 0.7,
+            metallic: 0.0,
+            transparency: 0.0,
+            emission: 0.0,
+        });
+
+        // Sand template with fine grain
+        templates.insert(MaterialType::Sand, TextureTemplate {
+            base_color: palette.sand_colors[0],
+            detail_colors: palette.sand_colors[1..].to_vec(),
+            material_type: MaterialType::Sand,
+            pattern_type: PatternType::Grain,
+            roughness: 0.5,
+            metallic: 0.0,
+            transparency: 0.0,
+            emission: 0.0,
+        });
+
+        // Water template with transparency
+        templates.insert(MaterialType::Water, TextureTemplate {
+            base_color: [80, 120, 180],
+            detail_colors: vec![[60, 100, 160], [100, 140, 200]],
+            material_type: MaterialType::Water,
+            pattern_type: PatternType::Solid,
+            roughness: 0.1,
+            metallic: 0.0,
+            transparency: 0.7,
+            emission: 0.0,
+        });
+
+        // Leaves template with veined pattern
+        templates.insert(MaterialType::Leaves, TextureTemplate {
+            base_color: palette.plant_colors[0],
+            detail_colors: palette.plant_colors[1..4].to_vec(),
+            material_type: MaterialType::Leaves,
+            pattern_type: PatternType::Veined,
+            roughness: 0.4,
+            metallic: 0.0,
+            transparency: 0.3,
+            emission: 0.0,
+        });
+
+        // Metal template with metallic properties
+        templates.insert(MaterialType::Metal, TextureTemplate {
+            base_color: palette.metal_colors[0],
+            detail_colors: palette.metal_colors[1..].to_vec(),
+            material_type: MaterialType::Metal,
+            pattern_type: PatternType::Metallic,
+            roughness: 0.2,
+            metallic: 0.8,
+            transparency: 0.0,
+            emission: 0.0,
+        });
+
+        // Glass template with transparency
+        templates.insert(MaterialType::Glass, TextureTemplate {
+            base_color: [200, 200, 200],
+            detail_colors: vec![[180, 180, 180], [220, 220, 220]],
+            material_type: MaterialType::Glass,
+            pattern_type: PatternType::Solid,
+            roughness: 0.0,
+            metallic: 0.0,
+            transparency: 0.8,
+            emission: 0.0,
+        });
+
+        // Fabric template
+        templates.insert(MaterialType::Fabric, TextureTemplate {
+            base_color: [200, 150, 100],
+            detail_colors: vec![[180, 130, 80], [220, 170, 120]],
+            material_type: MaterialType::Fabric,
+            pattern_type: PatternType::Fabric,
+            roughness: 0.6,
+            metallic: 0.0,
+            transparency: 0.0,
+            emission: 0.0,
+        });
+
+        // Crystal template with crystalline pattern
+        templates.insert(MaterialType::Crystal, TextureTemplate {
+            base_color: [200, 200, 255],
+            detail_colors: vec![[180, 180, 235], [220, 220, 255]],
+            material_type: MaterialType::Crystal,
+            pattern_type: PatternType::Crystalline,
+            roughness: 0.1,
+            metallic: 0.2,
+            transparency: 0.6,
+            emission: 0.1,
+        });
+
+        templates
+    }
+
+    pub fn generate_traditional_texture(
+        &self,
+        material_type: MaterialType,
+        size: usize,
+        biome_modifier: Option<BiomeModifier>,
+        time_modifier: Option<TimeModifier>,
+    ) -> Vec<u8> {
+        let template = &self.templates[&material_type];
+        let mut texture_data = Vec::with_capacity(size * size * 4);
+
+        for y in 0..size {
+            for x in 0..size {
+                let uv = [x as f32 / size as f32, y as f32 / size as f32];
+                
+                // Generate base color with pattern
+                let base_color = self.generate_pattern_color(template, uv);
+                
+                // Apply biome and time modifiers
+                let modified_color = self.apply_modifiers(base_color, biome_modifier, time_modifier);
+                
+                // Add detail layers
+                let final_color = self.add_detail_layers(template, modified_color, uv);
+                
+                texture_data.extend([final_color[0], final_color[1], final_color[2], 255]);
+            }
+        }
+
+        texture_data
+    }
+
+    fn generate_pattern_color(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
+        match template.pattern_type {
+            PatternType::Solid => template.base_color,
+            PatternType::Grain => self.generate_grain_pattern(template, uv),
+            PatternType::Veined => self.generate_veined_pattern(template, uv),
+            PatternType::Crystalline => self.generate_crystalline_pattern(template, uv),
+            PatternType::Fabric => self.generate_fabric_pattern(template, uv),
+            PatternType::Metallic => self.generate_metallic_pattern(template, uv),
+            PatternType::Organic => self.generate_organic_pattern(template, uv),
+            PatternType::Geometric => self.generate_geometric_pattern(template, uv),
+        }
+    }
+
+    fn generate_grain_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
+        let noise = self.perlin_noise(uv[0] * 8.0, uv[1] * 8.0);
+        let color_index = (noise * template.detail_colors.len() as f32) as usize % template.detail_colors.len();
+        template.detail_colors[color_index]
+    }
+
+    fn generate_veined_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
+        let vein_noise = self.perlin_noise(uv[0] * 16.0, uv[1] * 16.0);
+        let base_noise = self.perlin_noise(uv[0] * 4.0, uv[1] * 4.0);
+        
+        if vein_noise > 0.7 {
+            template.detail_colors[0] // Vein color
+        } else {
+            self.blend_colors(template.base_color, template.detail_colors[1], base_noise)
+        }
+    }
+
+    fn generate_crystalline_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
+        let crystal_noise = self.perlin_noise(uv[0] * 12.0, uv[1] * 12.0);
+        let facet_noise = self.perlin_noise(uv[0] * 24.0, uv[1] * 24.0);
+        
+        let base_color = self.blend_colors(template.base_color, template.detail_colors[0], crystal_noise);
+        self.blend_colors(base_color, template.detail_colors[1], facet_noise * 0.3)
+    }
+
+    fn generate_fabric_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
+        let weave_x = (uv[0] * 20.0).sin() * 0.5 + 0.5;
+        let weave_y = (uv[1] * 20.0).cos() * 0.5 + 0.5;
+        let weave_pattern = (weave_x * weave_y).powf(2.0);
+        
+        self.blend_colors(template.base_color, template.detail_colors[0], weave_pattern)
+    }
+
+    fn generate_metallic_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
+        let metal_noise = self.perlin_noise(uv[0] * 32.0, uv[1] * 32.0);
+        let polish_pattern = (uv[0] * 100.0).sin() * (uv[1] * 100.0).cos() * 0.1 + 0.9;
+        
+        let base_color = self.blend_colors(template.base_color, template.detail_colors[0], metal_noise);
+        self.blend_colors(base_color, template.detail_colors[1], polish_pattern)
+    }
+
+    fn generate_organic_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
+        let organic_noise = self.perlin_noise(uv[0] * 6.0, uv[1] * 6.0);
+        let detail_noise = self.perlin_noise(uv[0] * 12.0, uv[1] * 12.0);
+        
+        self.blend_colors(template.base_color, template.detail_colors[0], organic_noise * 0.7 + detail_noise * 0.3)
+    }
+
+    fn generate_geometric_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
+        let grid_x = (uv[0] * 8.0) as usize % 2;
+        let grid_y = (uv[1] * 8.0) as usize % 2;
+        let checker_pattern = if (grid_x + grid_y) % 2 == 0 { 1.0 } else { 0.0 };
+        
+        self.blend_colors(template.base_color, template.detail_colors[0], checker_pattern)
+    }
+
+    fn apply_modifiers(
+        &self,
+        color: [u8; 3],
+        biome_modifier: Option<BiomeModifier>,
+        time_modifier: Option<TimeModifier>,
+    ) -> [u8; 3] {
+        let mut modified_color = color;
+        
+        if let Some(biome) = biome_modifier {
+            modified_color = self.apply_biome_modifier(modified_color, biome);
+        }
+        
+        if let Some(time) = time_modifier {
+            modified_color = self.apply_time_modifier(modified_color, time);
+        }
+        
+        modified_color
+    }
+
+    fn apply_biome_modifier(&self, color: [u8; 3], biome: BiomeModifier) -> [u8; 3] {
+        match biome {
+            BiomeModifier::Forest => {
+                // Greener, more vibrant colors
+                [
+                    (color[0] as f32 * 0.9).max(0.0) as u8,
+                    (color[1] as f32 * 1.2).min(255.0) as u8,
+                    (color[2] as f32 * 0.8).max(0.0) as u8,
+                ]
+            }
+            BiomeModifier::Desert => {
+                // Warmer, more orange tones
+                [
+                    (color[0] as f32 * 1.3).min(255.0) as u8,
+                    (color[1] as f32 * 1.1).min(255.0) as u8,
+                    (color[2] as f32 * 0.7).max(0.0) as u8,
+                ]
+            }
+            BiomeModifier::Tundra => {
+                // Cooler, more blue tones
+                [
+                    (color[0] as f32 * 0.8).max(0.0) as u8,
+                    (color[1] as f32 * 0.9).max(0.0) as u8,
+                    (color[2] as f32 * 1.2).min(255.0) as u8,
+                ]
+            }
+            BiomeModifier::Swamp => {
+                // Murkier, more green-brown tones
+                [
+                    (color[0] as f32 * 0.9).max(0.0) as u8,
+                    (color[1] as f32 * 1.1).min(255.0) as u8,
+                    (color[2] as f32 * 0.8).max(0.0) as u8,
+                ]
+            }
+        }
+    }
+
+    fn apply_time_modifier(&self, color: [u8; 3], time: TimeModifier) -> [u8; 3] {
+        match time {
+            TimeModifier::Dawn => {
+                // Warmer, more orange-pink tones
+                [
+                    (color[0] as f32 * 1.2).min(255.0) as u8,
+                    (color[1] as f32 * 1.1).min(255.0) as u8,
+                    (color[2] as f32 * 0.9).max(0.0) as u8,
+                ]
+            }
+            TimeModifier::Noon => {
+                // Brighter, more saturated
+                [
+                    (color[0] as f32 * 1.1).min(255.0) as u8,
+                    (color[1] as f32 * 1.1).min(255.0) as u8,
+                    (color[2] as f32 * 1.1).min(255.0) as u8,
+                ]
+            }
+            TimeModifier::Dusk => {
+                // Warmer, more orange-red tones
+                [
+                    (color[0] as f32 * 1.3).min(255.0) as u8,
+                    (color[1] as f32 * 0.9).max(0.0) as u8,
+                    (color[2] as f32 * 0.7).max(0.0) as u8,
+                ]
+            }
+            TimeModifier::Night => {
+                // Cooler, more blue tones
+                [
+                    (color[0] as f32 * 0.7).max(0.0) as u8,
+                    (color[1] as f32 * 0.8).max(0.0) as u8,
+                    (color[2] as f32 * 1.2).min(255.0) as u8,
+                ]
+            }
+        }
+    }
+
+    fn add_detail_layers(&self, template: &TextureTemplate, base_color: [u8; 3], uv: [f32; 2]) -> [u8; 3] {
+        let mut final_color = base_color;
+        
+        // Add noise-based detail
+        let detail_noise = self.perlin_noise(uv[0] * 16.0, uv[1] * 16.0);
+        let detail_intensity = detail_noise * self.detail_level;
+        
+        // Blend with detail color
+        if detail_intensity > 0.5 {
+            let detail_color = template.detail_colors[1];
+            final_color = self.blend_colors(final_color, detail_color, (detail_intensity - 0.5) * 2.0);
+        }
+        
+        // Add edge highlighting
+        let edge_noise = self.perlin_noise(uv[0] * 32.0, uv[1] * 32.0);
+        if edge_noise > 0.8 {
+            let highlight_color = [
+                (final_color[0] as f32 * 1.2).min(255.0) as u8,
+                (final_color[1] as f32 * 1.2).min(255.0) as u8,
+                (final_color[2] as f32 * 1.2).min(255.0) as u8,
+            ];
+            final_color = self.blend_colors(final_color, highlight_color, (edge_noise - 0.8) * 5.0);
+        }
+        
+        final_color
+    }
+
+    fn blend_colors(&self, color1: [u8; 3], color2: [u8; 3], factor: f32) -> [u8; 3] {
+        let factor = factor.clamp(0.0, 1.0);
+        [
+            (color1[0] as f32 * (1.0 - factor) + color2[0] as f32 * factor) as u8,
+            (color1[1] as f32 * (1.0 - factor) + color2[1] as f32 * factor) as u8,
+            (color1[2] as f32 * (1.0 - factor) + color2[2] as f32 * factor) as u8,
+        ]
+    }
+
+    fn perlin_noise(&self, x: f32, y: f32) -> f32 {
+        // Simple Perlin noise implementation
+        let x = x * self.noise_scale;
+        let y = y * self.noise_scale;
+        
+        let xi = x.floor() as i32;
+        let yi = y.floor() as i32;
+        let xf = x - xi as f32;
+        let yf = y - yi as f32;
+        
+        let u = self.fade(xf);
+        let v = self.fade(yf);
+        
+        let a = self.hash(xi, yi);
+        let b = self.hash(xi + 1, yi);
+        let c = self.hash(xi, yi + 1);
+        let d = self.hash(xi + 1, yi + 1);
+        
+        let x1 = self.lerp(self.grad(a, xf, yf), self.grad(b, xf - 1.0, yf), u);
+        let x2 = self.lerp(self.grad(c, xf, yf - 1.0), self.grad(d, xf - 1.0, yf - 1.0), u);
+        
+        self.lerp(x1, x2, v)
+    }
+
+    fn fade(&self, t: f32) -> f32 {
+        t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+    }
+
+    fn lerp(&self, a: f32, b: f32, t: f32) -> f32 {
+        a + t * (b - a)
+    }
+
+    fn grad(&self, hash: i32, x: f32, y: f32) -> f32 {
+        let h = hash & 3;
+        let u = if h < 2 { x } else { y };
+        let v = if h < 2 { y } else { x };
+        (if h & 1 == 0 { u } else { -u }) + (if h & 2 == 0 { v } else { -v })
+    }
+
+    fn hash(&self, x: i32, y: i32) -> i32 {
+        let mut h = x;
+        h ^= y << 13;
+        h ^= h >> 17;
+        h.wrapping_mul(0x85ebca6b).wrapping_add(0xc2b2ae35)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum BiomeModifier {
+    Forest,
+    Desert,
+    Tundra,
+    Swamp,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum TimeModifier {
+    Dawn,
+    Noon,
+    Dusk,
+    Night,
+}
+
+pub struct TraditionalTextureAtlas {
+    pub generator: TraditionalTextureGenerator,
+    pub textures: HashMap<String, Vec<u8>>,
+    pub size: u32,
+    pub grid_size: u32,
+}
+
+impl TraditionalTextureAtlas {
+    pub fn new() -> Self {
+        let generator = TraditionalTextureGenerator::new();
+        let textures = HashMap::new();
+        
+        Self {
+            generator,
+            textures,
+            size: 512,
+            grid_size: 32,
+        }
+    }
+
+    pub fn generate_all_traditional_textures(&mut self) {
+        let block_size = 16;
+        
+        // Natural materials
+        self.generate_texture("grass", MaterialType::Grass, block_size);
+        self.generate_texture("dirt", MaterialType::Dirt, block_size);
+        self.generate_texture("stone", MaterialType::Stone, block_size);
+        self.generate_texture("sand", MaterialType::Sand, block_size);
+        self.generate_texture("water", MaterialType::Water, block_size);
+        self.generate_texture("leaves", MaterialType::Leaves, block_size);
+        
+        // Building materials
+        self.generate_texture("wood", MaterialType::Wood, block_size);
+        self.generate_texture("glass", MaterialType::Glass, block_size);
+        self.generate_texture("fabric", MaterialType::Fabric, block_size);
+        
+        // Special materials
+        self.generate_texture("metal", MaterialType::Metal, block_size);
+        self.generate_texture("crystal", MaterialType::Crystal, block_size);
+        
+        // Generate biome variants
+        self.generate_biome_variants();
+        
+        // Generate time variants
+        self.generate_time_variants();
+    }
+
+    fn generate_texture(&mut self, name: &str, material_type: MaterialType, block_size: usize) {
+        let texture_data = self.generator.generate_traditional_texture(
+            material_type,
+            block_size,
+            None,
+            None,
+        );
+        self.textures.insert(name.to_string(), texture_data);
+    }
+
+    fn generate_biome_variants(&mut self) {
+        let block_size = 16;
+        let biomes = [BiomeModifier::Forest, BiomeModifier::Desert, BiomeModifier::Tundra, BiomeModifier::Swamp];
+        
+        for biome in &biomes {
+            let suffix = match biome {
+                BiomeModifier::Forest => "_forest",
+                BiomeModifier::Desert => "_desert",
+                BiomeModifier::Tundra => "_tundra",
+                BiomeModifier::Swamp => "_swamp",
+            };
+            
+            // Generate grass variants
+            let texture_data = self.generator.generate_traditional_texture(
+                MaterialType::Grass,
+                block_size,
+                Some(*biome),
+                None,
+            );
+            self.textures.insert(format!("grass{}", suffix), texture_data);
+            
+            // Generate leaves variants
+            let texture_data = self.generator.generate_traditional_texture(
+                MaterialType::Leaves,
+                block_size,
+                Some(*biome),
+                None,
+            );
+            self.textures.insert(format!("leaves{}", suffix), texture_data);
+        }
+    }
+
+    fn generate_time_variants(&mut self) {
+        let block_size = 16;
+        let times = [TimeModifier::Dawn, TimeModifier::Noon, TimeModifier::Dusk, TimeModifier::Night];
+        
+        for time in &times {
+            let suffix = match time {
+                TimeModifier::Dawn => "_dawn",
+                TimeModifier::Noon => "_noon",
+                TimeModifier::Dusk => "_dusk",
+                TimeModifier::Night => "_night",
+            };
+            
+            // Generate grass time variants
+            let texture_data = self.generator.generate_traditional_texture(
+                MaterialType::Grass,
+                block_size,
+                None,
+                Some(*time),
+            );
+            self.textures.insert(format!("grass{}", suffix), texture_data);
+            
+            // Generate leaves time variants
+            let texture_data = self.generator.generate_traditional_texture(
+                MaterialType::Leaves,
+                block_size,
+                None,
+                Some(*time),
+            );
+            self.textures.insert(format!("leaves{}", suffix), texture_data);
+        }
+    }
+
+    pub fn get_texture(&self, name: &str) -> Option<&Vec<u8>> {
+        self.textures.get(name)
+    }
+
+    pub fn create_atlas_data(&self) -> Vec<u8> {
+        let mut atlas_data = vec![0u8; (self.size * self.size * 4) as usize];
+        
+        for (name, texture) in &self.textures {
+            // Place texture in atlas
+            let index = self.get_texture_index(name);
+            if let Some((x, y)) = index {
+                self.copy_texture_to_atlas(&mut atlas_data, texture, x, y);
+            }
+        }
+        
+        atlas_data
+    }
+
+    fn get_texture_index(&self, name: &str) -> Option<(u32, u32)> {
+        // Simple grid placement - in a real implementation, this would be more sophisticated
+        let texture_names: Vec<&String> = self.textures.keys().collect();
+        if let Some(pos) = texture_names.iter().position(|&n| n == name) {
+            let x = (pos as u32 % self.grid_size) * 16;
+            let y = (pos as u32 / self.grid_size) * 16;
+            Some((x, y))
+        } else {
+            None
+        }
+    }
+
+    fn copy_texture_to_atlas(&self, atlas_data: &mut [u8], texture: &[u8], x: u32, y: u32) {
+        let texture_size = 16;
+        let atlas_width = self.size;
+        
+        for ty in 0..texture_size {
+            for tx in 0..texture_size {
+                let atlas_x = x + tx;
+                let atlas_y = y + ty;
+                
+                if atlas_x < self.size && atlas_y < self.size {
+                    let texture_index = ((ty * texture_size + tx) * 4) as usize;
+                    let atlas_index = ((atlas_y * atlas_width + atlas_x) * 4) as usize;
+                    
+                    if atlas_index + 3 < atlas_data.len() && texture_index + 3 < texture.len() {
+                        atlas_data[atlas_index..atlas_index + 4].copy_from_slice(&texture[texture_index..texture_index + 4]);
+                    }
+                }
+            }
+        }
+    }
+}
+pub struct NoiseGenerator {
+    permutation: [u8; 512],
+}
+
+impl NoiseGenerator {
+    pub fn new(seed: u32) -> Self {
+        let mut p = [0u8; 512];
+        let mut permutation = [0u8; 256];
+        
+        let mut state = seed as u64;
+        for i in 0..256 { permutation[i] = i as u8; }
+        
+        for i in 0..256 {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let j = ((state >> 33) % 256) as usize;
+            permutation.swap(i, j);
+        }
+        
+        for i in 0..512 { p[i] = permutation[i % 256]; }
+        NoiseGenerator { permutation: p }
+    }
+
+    fn fade(t: f64) -> f64 { t * t * t * (t * (t * 6.0 - 15.0) + 10.0) }
+    fn lerp(t: f64, a: f64, b: f64) -> f64 { a + t * (b - a) }
+    fn grad(hash: u8, x: f64, y: f64, z: f64) -> f64 {
+        let h = hash & 15;
+        let u = if h < 8 { x } else { y };
+        let v = if h < 4 { y } else { if h == 12 || h == 14 { x } else { z } };
+        (if (h & 1) == 0 { u } else { -u }) + (if (h & 2) == 0 { v } else { -v })
+    }
+
+    pub fn get_noise3d(&self, x: f64, y: f64, z: f64) -> f64 {
+        let x_idx = (x.floor() as i32 & 255) as usize;
+        let y_idx = (y.floor() as i32 & 255) as usize;
+        let z_idx = (z.floor() as i32 & 255) as usize;
+        let x = x - x.floor(); let y = y - y.floor(); let z = z - z.floor();
+        let u = Self::fade(x); let v = Self::fade(y); let w = Self::fade(z);
+        
+        let a = self.permutation[x_idx] as usize + y_idx;
+        let aa = self.permutation[a] as usize + z_idx;
+        let ab = self.permutation[a + 1] as usize + z_idx;
+        let b = self.permutation[x_idx + 1] as usize + y_idx;
+        let ba = self.permutation[b] as usize + z_idx;
+        let bb = self.permutation[b + 1] as usize + z_idx;
+
+        Self::lerp(w, Self::lerp(v, Self::lerp(u, Self::grad(self.permutation[aa], x, y, z),
+                                     Self::grad(self.permutation[ba], x - 1.0, y, z)),
+                             Self::lerp(u, Self::grad(self.permutation[ab], x, y - 1.0, z),
+                                     Self::grad(self.permutation[bb], x - 1.0, y - 1.0, z))),
+                     Self::lerp(v, Self::lerp(u, Self::grad(self.permutation[aa + 1], x, y, z - 1.0),
+                                     Self::grad(self.permutation[ba + 1], x - 1.0, y, z - 1.0)),
+                             Self::lerp(u, Self::grad(self.permutation[ab + 1], x, y - 1.0, z - 1.0),
+                                     Self::grad(self.permutation[bb + 1], x - 1.0, y - 1.0, z - 1.0))))
+    }
+
+pub fn get_noise_octaves(&self, x: f64, y: f64, z: f64, octaves: u32) -> f64 {
+        match octaves {
+            1 => self.get_noise3d(x, y, z),
+            2 => (self.get_noise3d(x, y, z) + self.get_noise3d(x * 2.0, y * 2.0, z * 2.0) * 0.5) / 1.5,
+            3 => (self.get_noise3d(x, y, z) + self.get_noise3d(x * 2.0, y * 2.0, z * 2.0) * 0.5 + self.get_noise3d(x * 4.0, y * 4.0, z * 4.0) * 0.25) / 1.75,
+            4 => (self.get_noise3d(x, y, z) + self.get_noise3d(x * 2.0, y * 2.0, z * 2.0) * 0.5 + self.get_noise3d(x * 4.0, y * 4.0, z * 4.0) * 0.25 + self.get_noise3d(x * 8.0, y * 8.0, z * 8.0) * 0.125) / 1.875,
+            _ => {
+                let mut total = 0.0; let mut frequency = 1.0; let mut amplitude = 1.0; let mut max_val = 0.0;
+                for _ in 0..octaves { total += self.get_noise3d(x * frequency, y * frequency, z * frequency) * amplitude; max_val += amplitude; amplitude *= 0.5; frequency *= 2.0; }
+                total / max_val
+            }
+        }
+    }
+
+pub fn get_height_params(&self, x: i32, z: i32) -> (f32, f32, f32, f32) {
+        // DIABOLICAL FIX: 0.015 frequency makes biomes tight and varied
+        let xf = x as f64 * 0.015;
+        let zf = z as f64 * 0.015;
+        let continentalness = self.get_noise_octaves(xf, 0.0, zf, 4) as f32;
+        let erosion = self.get_noise_octaves(xf + 500.0, 11.0, zf + 500.0, 4) as f32;
+        let weirdness = self.get_noise_octaves(xf + 1000.0, 22.0, zf + 1000.0, 4) as f32;
+        let temperature = self.get_noise_octaves(xf - 500.0, 33.0, zf - 500.0, 3) as f32;
+        (continentalness, erosion, weirdness, temperature)
+    }
+pub fn get_density(&self, x: i32, y: i32, z: i32, cont: f32, eros: f32, weird: f32) -> f32 {
+        let xf = x as f64;
+        let yf = y as f64;
+        let zf = z as f64;
+
+        // 1. Continental Foundation: The "Macro-Shape"
+        // Continentalness determines the baseline ground level.
+        let ground_bias = 64.0 + (cont * 32.0);
+
+        // 2. The Monolith Warp Field: Low-frequency "hotspots"
+        // This determines WHERE the laws of gravity/falloff are suspended.
+        let warp_weight = self.get_noise_octaves(xf * 0.012, 13.37, zf * 0.012, 2) as f32;
+        
+        // 3. Volumetric Detail Noise: The "Micro-Shape"
+        // Using multiple octaves at medium frequency to create crags and alcoves.
+        let noise_3d = self.get_noise_octaves(xf * 0.035, yf * 0.035, zf * 0.035, 4) as f32;
+
+        // 4. Diabolical Falloff Spline
+        // Standard falloff increases as we go up.
+        let mut falloff_scale = 0.15;
+        
+        // The Monolith Trigger: In high-warp zones, we radically flatten the falloff.
+        // This forces the density to remain high even at Y=120.
+        if warp_weight > 0.35 {
+            let intensity = (warp_weight - 0.35) * 2.0;
+            falloff_scale *= (1.0 - intensity).max(0.02);
+        }
+
+        // 5. Erosion/Weirdness Modification
+        // We inject weirdness into the noise_3d directly to create jagged "spikes" in peak biomes.
+        let spiked_noise = if eros < -0.4 { noise_3d + weird.abs() * 0.5 } else { noise_3d };
+
+        // 6. River/Fjord Carving: Subtract density in river channels
+        let river = self.get_river_noise(x, z) as f32;
+        let river_cut = if river < 0.08 && cont > 0.0 { (0.08 - river) * 2.5 } else { 0.0 };
+
+        (spiked_noise - ((yf as f32 - ground_bias) * falloff_scale)) - river_cut
+    }
+
+pub fn get_river_noise(&self, x: i32, z: i32) -> f64 {
+        let xf = x as f64 * 0.005;
+        let zf = z as f64 * 0.005;
+        // Ridged noise spline for Fjords and Rivers
+        let n = self.get_noise_octaves(xf, 0.5, zf, 3);
+        (1.0 - (n.abs() * 2.0 - 1.0).abs()) * 0.5
+    }
+
+    #[allow(dead_code)]
+    pub fn get_height(&self, x: i32, z: i32) -> i32 {
+        let (cont, eros, weird, _) = self.get_height_params(x, z);
+        let mut h = 64.0 + (cont * 40.0);
+        if eros < -0.3 { h += weird.abs() * 50.0; }
+        h as i32
+    }
+
+#[allow(dead_code)]
+    pub fn get_biome_at(&self, x: i32, z: i32, y: i32) -> &'static str {
+        let (cont, eros, _weird, temp) = self.get_height_params(x, z);
+        let humid = self.get_noise_octaves(x as f64 * 0.01, 44.0, z as f64 * 0.01, 3) as f32;
+        self.get_biome(cont, eros, temp, humid, y)
+    }
+
+pub fn get_biome(&self, cont: f32, eros: f32, temp: f32, humid: f32, y: i32) -> &'static str {
+        if y > 102 { return "peaks"; }
+        if cont < -0.25 { return if temp < -0.4 { "ice_ocean" } else { "ocean" }; }
+        
+        // EROSION BASED BIOMES
+        if eros < -0.5 { return "badlands"; }
+        if eros > 0.4 { return "plains"; }
+        
+        // TEMPERATURE / HUMIDITY GRID
+        if temp < -0.2 {
+            return if humid > 0.0 { "taiga" } else { "ice_plains" };
+        }
+        if temp > 0.3 {
+            return if humid < 0.0 { "desert" } else { "jungle" };
+        }
+        if humid > 0.45 { return "swamp"; }
+        
+        "forest"
+    }
+}
+// Resource management and cleanup utilities
+// 
+// This module provides centralized resource management to prevent memory exhaustion
+// and ensure proper cleanup of game resources.
+
+use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Global resource limits configuration
+pub struct ResourceLimits {
+    pub max_chunks: usize,
+    pub max_entities: usize,
+    pub max_particles: usize,
+    pub max_pending_tasks: usize,
+    pub mesh_memory_limit_mb: usize,
+    pub texture_memory_limit_mb: usize,
+}
+
+impl Default for ResourceLimits {
+    fn default() -> Self {
+        Self {
+            max_chunks: 2000,           // Maximum number of loaded chunks
+            max_entities: 1000,          // Maximum number of entities
+            max_particles: 5000,        // Maximum number of particles
+            max_pending_tasks: 100,     // Maximum pending mesh tasks
+            mesh_memory_limit_mb: 512,  // 512MB for mesh data
+            texture_memory_limit_mb: 256, // 256MB for textures
+        }
+    }
+}
+
+/// Resource usage tracking
+pub struct ResourceTracker {
+    pub chunks_loaded: AtomicUsize,
+    pub entities_active: AtomicUsize,
+    pub particles_active: AtomicUsize,
+    pub pending_tasks: AtomicUsize,
+    pub mesh_memory_mb: AtomicUsize,
+    pub texture_memory_mb: AtomicUsize,
+    last_cleanup: Instant,
+}
+
+impl ResourceTracker {
+    pub fn new() -> Self {
+        Self {
+            chunks_loaded: AtomicUsize::new(0),
+            entities_active: AtomicUsize::new(0),
+            particles_active: AtomicUsize::new(0),
+            pending_tasks: AtomicUsize::new(0),
+            mesh_memory_mb: AtomicUsize::new(0),
+            texture_memory_mb: AtomicUsize::new(0),
+            last_cleanup: Instant::now(),
+        }
+    }
+
+    pub fn check_limits(&self, limits: &ResourceLimits) -> Vec<String> {
+        let mut warnings = Vec::new();
+
+        if self.chunks_loaded.load(Ordering::Relaxed) > limits.max_chunks {
+            warnings.push(format!("Chunk limit exceeded: {}/{}", 
+                self.chunks_loaded.load(Ordering::Relaxed), limits.max_chunks));
+        }
+
+        if self.entities_active.load(Ordering::Relaxed) > limits.max_entities {
+            warnings.push(format!("Entity limit exceeded: {}/{}", 
+                self.entities_active.load(Ordering::Relaxed), limits.max_entities));
+        }
+
+        if self.particles_active.load(Ordering::Relaxed) > limits.max_particles {
+            warnings.push(format!("Particle limit exceeded: {}/{}", 
+                self.particles_active.load(Ordering::Relaxed), limits.max_particles));
+        }
+
+        if self.pending_tasks.load(Ordering::Relaxed) > limits.max_pending_tasks {
+            warnings.push(format!("Pending task limit exceeded: {}/{}", 
+                self.pending_tasks.load(Ordering::Relaxed), limits.max_pending_tasks));
+        }
+
+        if self.mesh_memory_mb.load(Ordering::Relaxed) > limits.mesh_memory_limit_mb {
+            warnings.push(format!("Mesh memory limit exceeded: {}MB/{}MB", 
+                self.mesh_memory_mb.load(Ordering::Relaxed), limits.mesh_memory_limit_mb));
+        }
+
+        if self.texture_memory_mb.load(Ordering::Relaxed) > limits.texture_memory_limit_mb {
+            warnings.push(format!("Texture memory limit exceeded: {}MB/{}MB", 
+                self.texture_memory_mb.load(Ordering::Relaxed), limits.texture_memory_limit_mb));
+        }
+
+        warnings
+    }
+
+    pub fn should_cleanup(&self) -> bool {
+        self.last_cleanup.elapsed() > Duration::from_secs(30)
+    }
+
+    pub fn mark_cleanup(&mut self) {
+        self.last_cleanup = Instant::now();
+    }
+}
+
+/// Cleanup strategies for different resource types
+pub enum CleanupStrategy {
+    /// Remove oldest resources
+    OldestFirst,
+    /// Remove farthest from player
+    FarthestFromPlayer,
+    /// Remove least recently used
+    LeastRecentlyUsed,
+    /// Random removal (for particles)
+    Random,
+}
+
+/// Resource cleanup manager
+pub struct ResourceCleanupManager {
+    tracker: ResourceTracker,
+    limits: ResourceLimits,
+}
+
+impl ResourceCleanupManager {
+    pub fn new() -> Self {
+        Self {
+            tracker: ResourceTracker::new(),
+            limits: ResourceLimits::default(),
+        }
+    }
+
+    pub fn with_limits(limits: ResourceLimits) -> Self {
+        Self {
+            tracker: ResourceTracker::new(),
+            limits,
+        }
+    }
+
+    pub fn tracker(&self) -> &ResourceTracker {
+        &self.tracker
+    }
+
+    pub fn limits(&self) -> &ResourceLimits {
+        &self.limits
+    }
+
+    /// Perform cleanup if needed and return cleanup statistics
+    pub fn cleanup_if_needed(&mut self) -> CleanupStats {
+        if !self.tracker.should_cleanup() {
+            return CleanupStats::default();
+        }
+
+        let warnings = self.tracker.check_limits(&self.limits);
+        if warnings.is_empty() {
+            self.tracker.mark_cleanup();
+            return CleanupStats::default();
+        }
+
+        log::info!("Starting resource cleanup: {:?}", warnings);
+        let stats = self.perform_cleanup();
+        self.tracker.mark_cleanup();
+        
+        log::info!("Cleanup completed: {:?}", stats);
+        stats
+    }
+
+    fn perform_cleanup(&mut self) -> CleanupStats {
+        let mut stats = CleanupStats::default();
+
+        // This would be called from the main game loop with actual resource references
+        // For now, we'll just log what would be cleaned up
+        
+        if self.tracker.chunks_loaded.load(Ordering::Relaxed) > self.limits.max_chunks {
+            let excess = self.tracker.chunks_loaded.load(Ordering::Relaxed) - self.limits.max_chunks;
+            stats.chunks_cleaned = excess;
+            log::debug!("Would clean up {} excess chunks", excess);
+        }
+
+        if self.tracker.entities_active.load(Ordering::Relaxed) > self.limits.max_entities {
+            let excess = self.tracker.entities_active.load(Ordering::Relaxed) - self.limits.max_entities;
+            stats.entities_cleaned = excess;
+            log::debug!("Would clean up {} excess entities", excess);
+        }
+
+        if self.tracker.particles_active.load(Ordering::Relaxed) > self.limits.max_particles {
+            let excess = self.tracker.particles_active.load(Ordering::Relaxed) - self.limits.max_particles;
+            stats.particles_cleaned = excess;
+            log::debug!("Would clean up {} excess particles", excess);
+        }
+
+        stats
+    }
+}
+
+/// Cleanup statistics
+#[derive(Debug, Default)]
+pub struct CleanupStats {
+    pub chunks_cleaned: usize,
+    pub entities_cleaned: usize,
+    pub particles_cleaned: usize,
+    pub tasks_cancelled: usize,
+    pub memory_freed_mb: usize,
+}
+
+impl CleanupStats {
+    pub fn total_cleaned(&self) -> usize {
+        self.chunks_cleaned + self.entities_cleaned + self.particles_cleaned + self.tasks_cancelled
+    }
+
+    pub fn has_cleaned_anything(&self) -> bool {
+        self.total_cleaned() > 0 || self.memory_freed_mb > 0
+    }
+}
+
+/// Global resource manager instance
+static mut RESOURCE_MANAGER: Option<ResourceCleanupManager> = None;
+static INIT: std::sync::Once = std::sync::Once::new();
+
+/// Get the global resource manager
+#[allow(static_mut_refs)]
+pub fn get_resource_manager() -> &'static mut ResourceCleanupManager {
+    unsafe {
+        INIT.call_once(|| {
+            RESOURCE_MANAGER = Some(ResourceCleanupManager::new());
+        });
+        RESOURCE_MANAGER.as_mut().unwrap()
+    }
+}
+
+/// Initialize the resource manager with custom limits
+pub fn init_resource_manager(limits: ResourceLimits) {
+    unsafe {
+        INIT.call_once(|| {
+            RESOURCE_MANAGER = Some(ResourceCleanupManager::with_limits(limits));
+        });
+    }
+}
+
+/// Convenience functions for tracking resource usage
+pub fn track_chunk_usage(count: usize) {
+    get_resource_manager().tracker.chunks_loaded.store(count, Ordering::Relaxed);
+}
+
+pub fn track_entity_usage(count: usize) {
+    get_resource_manager().tracker.entities_active.store(count, Ordering::Relaxed);
+}
+
+pub fn track_particle_usage(count: usize) {
+    get_resource_manager().tracker.particles_active.store(count, Ordering::Relaxed);
+}
+
+pub fn track_pending_tasks(count: usize) {
+    get_resource_manager().tracker.pending_tasks.store(count, Ordering::Relaxed);
+}
+
+pub fn track_mesh_memory_mb(mb: usize) {
+    get_resource_manager().tracker.mesh_memory_mb.store(mb, Ordering::Relaxed);
+}
+
+pub fn track_texture_memory_mb(mb: usize) {
+    get_resource_manager().tracker.texture_memory_mb.store(mb, Ordering::Relaxed);
+}
+
+/// Perform cleanup if needed
+pub fn cleanup_if_needed() -> CleanupStats {
+    get_resource_manager().cleanup_if_needed()
+}
+
+/// Check if any resource limits are exceeded
+pub fn check_resource_limits() -> Vec<String> {
+    let manager = get_resource_manager();
+    manager.tracker.check_limits(&manager.limits)
+}
