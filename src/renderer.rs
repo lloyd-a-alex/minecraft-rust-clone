@@ -154,7 +154,7 @@ let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             Ok(surface) => surface,
             Err(e) => {
                 log::error!("Failed to create surface: {:?}", e);
-                return Err(e);
+                panic!("Failed to create surface");
             }
         };
         let adapter = match instance.request_adapter(&RequestAdapterOptions { 
@@ -165,7 +165,7 @@ let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             Some(adapter) => adapter,
             None => {
                 log::error!("Failed to request adapter");
-                return Err(wgpu::RequestAdapterError {});
+                panic!("Failed to request adapter");
             }
         };
         let adapter_info = adapter.get_info();
@@ -173,7 +173,7 @@ let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             Ok(pair) => pair,
             Err(e) => {
                 log::error!("Failed to request device: {:?}", e);
-                return Err(e);
+                panic!("Failed to request device");
             }
         };
         let surface_caps = surface.get_capabilities(&adapter);
@@ -299,7 +299,7 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
         for thread_id in 0..thread_count {
             let t_rx = task_rx.clone();
             let r_tx = result_tx.clone();
-            std::thread::Builder::new()
+            let _ = std::thread::Builder::new()
                 .name(format!("mesh_worker_{}", thread_id))
                 .spawn(move || {
                     while let Ok((cx, cy, cz, lod, world)) = t_rx.recv() {

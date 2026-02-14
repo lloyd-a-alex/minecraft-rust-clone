@@ -144,7 +144,7 @@ impl NetworkManager {
                     });
 
                     // Writer (Broadcaster)
-                    let rx_out_thread = rx_out.clone();
+                    let rx_out_thread: crossbeam_channel::Receiver<Packet> = rx_out.clone();
                     thread::spawn(move || {
                         while let Ok(packet) = rx_out_thread.recv() {
                             // Validate packet before sending
@@ -184,7 +184,7 @@ NetworkManager {
 
     pub fn join(mut ip: String) -> Self {
         let (tx_in, rx_in) = unbounded();
-        let (tx_out, rx_out) = unbounded();
+        let (tx_out, rx_out): (crossbeam_channel::Sender<Packet>, crossbeam_channel::Receiver<Packet>) = unbounded();
 
         // Sanitize Ngrok/SSH Tunnel addresses
         if ip.starts_with("tcp://") { ip = ip.replace("tcp://", ""); }

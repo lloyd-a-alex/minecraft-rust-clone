@@ -28,13 +28,7 @@ impl AudioSystem {
             Some(h) => h,
             None => return,
         };
-        let sink = match Sink::try_new(handle) {
-            Ok(sink) => sink,
-            Err(e) => {
-                log::warn!("Failed to create audio sink: {:?}", e);
-                return;
-            }
-        };
+        let sink = Sink::try_new(handle).unwrap();
         
         // DIABOLICAL VARIANT MODULATION: Each variant (0-4) slightly shifts frequency and duration
         let v_mod = 0.92 + (variant as f32 * 0.04); // Pitch range: 0.92 to 1.08
@@ -56,12 +50,8 @@ impl AudioSystem {
         };
 
         let data = Self::gen_noise(duration, freq_start, freq_end, in_cave);
-        if let Ok(decoder) = Decoder::new(Cursor::new(data)) {
-            sink.append(decoder);
-            sink.detach();
-        } else {
-            log::warn!("Failed to create audio decoder for step sound");
-        }
+        sink.append(Decoder::new(Cursor::new(data)).unwrap());
+        sink.detach();
     }
 
 pub fn play(&self, sound_type: &str, in_cave: bool) {
@@ -69,13 +59,7 @@ pub fn play(&self, sound_type: &str, in_cave: bool) {
             Some(h) => h,
             None => return,
         };
-        let sink = match Sink::try_new(handle) {
-            Ok(sink) => sink,
-            Err(e) => {
-                log::warn!("Failed to create audio sink: {:?}", e);
-                return;
-            }
-        };
+        let sink = Sink::try_new(handle).unwrap();
         let mut dur = match sound_type {
             "click" | "pickup" => 0.05,
 "land" => 0.2,
@@ -104,24 +88,14 @@ pub fn play(&self, sound_type: &str, in_cave: bool) {
             "spooky" => Self::gen_noise(dur, 65.0, 40.0, true),
             _ => Self::gen_noise(dur, 200.0 * freq_mult, 100.0 * freq_mult, in_cave),
         };
-        if let Ok(decoder) = Decoder::new(Cursor::new(data)) {
-            sink.append(decoder);
-            sink.detach();
-        } else {
-            log::warn!("Failed to create audio decoder for sound");
-        }
+        sink.append(Decoder::new(Cursor::new(data)).unwrap());
+        sink.detach();
     }
 
 fn gen_noise(dur: f32, freq_start: f32, freq_end: f32, reverb: bool) -> Vec<u8> {
         let spec = hound::WavSpec { channels: 1, sample_rate: 44100, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
         let mut buf = Vec::new();
-        let mut writer = match hound::WavWriter::new(Cursor::new(&mut buf), spec) {
-            Ok(writer) => writer,
-            Err(e) => {
-                log::error!("Failed to create WAV writer: {:?}", e);
-                return buf;
-            }
-        };
+        let mut writer = hound::WavWriter::new(Cursor::new(&mut buf), spec).unwrap();
         let samples = (dur * 44100.0) as u32;
         
         // ROOT FIX: Professional-grade envelope (20ms) and Master Limiter logic.
@@ -169,25 +143,15 @@ fn gen_noise(dur: f32, freq_start: f32, freq_end: f32, reverb: bool) -> Vec<u8> 
                 history[history_idx] = final_sample;
             }
             
-            if let Ok(writer) = writer.write_sample(final_sample) {
-                // Sample written successfully
-            } else {
-                log::error!("Failed to write audio sample");
-                break;
-            }
+            writer.write_sample(final_sample).unwrap();
         }
-        if let Ok(()) = writer.finalize() {
-            // Audio finalized successfully
-        } else {
-            log::error!("Failed to finalize audio WAV");
-        }
+        writer.finalize().unwrap();
         buf
     }
 }
 
-mod renderer; mod world; mod texture; mod player; mod logger; mod noise_gen; mod network; mod ngrok_utils; mod resource_manager;
+mod renderer; mod world; mod texture; mod player; mod logger; mod noise_gen; mod network; mod ngrok_utils;
 use renderer::Renderer; use world::{World, BlockType, BlockPos}; use player::Player; use network::{NetworkManager, Packet};
-use resource_manager::{track_chunk_usage, track_entity_usage, track_particle_usage, track_pending_tasks, cleanup_if_needed, check_resource_limits};
 use glam::Vec3;
 use serde_json::json;
 use std::fs;
@@ -221,47 +185,23 @@ impl MainMenu {
 }
 
 // --- UI STRUCTURES ---
+#[repr(C)] #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct UIElement { pub pos: [f32; 2], pub size: [f32; 2], pub tex_idx: u32, pub padding: u32 }
 pub struct Hotbar { pub slots: [Option<(world::BlockType, u32)>; 9], pub selected_slot: usize }
 impl Hotbar { fn new() -> Self { Self { slots: [None; 9], selected_slot: 0 } } }
 
 fn main() {
     logger::init_logger();
-    let master_seed = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| log::error!("Failed to get system time: {:?}", e))
-        .unwrap_or_else(|_| std::time::Duration::from_secs(0))
-        .as_millis() as u32;
+    let master_seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u32;
     let args: Vec<String> = std::env::args().collect();
 
-    let event_loop = match EventLoop::new() {
-        Ok(el) => el,
-        Err(e) => {
-            log::error!("Failed to create event loop: {:?}", e);
-            return;
-        }
-    };
-    let window = match WindowBuilder::new()
-        .with_title("Minecraft Rust Clone")
-        .with_maximized(true)
-        .build(&event_loop) {
-        Ok(window) => Arc::new(window),
-        Err(e) => {
-            log::error!("Failed to create window: {:?}", e);
-            return;
-        }
-    };
+    let event_loop = EventLoop::new().unwrap();
+    let window = Arc::new(WindowBuilder::new().with_title("Minecraft Rust Clone").with_maximized(true).build(&event_loop).unwrap());
     
     // Initialize Renderer immediately (No Pollster block needed if we map async correctly, but keeping simple)
     let window_arc = window.clone(); // Clone ARC for renderer
-    let mut renderer = match pollster::block_on(Renderer::new(&window_arc)) {
-        Ok(renderer) => renderer,
-        Err(e) => {
-            log::error!("Failed to create renderer: {:?}", e);
-            return;
-        }
-    };
-    // DIABOLICAL LIVE PERSISTENCE: Force reload into the exact previous position and state
+let mut renderer = pollster::block_on(Renderer::new(&window_arc));
+// DIABOLICAL LIVE PERSISTENCE: Force reload into the exact previous position and state
     let mut start_pos = Vec3::new(0.0, 80.0, 0.0);
     let mut current_seed = master_seed;
     let mut was_playing = false;
@@ -274,13 +214,7 @@ fn main() {
             start_pos.y = val["y"].as_f64().unwrap_or(80.0) as f32;
             start_pos.z = val["z"].as_f64().unwrap_or(0.0) as f32;
             was_playing = val["was_playing"].as_bool().unwrap_or(false);
-            log::info!("Loaded saved game state: seed={}, pos=({:.1},{:.1},{:.1})", 
-                      current_seed, start_pos.x, start_pos.y, start_pos.z);
-        } else {
-            log::warn!("Failed to parse save file, using defaults");
         }
-    } else {
-        log::info!("No save file found, starting new game");
     }
 
     let mut world = World::new(current_seed);
@@ -310,6 +244,8 @@ fn main() {
     }
 
     // --- PLAYER & LOGIC STATE (Preserved from your code) ---
+
+    
 // --- SPAWN STATE ---
     let mut spawn_found = false;
     let mut breaking_pos: Option<BlockPos> = None;
@@ -388,17 +324,8 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                                 spawn_found = false;
                             },
                             MenuAction::Stress => {
-                                match std::env::current_exe() {
-                                    Ok(exe) => {
-                                        for _ in 0..5 {
-                                            match std::process::Command::new(&exe).arg("--join-localhost").spawn() {
-                                                Ok(child) => log::info!("Spawned stress test client: {:?}", child.id()),
-                                                Err(e) => log::error!("Failed to spawn stress test client: {:?}", e),
-                                            }
-                                        }
-                                    }
-                                    Err(e) => log::error!("Failed to get current executable: {:?}", e),
-                                }
+                                let exe = std::env::current_exe().unwrap();
+                                for _ in 0..5 { std::process::Command::new(&exe).arg("--join-localhost").spawn().unwrap(); }
                                 network_mgr = Some(NetworkManager::host("7878".to_string(), master_seed));
                                 world = World::new(master_seed);
                                 renderer.rebuild_all_chunks(&world);
@@ -543,7 +470,7 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                                     } else { 
                                         player.inventory.cursor_item = Some(o); 
                                     }
-                                    player.inventory.craft(); 
+player.inventory.craft(); 
                                     player.inventory.check_recipes(); 
                                     audio.play("click", false);
                                 }
@@ -875,26 +802,7 @@ world.entities.push(ent);
                 accumulator += _dt_frame.min(0.1); // Cap to 100ms to prevent spiral of death
 
                 if game_state == GameState::Playing {
-                    // --- RESOURCE MANAGEMENT ---
-                    // Track resource usage and perform cleanup if needed
-                    track_chunk_usage(world.chunks.len());
-                    track_entity_usage(world.entities.len() + world.remote_players.len());
-                    track_particle_usage(renderer.particles.len());
-                    track_pending_tasks(renderer.pending_chunks.len());
-                    
-                    // Perform cleanup every 30 seconds or when limits are exceeded
-                    let cleanup_stats = cleanup_if_needed();
-                    if cleanup_stats.has_cleaned_anything() {
-                        log::info!("Resource cleanup performed: {} items cleaned", cleanup_stats.total_cleaned());
-                    }
-                    
-                    // Check for resource limit warnings
-                    let warnings = check_resource_limits();
-                    for warning in warnings {
-                        log::warn!("Resource limit: {}", warning);
-                    }
-
-                    // --- INFINITE GENERATION CALL
+                    // 1. INFINITE GENERATION CALL
                     let p_cx = (player.position.x / 16.0).floor() as i32;
                     let p_cy = (player.position.y / 16.0).floor() as i32;
                     let p_cz = (player.position.z / 16.0).floor() as i32;
@@ -925,24 +833,7 @@ world.entities.push(ent);
                         first_build_done = true;
                     }
 
-                    // --- RESOURCE MANAGEMENT ---
-                    // Track resource usage and perform cleanup if needed
-                    track_chunk_usage(world.chunks.len());
-                    track_entity_usage(world.entities.len() + world.remote_players.len());
-                    track_particle_usage(renderer.particles.len());
-                    track_pending_tasks(renderer.pending_chunks.len());
-                    
-                    // Perform cleanup every 30 seconds or when limits are exceeded
-                    let cleanup_stats = cleanup_if_needed();
-                    if cleanup_stats.has_cleaned_anything() {
-                        log::info!("Resource cleanup performed: {} items cleaned", cleanup_stats.total_cleaned());
-                    }
-                    
-                    // Check for resource limit warnings
-                    let warnings = check_resource_limits();
-                    for warning in warnings {
-                        log::warn!("Resource limit: {}", warning);
-                    }
+                    // --- INFINITE GENERATION ---
                     let p_cx = (player.position.x / 16.0).floor() as i32;
                     let p_cz = (player.position.z / 16.0).floor() as i32;
                     let r_dist = 6;
@@ -953,6 +844,10 @@ let target = (p_cx + dx, 0, p_cz + dz); // Check base chunk for existence
                                 // Add world generation logic here if desired
                             }
                         }
+                    }
+
+                    // --- DAY/NIGHT CYCLE ---
+                    let _day_time = (renderer.start_time.elapsed().as_secs_f32() % 600.0) / 600.0;
 
 // DIABOLICAL AUTO-SAVE: Save every 10 seconds to stop cargo-watch restart loops
                     if last_persist.elapsed().as_millis() >= 10000 {
@@ -963,15 +858,8 @@ let target = (p_cx + dx, 0, p_cz + dz); // Check base chunk for existence
                             "z": player.position.z,
                             "was_playing": game_state == GameState::Playing,
                         });
-                        match serde_json::to_string(&save_data) {
-                            Ok(contents) => {
-                                if let Err(e) = fs::write("target/.live_state.json", contents) {
-                                    log::error!("Failed to save game state: {:?}", e);
-                                } else {
-                                    log::debug!("Game state saved successfully");
-                                }
-                            }
-                            Err(e) => log::error!("Failed to serialize save data: {:?}", e),
+if let Ok(contents) = serde_json::to_string(&save_data) {
+                            let _ = fs::write("target/.live_state.json", contents);
                         }
                         last_persist = Instant::now();
                     }
@@ -1139,7 +1027,5 @@ Event::AboutToWait => {
             },
             _ => {}
         }
-    }).unwrap_or_else(|e| {
-        log::error!("Event loop error: {:?}", e);
-    });
+    }).unwrap();
 }
