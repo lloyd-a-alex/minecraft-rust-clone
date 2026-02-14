@@ -496,8 +496,8 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
     }
 
     pub fn process_mesh_queue(&mut self) {
-        // Limit processing to prevent frame drops
-        let max_tasks_per_frame = 8;
+        // ULTRA PERFORMANCE: Process more meshes per frame for higher FPS
+        let max_tasks_per_frame = 32; // Increased from 8 for much better performance
         let mut processed = 0;
         
         while let Ok(task) = self.mesh_rx.try_recv() {
@@ -509,12 +509,16 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
             self.chunk_meshes.remove(&(task.cx, task.cy, task.cz));
 
             if !task.vertices.is_empty() {
-                // Validate mesh data to prevent GPU crashes
-                if task.vertices.len() > 100000 || task.indices.len() > 200000 {
-                    log::warn!("Rejecting oversized mesh for chunk ({}, {}, {}): {} vertices, {} indices", 
-                             task.cx, task.cy, task.cz, task.vertices.len(), task.indices.len());
-                    processed += 1;
-                    continue;
+                // FAST PATH: Skip validation for release builds
+                #[cfg(debug_assertions)]
+                {
+                    // Validate mesh data to prevent GPU crashes
+                    if task.vertices.len() > 100000 || task.indices.len() > 200000 {
+                        log::warn!("Rejecting oversized mesh for chunk ({}, {}, {}): {} vertices, {} indices", 
+                                 task.cx, task.cy, task.cz, task.vertices.len(), task.indices.len());
+                        processed += 1;
+                        continue;
+                    }
                 }
                 
                 let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { 
@@ -1162,20 +1166,18 @@ pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, c
         let world_arc = Arc::new(world.clone());
 
         // A. Handle explicitly dirty chunks FIRST (Block breaking/placing)
-        for &target in &world.dirty_chunks {
+        for &target in &world.dirty_chunks.clone() {
             if !self.pending_chunks.contains(&target) {
-                // DIABOLICAL ATOMIC SWAP: We no longer remove the mesh immediately.
-                // The old mesh stays visible until the worker thread returns the new one.
-                // This eliminates the "1ms flicker" when breaking/placing blocks.
+                // Force immediate remesh for broken/placed blocks
                 self.pending_chunks.insert(target);
                 let _ = self.mesh_tx.send((target.0, target.1, target.2, 0, world_arc.clone()));
             }
         }
 
-        // B. Handle background loading and movement (Throttled to prevent CPU saturation)
-        if player_moved || self.frame_count % 30 == 0 {
+        // B. Handle background loading and movement (More aggressive for better coverage)
+        if player_moved || self.frame_count % 15 == 0 { // Check every 15 frames instead of 30
             self.last_player_chunk = (p_cx, 0, p_cz);
-            let r_dist = 10;
+            let r_dist = 12; // Increased from 10 for better chunk loading
             let max_vertical = crate::world::WORLD_HEIGHT / 16;
             
             for dx in -r_dist..=r_dist {

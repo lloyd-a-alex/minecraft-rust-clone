@@ -238,7 +238,7 @@ bob_timer: 0.0,
             stasis: false,
         }
     }
-    pub fn respawn(&mut self) { self.position = Vec3::new(0.0, 80.0, 0.0); self.velocity = Vec3::ZERO; self.health = self.max_health; self.is_dead = false; self.invincible_timer = 3.0; }
+    pub fn respawn(&mut self) { self.position = Vec3::new(0.0, 80.0, 0.0); self.velocity = Vec3::ZERO; self.health = 10.0; self.is_dead = false; self.invincible_timer = 3.0; }
     
     pub fn take_damage(&mut self, amount: f32, _damage_type: &str) {
         if self.invincible_timer > 0.0 { return; }
@@ -282,8 +282,8 @@ KeyCode::Digit9 => self.inventory.select_slot(8),
 pub fn update(&mut self, world: &crate::world::World, dt: f32, audio: &crate::AudioSystem, in_cave: bool) {
         if self.is_dead || self.inventory_open { return; }
         
-        // DIABOLICAL PHYSICS SUB-STEPPING: 8 steps for perfect precision
-        let substeps = 8;
+        // OPTIMIZED PHYSICS SUB-STEPPING: 4 steps for better performance
+        let substeps = 4; // Reduced from 8 for better FPS
         let sub_dt = dt.min(0.1) / substeps as f32;
         
         for _ in 0..substeps {

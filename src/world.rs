@@ -604,6 +604,21 @@ pub fn set_block_world(&mut self, pos: BlockPos, block: BlockType) {
         affected.sort_unstable(); affected.dedup();
         affected
     }
+    pub fn get_chunk_neighbors(&self, cx: i32, cy: i32, cz: i32) -> Vec<(i32, i32, i32)> {
+        let mut neighbors = Vec::new();
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                for dz in -1..=1 {
+                    let target_y = cy + dy;
+                    if target_y >= 0 && target_y < (WORLD_HEIGHT / 16) {
+                        neighbors.push((cx + dx, target_y, cz + dz));
+                    }
+                }
+            }
+        }
+        neighbors
+    }
+
     pub fn get_affected_chunks(&self, pos: BlockPos) -> Vec<(i32, i32, i32)> {
         // DIABOLICAL 3D RADIUS: Ghost blocks occur because boundary neighbors don't know they need to redraw.
         let cx = pos.x.div_euclid(16);
@@ -634,7 +649,42 @@ pub fn set_block_world(&mut self, pos: BlockPos, block: BlockType) {
     pub fn break_block(&mut self, pos: BlockPos) -> Vec<(i32, i32, i32)> {
         let block_type = self.get_block(pos);
         if block_type != BlockType::Air && block_type != BlockType::Bedrock && !block_type.is_water() {
+            let mut affected = self.get_chunk_neighbors(pos.x / 16, pos.y / 16, pos.z / 16);
+            affected.push((pos.x / 16, pos.y / 16, pos.z / 16));
+            
+            // Set block to Air first
+            if let Some(chunk) = self.chunks.get_mut(&(pos.x / 16, pos.y / 16, pos.z / 16)) {
+                let lx = pos.x.rem_euclid(16) as usize;
+                let ly = pos.y.rem_euclid(16) as usize;
+                let lz = pos.z.rem_euclid(16) as usize;
+                chunk.set_block(lx, ly, lz, BlockType::Air);
+                let mut is_empty = true;
+                for x in 0..16 {
+                    for y in 0..16 {
+                        for z in 0..16 {
+                            if chunk.blocks[x][y][z] != BlockType::Air {
+                                is_empty = false;
+                                break;
+                            }
+                        }
+                        if !is_empty { break; }
+                    }
+                    if !is_empty { break; }
+                }
+                if is_empty {
+                    chunk.is_empty = true;
+                }
+            }
+            
+            // Mark all affected chunks as dirty
+            for &(cx, cy, cz) in &affected {
+                if let Some(chunk) = self.chunks.get_mut(&(cx, cy, cz)) {
+                    chunk.mesh_dirty = true;
+                    self.dirty_chunks.insert((cx, cy, cz)); // PRIORITY UPDATE
+                }
+            }
             self.mesh_dirty = true;
+            
             let mut rng = SimpleRng::new(pos.x as u64 ^ pos.z as u64 ^ pos.y as u64);
             let velocity = Vec3::new(rng.gen_range(-2.0, 2.0), 4.0, rng.gen_range(-2.0, 2.0));
             let drop_item = match block_type { 

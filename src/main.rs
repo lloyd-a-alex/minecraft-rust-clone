@@ -728,14 +728,16 @@ world.entities.push(ent);
                                     player.position = glam::Vec3::new(scout_x as f32 + 0.5, final_h + 2.5, scout_z as f32 + 0.5);
                                     player.prev_position = player.position;
                                     player.velocity = glam::Vec3::ZERO; // Kill any falling momentum
-                                    player.health = 20.0; // Reset health to full
+                                    player.health = 10.0; // Set health to 10 hearts
                                     player.stasis = false; // RELEASE PLAYER FROM STASIS
                                     spawn_found = true;
                                     log::info!("✅ DIABOLICAL SPAWN SECURED: ({}, {}, {})", scout_x, final_h, scout_z);
                                 } else {
-                                    // Fallback to absolute center platform
-                                    player.position = glam::Vec3::new(0.5, 100.0, 0.5);
-                                    for x in -2..=2 { for z in -2..=2 { world.place_block(BlockPos { x, y: 98, z }, BlockType::Stone); } }
+                                    // Fallback to surface spawn
+                                    let surface_y = world.get_height_at(0, 0) as f32;
+                                    player.position = glam::Vec3::new(0.5, surface_y + 2.5, 0.5);
+                                    for x in -2..=2 { for z in -2..=2 { world.place_block(BlockPos { x, y: surface_y as i32 - 2, z }, BlockType::Stone); } }
+                                    player.health = 10.0; // Set health to 10 hearts
                                     spawn_found = true;
                                 }
                             }
@@ -802,11 +804,11 @@ world.entities.push(ent);
                 accumulator += _dt_frame.min(0.1); // Cap to 100ms to prevent spiral of death
 
                 if game_state == GameState::Playing {
-                    // 1. INFINITE GENERATION CALL
+                    // 1. INFINITE GENERATION CALL (OPTIMIZED)
                     let p_cx = (player.position.x / 16.0).floor() as i32;
                     let p_cy = (player.position.y / 16.0).floor() as i32;
                     let p_cz = (player.position.z / 16.0).floor() as i32;
-                    world.generate_one_chunk_around(p_cx, p_cy, p_cz, 8);
+                    world.generate_one_chunk_around(p_cx, p_cy, p_cz, 4); // Reduced from 8
 
                     player.capture_state(); 
 
@@ -833,15 +835,15 @@ world.entities.push(ent);
                         first_build_done = true;
                     }
 
-                    // --- INFINITE GENERATION ---
+                    // --- INFINITE GENERATION (OPTIMIZED) ---
                     let p_cx = (player.position.x / 16.0).floor() as i32;
                     let p_cz = (player.position.z / 16.0).floor() as i32;
-                    let r_dist = 6;
+                    let r_dist = 4; // Reduced from 6 for better performance
                     for dx in -r_dist..=r_dist {
                         for dz in -r_dist..=r_dist {
-let target = (p_cx + dx, 0, p_cz + dz); // Check base chunk for existence
+                            let target = (p_cx + dx, 0, p_cz + dz);
                             if !world.chunks.contains_key(&target) {
-                                // Add world generation logic here if desired
+                                world.generate_one_chunk_around(p_cx + dx, 0, p_cz + dz, 1);
                             }
                         }
                     }
@@ -878,7 +880,10 @@ if let Ok(contents) = serde_json::to_string(&save_data) {
                                             for y in (0..150).rev() {
                                                 let b = world.get_block(BlockPos{x, y, z});
                                                 if b.is_solid() && !b.is_water() {
-                                                    player.position = glam::Vec3::new(x as f32 + 0.5, y as f32 + 2.0, z as f32 + 0.5);
+                                                    player.respawn(); 
+                                                    let surface_y = world.get_height_at(x, z) as f32;
+                                                    player.position = glam::Vec3::new(x as f32 + 0.5, surface_y + 2.5, z as f32 + 0.5);
+                                                    player.health = 10.0; // Set health to 10 hearts
                                                     spawn_found = true; break 'net_spawn;
                                                 }
                                             }
@@ -915,13 +920,22 @@ if !is_paused {
                                         for y in (0..150).rev() {
                                             let b = world.get_block(BlockPos{x, y, z});
                                             if b.is_solid() && !b.is_water() {
-                                                player.respawn(); player.position = glam::Vec3::new(x as f32 + 0.5, y as f32 + 2.0, z as f32 + 0.5);
+                                                player.respawn(); 
+                                                let surface_y = world.get_height_at(x, z) as f32;
+                                                player.position = glam::Vec3::new(x as f32 + 0.5, surface_y + 2.5, z as f32 + 0.5);
+                                                player.health = 10.0; // Set health to 10 hearts
                                                 spawn_found = true; death_timer = 0.0; break 'respawn;
                                             }
                                         }
                                     }}
                                 }
-                                if !spawn_found { player.respawn(); player.position = glam::Vec3::new(0.0, 80.0, 0.0); death_timer = 0.0; }
+                                if !spawn_found { 
+                                    player.respawn(); 
+                                    let surface_y = world.get_height_at(0, 0) as f32;
+                                    player.position = glam::Vec3::new(0.5, surface_y + 2.5, 0.5);
+                                    player.health = 10.0; // Set health to 10 hearts
+                                    death_timer = 0.0; 
+                                }
                             }
                         } else {
                             // Mining logic still runs per-frame for responsiveness
@@ -1007,10 +1021,12 @@ if !is_paused {
 Event::AboutToWait => {
                 // DIABOLICAL THREADING: Only process world-gen and cursor logic if we are actually in the game.
                 if game_state == GameState::Playing && !is_paused && !player.inventory_open {
-                    // DIABOLICAL SPAWN SAFETY: If player falls into void/water on load (Y < 20), launch them up.
+                    // DIABOLICAL SPAWN SAFETY: If player falls into void/water on load (Y < 20), teleport to surface
                     if player.position.y < 20.0 {
-                        player.position.y = 80.0; // Force surface respawn
+                        let surface_y = world.get_height_at(player.position.x as i32, player.position.z as i32) as f32;
+                        player.position.y = surface_y + 2.5; // Spawn on surface
                         player.velocity = glam::Vec3::ZERO; // Kill momentum
+                        player.health = 10.0; // Set health to 10 hearts
                     }
 
                     let p_cx = (player.position.x / 16.0).floor() as i32;
