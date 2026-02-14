@@ -1,8 +1,8 @@
 ﻿use winit::{
-    event::{Event, WindowEvent, ElementState, DeviceEvent, MouseButton, MouseScrollDelta, KeyEvent},
-    event_loop::EventLoop,
-    window::{WindowBuilder, CursorGrabMode},
-    keyboard::{KeyCode, PhysicalKey},
+    event::{Event, WindowEvent, ElementState, DeviceEvent, MouseButton, MouseScrollDelta, KeyEvent},
+    event_loop::EventLoop,
+    window::{WindowBuilder, CursorGrabMode},
+    keyboard::{KeyCode, PhysicalKey},
 };
 use std::sync::Arc;
 use std::time::Instant;
@@ -112,7 +112,7 @@ Event::WindowEvent { event: WindowEvent::CursorMoved { position, .. }, .. } => {
                     for btn in &mut main_menu.buttons { btn.hovered = btn.rect.contains(ndc_x, ndc_y); }
                     // Update pause menu hover state
                     if is_paused {
-                        for btn in &mut pause_menu.buttons { 
+                        for (i, btn) in pause_menu.buttons.iter_mut().enumerate() { 
                             // Calculate button position based on new professional layout
                             let button_width = 0.4;
                             let button_height = 0.06;
@@ -120,7 +120,7 @@ Event::WindowEvent { event: WindowEvent::CursorMoved { position, .. }, .. } => {
                             let panel_x = 0.0;
                             let panel_y = 0.0;
                             let start_y = panel_y - button_spacing/2.0;
-                            let button_y = start_y - (btn.rect.y / button_spacing) * button_spacing;
+                            let button_y = start_y - (i as f32 * button_spacing);
                             
                             let btn_rect_x = panel_x - button_width/2.0;
                             let btn_rect_y = button_y - button_height/2.0;
@@ -142,6 +142,60 @@ Event::WindowEvent { event: WindowEvent::CursorMoved { position, .. }, .. } => {
             },
             Event::DeviceEvent { event: DeviceEvent::MouseMotion { delta }, .. } => { 
                 if game_state == GameState::Playing && !is_paused && !player.inventory_open { player.process_mouse(delta.0, delta.1); } 
+            },
+// --- KEYBOARD INPUT ---
+            Event::WindowEvent { event: WindowEvent::KeyboardInput { event: KeyEvent { physical_key: PhysicalKey::Code(keycode), state, .. }, .. }, .. } => {
+                let pressed = state == ElementState::Pressed;
+                match keycode {
+                    KeyCode::KeyW => player.input.forward = pressed,
+                    KeyCode::KeyS => player.input.backward = pressed,
+                    KeyCode::KeyA => player.input.left = pressed,
+                    KeyCode::KeyD => player.input.right = pressed,
+                    KeyCode::Space => if pressed { player.input.jump = true; },
+                    KeyCode::ShiftLeft => player.input.sneak = pressed,
+                    KeyCode::ControlLeft => player.input.sprint = pressed,
+                    KeyCode::KeyE => if pressed && game_state == GameState::Playing {
+                        player.inventory_open = !player.inventory_open;
+                        player.crafting_open = false; // Reset crafting state
+                        if player.inventory_open {
+                            let _ = window_clone.set_cursor_grab(CursorGrabMode::None);
+                            window_clone.set_cursor_visible(true);
+                        } else {
+                            if let Some(_) = player.inventory.cursor_item.take() {
+                                // Drop item if inventory closed while holding to prevent logic void
+                            }
+                            let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked);
+                            window_clone.set_cursor_visible(false);
+                        }
+                    },
+                    KeyCode::Escape => if pressed && game_state == GameState::Playing {
+                        if player.inventory_open {
+                            player.inventory_open = false;
+                            player.crafting_open = false;
+                            let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked);
+                            window_clone.set_cursor_visible(false);
+                        } else {
+                            is_paused = !is_paused;
+                            if is_paused {
+                                let _ = window_clone.set_cursor_grab(CursorGrabMode::None);
+                                window_clone.set_cursor_visible(true);
+                            } else {
+                                let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked);
+                                window_clone.set_cursor_visible(false);
+                            }
+                        }
+                    },
+                    KeyCode::Digit1 => if pressed { player.inventory.selected_hotbar_slot = 0; },
+                    KeyCode::Digit2 => if pressed { player.inventory.selected_hotbar_slot = 1; },
+                    KeyCode::Digit3 => if pressed { player.inventory.selected_hotbar_slot = 2; },
+                    KeyCode::Digit4 => if pressed { player.inventory.selected_hotbar_slot = 3; },
+                    KeyCode::Digit5 => if pressed { player.inventory.selected_hotbar_slot = 4; },
+                    KeyCode::Digit6 => if pressed { player.inventory.selected_hotbar_slot = 5; },
+                    KeyCode::Digit7 => if pressed { player.inventory.selected_hotbar_slot = 6; },
+                    KeyCode::Digit8 => if pressed { player.inventory.selected_hotbar_slot = 7; },
+                    KeyCode::Digit9 => if pressed { player.inventory.selected_hotbar_slot = 8; },
+                    _ => {}
+                }
             },
 // --- MOUSE INPUT ---
 Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } => {
