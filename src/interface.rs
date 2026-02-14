@@ -8,9 +8,9 @@
 // - Responsive design for different screen sizes
 
 use glam::Vec3;
-use crate::world::{BlockType, BlockPos};
-use crate::player::Player;
-use crate::renderer::Renderer;
+use crate::engine::{World, BlockPos, BlockType};
+use crate::engine::Player;
+use crate::graphics::Renderer;
 use std::collections::HashMap;
 
 /// DIABOLICAL UI Element - A single UI component
@@ -565,7 +565,7 @@ pub enum NavigationDirection {
 }
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
-use crate::time_system::TimeSystem;
+use crate::environment::TimeSystem;
 use crate::world::World;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1156,8 +1156,7 @@ impl CommandHandler for KillCommand {
         "/kill [player|all]".to_string()
     }
 }
-use crate::world::BlockType;
-use std::collections::HashMap;
+use crate::engine::{World, BlockPos, BlockType, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z, WORLD_HEIGHT};
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

@@ -9,9 +9,9 @@
 // - Seasonal variations
 
 use glam::Vec3;
-use crate::world::World;
-use crate::minecraft_rendering::{MinecraftRenderer, FogType, ShadingMode};
-use crate::time_system::TimeSystem;
+use crate::engine::{World, BlockPos, BlockType};
+use crate::graphics::{MinecraftRenderer, FogType, ShadingMode};
+use crate::environment::TimeSystem;
 
 /// DIABOLICAL Weather Types with realistic behaviors
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1123,8 +1123,8 @@ impl TimeSystem {
         }
     }
 }
-use crate::world::{BlockPos, BlockType, World, Chunk, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z, WORLD_HEIGHT};
-use crate::noise_gen::NoiseGenerator;
+use crate::engine::{BlockPos, BlockType, World, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z, WORLD_HEIGHT};
+use crate::resources::NoiseGenerator;
 use std::collections::HashMap;
 use glam::Vec3;
 

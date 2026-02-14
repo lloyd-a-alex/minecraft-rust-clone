@@ -845,12 +845,12 @@ impl ResourceDownloader {
         Ok(())
     }
 }
-use std::net::{TcpListener, TcpStream};
 use std::io::{Read, Write};
 use std::thread;
 use crossbeam_channel::{unbounded, Sender, Receiver};
 use serde::{Serialize, Deserialize};
-use crate::world::{BlockPos, BlockType};
+use crate::configuration::GameConfig;
+use crate::engine::{World, BlockPos, BlockType};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Packet {

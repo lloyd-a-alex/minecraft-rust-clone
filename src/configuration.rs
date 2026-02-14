@@ -783,8 +783,8 @@ pub mod constants {
 }
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
-use crate::world::World;
-use crate::player::Player;
+use crate::engine::{World, BlockPos, BlockType};
+use crate::resources::NoiseGenerator;
 use glam::Vec3;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

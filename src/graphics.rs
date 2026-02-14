@@ -5,8 +5,8 @@ use std::time::Instant;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use crossbeam_channel::{unbounded, Sender, Receiver};
-use crate::world::{World, BlockPos, BlockType};
-use crate::player::Player;
+use crate::engine::{World, BlockPos, BlockType};
+use crate::engine::Player;
 use crate::MainMenu;
 use std::fs::File;
 use std::io::Write;
@@ -207,7 +207,7 @@ let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
 
         // DIABOLICAL ZERO-LATENCY BAKE: Generate the atlas immediately so the Menu is NEVER black.
         // This takes ~150ms on modern CPUs and ensures immediate UI availability.
-        let atlas = crate::texture::TextureAtlas::new();
+        let atlas = crate::resources::TextureAtlas::new();
         let atlas_size = Extent3d { width: 512, height: 512, depth_or_array_layers: 1 };
         let texture = device.create_texture(&TextureDescriptor { label: Some("atlas"), size: atlas_size, mip_level_count: 1, sample_count: 1, dimension: TextureDimension::D2, format: TextureFormat::Rgba8UnormSrgb, usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST, view_formats: &[] });
         queue.write_texture(ImageCopyTexture { texture: &texture, mip_level: 0, origin: Origin3d::ZERO, aspect: TextureAspect::All }, &atlas.data, ImageDataLayout { offset: 0, bytes_per_row: Some(512 * 4), rows_per_image: Some(512) }, atlas_size);
@@ -2474,8 +2474,8 @@ impl CombatSystem {
 // - Biome and time-based effects
 // - Classic Minecraft aesthetic with modern performance
 
-use crate::traditional_textures::TraditionalTextureAtlas;
-use crate::config_system::GameConfig;
+use crate::resources::{TextureAtlas, TraditionalTextureAtlas, NoiseGenerator};
+use crate::configuration::GameConfig;
 use wgpu::util::DeviceExt;
 use glam::{Vec2, Vec3};
 use std::sync::Arc;
