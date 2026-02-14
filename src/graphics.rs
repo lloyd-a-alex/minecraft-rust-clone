@@ -1177,7 +1177,7 @@ self.queue.submit(std::iter::once(encoder.finish()));
     Ok(())
 }
 
-    pub fn render_settings_menu(&mut self, menu: &SettingsMenu, _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
+    pub fn render_settings_menu(&mut self, menu: &mut SettingsMenu, _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
     let output = self.surface.get_current_texture()?;
     let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
     let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Settings") });
@@ -1223,12 +1223,18 @@ self.queue.submit(std::iter::once(encoder.finish()));
     self.draw_text("SETTINGS", 0.0, panel_y + panel_height/2.0 - 0.08, 0.025, &mut vertices, &mut indices, &mut idx_offset);
 
     // Render settings options with values
-    for (i, btn) in menu.buttons.iter().enumerate() {
+    for (i, btn) in menu.buttons.iter_mut().enumerate() {
         let button_width = 0.5;
         let button_height = 0.06;
         let button_spacing = 0.08;
         let start_y = panel_y - button_spacing/2.0;
         let button_y = start_y - (i as f32 * button_spacing);
+        
+        // UPDATE RECT: Set the button rect to match rendered position for correct click detection
+        btn.rect.x = panel_x;
+        btn.rect.y = button_y;
+        btn.rect.w = button_width;
+        btn.rect.h = button_height;
         
         // Button background with hover effect
         let tex_id = if btn.hovered { 251 } else { 250 };
@@ -1283,7 +1289,7 @@ self.queue.submit(std::iter::once(encoder.finish()));
     Ok(())
 }
 
-pub fn render_pause_menu(&mut self, menu: &MainMenu, world: &World, player: &Player, cursor_pos: (f64, f64), _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
+pub fn render_pause_menu(&mut self, menu: &mut MainMenu, world: &World, player: &Player, cursor_pos: (f64, f64), _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
     let output = self.surface.get_current_texture()?;
     let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
     let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Pause") });
@@ -1332,12 +1338,18 @@ pub fn render_pause_menu(&mut self, menu: &MainMenu, world: &World, player: &Pla
     self.draw_text("GAME PAUSED", 0.0, panel_y + panel_height/2.0 - 0.08, 0.025, &mut vertices, &mut indices, &mut idx_offset);
 
     // Render buttons with professional styling
-    for (i, btn) in menu.buttons.iter().enumerate() {
+    for (i, btn) in menu.buttons.iter_mut().enumerate() {
         let button_width = 0.4;
         let button_height = 0.06;
         let button_spacing = 0.08;
         let start_y = panel_y - button_spacing/2.0;
         let button_y = start_y - (i as f32 * button_spacing);
+        
+        // UPDATE RECT: Set the button rect to match rendered position for correct click detection
+        btn.rect.x = panel_x;
+        btn.rect.y = button_y;
+        btn.rect.w = button_width;
+        btn.rect.h = button_height;
         
         // Button background with hover effect
         let tex_id = if btn.hovered { 251 } else { 250 };

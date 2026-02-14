@@ -150,11 +150,19 @@ impl MainMenu {
 
     pub fn new_pause() -> Self {
         let mut b = Vec::new();
-        // Professional centered layout for pause menu
-        // These positions will be overridden by the render_pause_menu function
-        b.push(MenuButton{rect:Rect{x:0.0,y:0.0,w:0.4,h:0.06}, text:"RESUME GAME".to_string(), action:MenuAction::Resume, hovered:false});
-        b.push(MenuButton{rect:Rect{x:0.0,y:-0.08,w:0.4,h:0.06}, text:"SETTINGS".to_string(), action:MenuAction::Settings, hovered:false});
-        b.push(MenuButton{rect:Rect{x:0.0,y:-0.16,w:0.4,h:0.06}, text:"QUIT TO MENU".to_string(), action:MenuAction::Quit, hovered:false});
+        // Professional centered layout for pause menu - CORRECT POSITIONS
+        let panel_x = 0.0;
+        let panel_y = 0.0;
+        let button_width = 0.4;
+        let button_height = 0.06;
+        let button_spacing = 0.08;
+        let start_y = panel_y - button_spacing/2.0;
+        
+        // Buttons are rendered at (panel_x - button_width/2.0, button_y - button_height/2.0)
+        // So rect should be centered at (panel_x, button_y)
+        b.push(MenuButton{rect:Rect{x:panel_x,y:start_y,w:button_width,h:button_height}, text:"RESUME GAME".to_string(), action:MenuAction::Resume, hovered:false});
+        b.push(MenuButton{rect:Rect{x:panel_x,y:start_y-button_spacing,w:button_width,h:button_height}, text:"SETTINGS".to_string(), action:MenuAction::Settings, hovered:false});
+        b.push(MenuButton{rect:Rect{x:panel_x,y:start_y-button_spacing*2.0,w:button_width,h:button_height}, text:"QUIT TO MENU".to_string(), action:MenuAction::Quit, hovered:false});
         MainMenu { buttons: b }
     }
 }

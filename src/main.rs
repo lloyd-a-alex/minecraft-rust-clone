@@ -109,19 +109,44 @@ Event::WindowEvent { event: WindowEvent::CursorMoved { position, .. }, .. } => {
                 if game_state == GameState::Menu || is_paused || player.inventory_open || game_state == GameState::Settings {
                     let ndc_x = (position.x as f32 / win_size.0 as f32) * 2.0 - 1.0;
                     let ndc_y = 1.0 - (position.y as f32 / win_size.1 as f32) * 2.0;
-                    for btn in &mut main_menu.buttons { btn.hovered = btn.rect.contains(ndc_x, ndc_y); }
-                    // Update pause menu hover state
+                    
+                    // Update pause menu button rects to match rendered positions BEFORE click detection
                     if is_paused {
-                        for btn in &mut pause_menu.buttons { 
+                        let panel_x = 0.0;
+                        let panel_y = 0.0;
+                        let button_width = 0.4;
+                        let button_height = 0.06;
+                        let button_spacing = 0.08;
+                        let start_y = panel_y - button_spacing/2.0;
+                        for (i, btn) in pause_menu.buttons.iter_mut().enumerate() {
+                            let button_y = start_y - (i as f32 * button_spacing);
+                            btn.rect.x = panel_x;
+                            btn.rect.y = button_y;
+                            btn.rect.w = button_width;
+                            btn.rect.h = button_height;
                             btn.hovered = btn.rect.contains(ndc_x, ndc_y);
                         }
                     }
-                    // Update settings menu hover state
+                    
+                    // Update settings menu button rects to match rendered positions BEFORE click detection
                     if game_state == GameState::Settings {
-                        for btn in &mut settings_menu.buttons { 
+                        let panel_x = 0.0;
+                        let panel_y = 0.0;
+                        let button_width = 0.5;
+                        let button_height = 0.06;
+                        let button_spacing = 0.08;
+                        let start_y = panel_y - button_spacing/2.0;
+                        for (i, btn) in settings_menu.buttons.iter_mut().enumerate() {
+                            let button_y = start_y - (i as f32 * button_spacing);
+                            btn.rect.x = panel_x;
+                            btn.rect.y = button_y;
+                            btn.rect.w = button_width;
+                            btn.rect.h = button_height;
                             btn.hovered = btn.rect.contains(ndc_x, ndc_y);
                         }
                     }
+                    
+                    for btn in &mut main_menu.buttons { btn.hovered = btn.rect.contains(ndc_x, ndc_y); }
                 }
             },
             Event::DeviceEvent { event: DeviceEvent::MouseMotion { delta }, .. } => { 
@@ -163,6 +188,20 @@ Event::WindowEvent { event: WindowEvent::CursorMoved { position, .. }, .. } => {
                             if is_paused {
                                 let _ = window_clone.set_cursor_grab(CursorGrabMode::None);
                                 window_clone.set_cursor_visible(true);
+                                // Update pause menu button rects immediately when menu opens
+                                let panel_x = 0.0;
+                                let panel_y = 0.0;
+                                let button_width = 0.4;
+                                let button_height = 0.06;
+                                let button_spacing = 0.08;
+                                let start_y = panel_y - button_spacing/2.0;
+                                for (i, btn) in pause_menu.buttons.iter_mut().enumerate() {
+                                    let button_y = start_y - (i as f32 * button_spacing);
+                                    btn.rect.x = panel_x;
+                                    btn.rect.y = button_y;
+                                    btn.rect.w = button_width;
+                                    btn.rect.h = button_height;
+                                }
                             } else {
                                 let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked);
                                 window_clone.set_cursor_visible(false);
@@ -249,7 +288,7 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                     let mut action = None;
                     for btn in &pause_menu.buttons {
                         if btn.rect.contains(ndc_x, ndc_y) { 
-                            action = Some(&btn.action); 
+                            action = Some(btn.action.clone()); 
                             break; 
                         }
                     }
@@ -265,7 +304,7 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                     let mut action = None;
                     for btn in &settings_menu.buttons {
                         if btn.rect.contains(ndc_x, ndc_y) { 
-                            action = Some(&btn.action); 
+                            action = Some(btn.action.clone()); 
                             break; 
                         }
                     }
@@ -836,9 +875,9 @@ if !is_paused {
                     renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.0 };
                     
                     let result = if game_state == GameState::Settings {
-                        renderer.render_settings_menu(&settings_menu, win_size.0, win_size.1)
+                        renderer.render_settings_menu(&mut settings_menu, win_size.0, win_size.1)
                     } else if is_paused {
-                        renderer.render_pause_menu(&pause_menu, &world, &player, cursor_pos, win_size.0, win_size.1)
+                        renderer.render_pause_menu(&mut pause_menu, &world, &player, cursor_pos, win_size.0, win_size.1)
                     } else {
                         renderer.render_game(&world, &player, is_paused, cursor_pos, win_size.0, win_size.1)
                     };
