@@ -150,12 +150,40 @@ let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             ..Default::default()
         });
         
-        let surface = instance.create_surface(window).unwrap();
-        let adapter = instance.request_adapter(&RequestAdapterOptions { power_preference: PowerPreference::HighPerformance, compatible_surface: Some(&surface), force_fallback_adapter: false }).await.unwrap();
+        let surface = match instance.create_surface(window) {
+            Ok(surface) => surface,
+            Err(e) => {
+                log::error!("Failed to create surface: {:?}", e);
+                return Err(e);
+            }
+        };
+        let adapter = match instance.request_adapter(&RequestAdapterOptions { 
+            power_preference: PowerPreference::HighPerformance, 
+            compatible_surface: Some(&surface), 
+            force_fallback_adapter: false 
+        }).await {
+            Some(adapter) => adapter,
+            None => {
+                log::error!("Failed to request adapter");
+                return Err(wgpu::RequestAdapterError {});
+            }
+        };
         let adapter_info = adapter.get_info();
-        let (device, queue) = adapter.request_device(&DeviceDescriptor::default(), None).await.unwrap();
+        let (device, queue) = match adapter.request_device(&DeviceDescriptor::default(), None).await {
+            Ok(pair) => pair,
+            Err(e) => {
+                log::error!("Failed to request device: {:?}", e);
+                return Err(e);
+            }
+        };
         let surface_caps = surface.get_capabilities(&adapter);
-        let surface_format = surface_caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(surface_caps.formats[0]);
+        let surface_format = surface_caps.formats.iter()
+            .copied()
+            .find(|f| f.is_srgb())
+            .unwrap_or_else(|| {
+                log::warn!("No SRGB format found, using first available");
+                surface_caps.formats[0]
+            });
         let config = SurfaceConfiguration { usage: TextureUsages::RENDER_ATTACHMENT, format: surface_format, width: window.inner_size().width, height: window.inner_size().height, present_mode: PresentMode::Fifo, alpha_mode: surface_caps.alpha_modes[0], view_formats: vec![], desired_maximum_frame_latency: 2 };
         surface.configure(&device, &config);
 
@@ -261,18 +289,29 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
 // DIABOLICAL THREADED LOD MESH GENERATOR
         let (task_tx, task_rx) = unbounded::<(i32, i32, i32, u32, Arc<World>)>();
         let (result_tx, result_rx) = unbounded::<MeshTask>();
-// DIABOLICAL MULTI-THREADED MESH GENERATION: Scaling to all available CPU cores
-        let thread_count = std::thread::available_parallelism().map(|p| p.get()).unwrap_or(16);
+        // DIABOLICAL MULTI-THREADED MESH GENERATION: Scaling to all available CPU cores
+        let thread_count = std::thread::available_parallelism()
+            .map(|p| p.get())
+            .unwrap_or(16)
+            .min(8); // Limit to 8 threads to prevent excessive resource usage
         log::info!("🚀 SPAWNING {} DIABOLICAL MESH WORKER THREADS", thread_count);
 
-        for _ in 0..thread_count {
+        for thread_id in 0..thread_count {
             let t_rx = task_rx.clone();
             let r_tx = result_tx.clone();
-            std::thread::spawn(move || {
-                while let Ok((cx, cy, cz, lod, world)) = t_rx.recv() {
-                    let mut vertices = Vec::new();
-                    let mut indices = Vec::new();
-                    let mut i_cnt = 0;
+            std::thread::Builder::new()
+                .name(format!("mesh_worker_{}", thread_id))
+                .spawn(move || {
+                    while let Ok((cx, cy, cz, lod, world)) = t_rx.recv() {
+                        // Add validation for chunk coordinates
+                        if cx.abs() > 1000 || cy.abs() > 1000 || cz.abs() > 1000 {
+                            log::warn!("Invalid chunk coordinates: ({}, {}, {})", cx, cy, cz);
+                            continue;
+                        }
+                        
+                        let mut vertices = Vec::new();
+                        let mut indices = Vec::new();
+                        let mut i_cnt = 0;
                     
                     if let Some(chunk) = world.chunks.get(&(cx, cy, cz)) {
                         if chunk.is_empty {
@@ -436,18 +475,34 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
     }
 
     pub fn process_mesh_queue(&mut self) {
+        // Limit processing to prevent frame drops
+        let max_tasks_per_frame = 8;
+        let mut processed = 0;
+        
         while let Ok(task) = self.mesh_rx.try_recv() {
+            if processed >= max_tasks_per_frame {
+                break; // Process more next frame
+            }
+            
             self.pending_chunks.remove(&(task.cx, task.cy, task.cz));
             self.chunk_meshes.remove(&(task.cx, task.cy, task.cz));
 
             if !task.vertices.is_empty() {
+                // Validate mesh data to prevent GPU crashes
+                if task.vertices.len() > 100000 || task.indices.len() > 200000 {
+                    log::warn!("Rejecting oversized mesh for chunk ({}, {}, {}): {} vertices, {} indices", 
+                             task.cx, task.cy, task.cz, task.vertices.len(), task.indices.len());
+                    processed += 1;
+                    continue;
+                }
+                
                 let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { 
-                    label: Some("Chunk VB"), 
+                    label: Some(&format!("Chunk VB ({},{},{})", task.cx, task.cy, task.cz)), 
                     contents: bytemuck::cast_slice(&task.vertices), 
                     usage: BufferUsages::VERTEX | BufferUsages::COPY_DST 
                 });
                 let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { 
-                    label: Some("Chunk IB"), 
+                    label: Some(&format!("Chunk IB ({},{},{})", task.cx, task.cy, task.cz)), 
                     contents: bytemuck::cast_slice(&task.indices), 
                     usage: BufferUsages::INDEX | BufferUsages::COPY_DST 
                 });
@@ -458,6 +513,7 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
                     total_indices: task.indices.len() as u32 
                 }, task.lod));
             }
+            processed += 1;
         }
     }
 
@@ -569,9 +625,24 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
     }
 
 pub fn rebuild_all_chunks(&mut self, world: &World) { 
+        log::info!("Rebuilding all chunks - clearing {} meshes", self.chunk_meshes.len());
         self.chunk_meshes.clear(); 
-        for (key, _) in &world.chunks { self.update_chunk(key.0, key.1, key.2, world); }
+        self.pending_chunks.clear(); // Clear pending to avoid duplicates
+        
+        // Limit chunk count to prevent memory exhaustion
+        let max_chunks = 1000;
+        let mut chunk_count = 0;
+        
+        for (key, _) in &world.chunks {
+            if chunk_count >= max_chunks {
+                log::warn!("Reached maximum chunk limit ({}), skipping remaining", max_chunks);
+                break;
+            }
+            self.update_chunk(key.0, key.1, key.2, world);
+            chunk_count += 1;
+        }
         self.update_clouds(world);
+        log::info!("Queued {} chunks for rebuilding", chunk_count);
     }
 
     fn update_clouds(&mut self, world: &World) {
