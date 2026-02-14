@@ -7,7 +7,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 use std::time::{SystemTime, UNIX_EPOCH};
-use minecraft_clone::{Renderer, World, BlockType, BlockPos, Player, NetworkManager, GameState, MainMenu, MenuAction, AudioSystem, Rect, SettingsMenu};
+use minecraft_clone::{Renderer, World, BlockType, BlockPos, Player, NetworkManager, GameState, MainMenu, MenuAction, AudioSystem, SettingsMenu};
 use minecraft_clone::network::Packet;
 use glam::Vec3;
 use serde_json::json;
@@ -112,24 +112,8 @@ Event::WindowEvent { event: WindowEvent::CursorMoved { position, .. }, .. } => {
                     for btn in &mut main_menu.buttons { btn.hovered = btn.rect.contains(ndc_x, ndc_y); }
                     // Update pause menu hover state
                     if is_paused {
-                        for (i, btn) in pause_menu.buttons.iter_mut().enumerate() { 
-                            // Calculate button position based on new professional layout
-                            let button_width = 0.4;
-                            let button_height = 0.06;
-                            let button_spacing = 0.08;
-                            let panel_x = 0.0;
-                            let panel_y = 0.0;
-                            let start_y = panel_y - button_spacing/2.0;
-                            let button_y = start_y - (i as f32 * button_spacing);
-                            
-                            let btn_rect_x = panel_x - button_width/2.0;
-                            let btn_rect_y = button_y - button_height/2.0;
-                            let btn_rect_w = button_width;
-                            let btn_rect_h = button_height;
-                            
-                            // Create a temporary rect for hover detection
-                            let temp_rect = Rect { x: btn_rect_x, y: btn_rect_y, w: btn_rect_w, h: btn_rect_h };
-                            btn.hovered = temp_rect.contains(ndc_x, ndc_y);
+                        for btn in &mut pause_menu.buttons { 
+                            btn.hovered = btn.rect.contains(ndc_x, ndc_y);
                         }
                     }
                     // Update settings menu hover state
@@ -259,29 +243,12 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                             spawn_found = false;
                             breaking_pos = None;
                             break_progress = 0.0;
-                            // Cursor will be locked after Loading finishes
                         }
                     }
                 } else if is_paused && pressed && button == MouseButton::Left {
                     let mut action = None;
-                    for (i, btn) in pause_menu.buttons.iter().enumerate() {
-                        // Calculate button position based on new professional layout
-                        let button_width = 0.4;
-                        let button_height = 0.06;
-                        let button_spacing = 0.08;
-                        let panel_x = 0.0;
-                        let panel_y = 0.0;
-                        let start_y = panel_y - button_spacing/2.0;
-                        let button_y = start_y - (i as f32 * button_spacing);
-                        
-                        let btn_rect_x = panel_x - button_width/2.0;
-                        let btn_rect_y = button_y - button_height/2.0;
-                        let btn_rect_w = button_width;
-                        let btn_rect_h = button_height;
-                        
-                        // Create a temporary rect for click detection
-                        let temp_rect = Rect { x: btn_rect_x, y: btn_rect_y, w: btn_rect_w, h: btn_rect_h };
-                        if temp_rect.contains(ndc_x, ndc_y) { 
+                    for btn in &pause_menu.buttons {
+                        if btn.rect.contains(ndc_x, ndc_y) { 
                             action = Some(&btn.action); 
                             break; 
                         }
