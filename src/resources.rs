@@ -1083,7 +1083,7 @@ fn generate_bucket(data: &mut [u8], size: u32, w: u32, idx: u32, water: bool) {
 // - Material-specific rendering properties
 // - Biome and time-based texture variations
 
-use glam::Vec3;
+// Removed unused Vec3 import
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

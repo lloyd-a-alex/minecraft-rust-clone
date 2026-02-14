@@ -355,7 +355,7 @@ impl GameConfig {
         Ok(())
     }
 
-    pub fn apply_graphics_settings(&self, renderer: &mut crate::renderer::Renderer) {
+    pub fn apply_graphics_settings(&self, renderer: &mut crate::graphics::Renderer) {
         // Apply graphics settings to renderer
         // This would need to be implemented with the actual renderer
         renderer.set_render_distance(self.graphics.render_distance);
@@ -781,10 +781,7 @@ pub mod constants {
     pub const MAX_MEMORY_MB: u32 = 16384; // 16GB
     pub const MIN_MEMORY_MB: u32 = 256;   // 256MB
 }
-use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
-use crate::engine::{World, BlockPos, BlockType};
-use crate::resources::NoiseGenerator;
+// Removed unused configuration imports
 use glam::Vec3;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -877,7 +874,7 @@ impl SaveManager {
         Ok(())
     }
     
-    pub fn save_slot(&mut self, slot_index: usize, world: &World, player: &Player, play_time: f64) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save_slot(&mut self, slot_index: usize, world: &World, player: &crate::engine::Player, play_time: f64) -> Result<(), Box<dyn std::error::Error>> {
         if slot_index >= self.slots.len() {
             return Err("Invalid slot index".into());
         }
@@ -967,7 +964,7 @@ impl SaveManager {
     }
 }
 use crate::{MenuButton, MenuAction, Rect};
-use crate::save_system::{SaveManager, SaveSlot};
+// Removed invalid save_system import
 
 #[derive(Clone)]
 pub enum SaveMenuAction {

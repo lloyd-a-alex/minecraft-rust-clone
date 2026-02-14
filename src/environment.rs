@@ -9,9 +9,8 @@
 // - Seasonal variations
 
 use glam::Vec3;
-use crate::engine::{World, BlockPos, BlockType};
-use crate::graphics::{MinecraftRenderer, FogType, ShadingMode};
-use crate::environment::TimeSystem;
+use crate::engine::World;
+use crate::graphics::{MinecraftRenderer, FogType};
 
 /// DIABOLICAL Weather Types with realistic behaviors
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -26,6 +25,20 @@ pub enum WeatherType {
     Fog,
     Sandstorm,
     MagicalStorm,
+}
+
+impl WeatherType {
+    pub fn get_precipitation_type(&self) -> Option<PrecipitationType> {
+        match self {
+            WeatherType::Rain => Some(PrecipitationType::Rain { intensity: 0.5 }),
+            WeatherType::HeavyRain => Some(PrecipitationType::Rain { intensity: 0.8 }),
+            WeatherType::Snow => Some(PrecipitationType::Snow { intensity: 0.3 }),
+            WeatherType::Blizzard => Some(PrecipitationType::Snow { intensity: 0.8 }),
+            WeatherType::Sandstorm => Some(PrecipitationType::Dust),
+            WeatherType::MagicalStorm => Some(PrecipitationType::Magical { element: "arcane".to_string() }),
+            _ => None,
+        }
+    }
 }
 
 /// DIABOLICAL Wind System with realistic patterns
@@ -725,6 +738,7 @@ impl WeatherSystem {
         
         if let Some(renderer) = &mut self.minecraft_renderer {
             // Apply all settings at once
+            let renderer: &mut crate::graphics::MinecraftRenderer = renderer;
             renderer.set_fog_type(fog_settings.fog_type);
             renderer.fog_color = [
                 fog_settings.fog_color[0],
@@ -739,7 +753,7 @@ impl WeatherSystem {
     
 fn update_sky_color(&mut self) {
     let time_modifier = if let Some(ref time_system) = self.time_system {
-        let sky_color: [f32; 3] = time_system.get_sky_color();
+        let sky_color: [f32; 4] = time_system.get_sky_color();
         sky_color[0] + sky_color[1] + sky_color[2]
     } else {
         2.1 // Default bright sky
@@ -765,110 +779,13 @@ fn update_sky_color(&mut self) {
     }
 }
 
-fn update_fog(&mut self) {
-    match self.current_weather {
-        WeatherType::Fog => {
-            self.fog_density = 0.8;
-        }
-        WeatherType::Rain | WeatherType::HeavyRain => {
-            self.fog_density = 0.3;
-        }
-        WeatherType::Blizzard => {
-            self.fog_density = 0.6;
-        }
-        _ => {
-            self.fog_density = 0.0;
-        }
-    }
-}
-}
 
-pub fn get_classic_fog_density(self) -> f32 {
-    if let Some(ref renderer) = self.minecraft_renderer {
-        renderer.get_fog_density(10.0_f32) // Sample at 10 blocks distance
-    } else {
-        self.fog_density
-    }
 }
-
-pub fn get_classic_ambient_light(self) -> f32 {
-    if let Some(ref time_system) = self.time_system {
-        let base_light: f32 = time_system.get_ambient_light();
-        let weather_modifier = match self.current_weather {
-            WeatherType::Clear => 1.0,
-            WeatherType::Cloudy => 0.9,
-            WeatherType::Rain => 0.7,
-            WeatherType::HeavyRain => 0.5,
-            WeatherType::Thunderstorm => 0.4,
-            WeatherType::Snow => 0.8,
-            WeatherType::Blizzard => 0.6,
-            WeatherType::Fog => 0.6,
-            WeatherType::Sandstorm => 0.5,
-            WeatherType::MagicalStorm => 0.3,
-        };
-        base_light * weather_modifier
-    } else {
-        1.0
-    }
-}
-
-pub fn should_use_classic_lighting(self) -> bool {
-    self.minecraft_renderer.is_some()
-}
-
-pub fn get_texture_filter_mode(self) -> Option<u32> {
-    self.minecraft_renderer.as_ref().map(|r: &crate::minecraft_rendering::MinecraftRenderer| r.get_texture_filter_mode())
-}
-
-pub fn should_use_mipmapping(self) -> bool {
-    self.minecraft_renderer.as_ref().map_or(false, |r: &crate::minecraft_rendering::MinecraftRenderer| r.should_use_mipmapping())
-}
-
-pub fn apply_view_bobbing(self, time: f32) -> Option<Vec3> {
-    self.minecraft_renderer.as_ref().map(|r| r.apply_view_bobbing(time))
-}
-
-pub fn get_weather_effects(&self) -> WeatherEffects {
-    WeatherEffects {
-        visibility_modifier: self.atmospheric.visibility,
-        movement_speed_modifier: self.get_movement_speed_modifier(),
-        block_interaction_modifier: self.get_block_interaction_modifier(),
-        ambient_light_color: self.ambient_light_color,
-        fog_density: self.fog_density,
-        precipitation_type: self.current_weather.get_precipitation_type(),
-    }
-}
-
 #[derive(Debug, Clone)]
 struct FogSettings {
     pub fog_type: FogType,
     pub fog_color: [f32; 4],
     pub fog_end: f32,
-}
-
-#[derive(Debug, Clone)]
-struct AmbientLightingSettings {
-    pub ambient_light: f32,
-}
-
-#[derive(Debug, Clone)]
-struct SkyColorSettings {
-    pub r: f32,
-    pub g: f32,
-    pub b: f32,
-}
-
-impl WeatherType {
-    pub fn get_precipitation_type(&self) -> Option<PrecipitationType> {
-        match self {
-            WeatherType::Rain => Some(PrecipitationType::Rain { intensity: 0.5 }),
-            WeatherType::HeavyRain => Some(PrecipitationType::Rain { intensity: 0.8 }),
-            WeatherType::Snow => Some(PrecipitationType::Snow { intensity: 0.3 }),
-            WeatherType::Blizzard => Some(PrecipitationType::Snow { intensity: 0.8 }),
-            WeatherType::Sandstorm => Some(PrecipitationType::Dust),
-            WeatherType::MagicalStorm => Some(PrecipitationType::Magical { element: "arcane".to_string() }),
-            _ => None,
-        }
 }
 
 #[derive(Debug, Clone)]
@@ -880,6 +797,7 @@ pub struct WeatherEffects {
     pub fog_density: f32,
     pub precipitation_type: Option<PrecipitationType>,
 }
+
 use serde::{Serialize, Deserialize};
 use std::time::{Duration, Instant};
 
@@ -1612,7 +1530,8 @@ impl Mob {
                 let count = if drop.min_count == drop.max_count {
                     drop.min_count
                 } else {
-                    rand::random_range(drop.min_count..=drop.max_count)
+                    use rand::Rng;
+                    rand::thread_rng().gen_range(drop.min_count..=drop.max_count)
                 };
                 drops.push((drop.item_type, count));
             }
@@ -1820,6 +1739,7 @@ pub struct MobSpawner {
     pub spawn_rate: f32, // mobs per second
     pub last_spawn: f32,
     pub mob_biomes: HashMap<MobType, Vec<String>>,
+    pub walk_time: f32, // Added for SimpleRng
 }
 
 impl MobSpawner {
@@ -1844,6 +1764,7 @@ impl MobSpawner {
             spawn_rate: 0.1,
             last_spawn: 0.0,
             mob_biomes,
+            walk_time: 0.0,
         }
     }
 
@@ -1856,7 +1777,9 @@ impl MobSpawner {
         let spawn_attempts = 10;
         for _ in 0..spawn_attempts {
             let angle = rand::random::<f32>() * 2.0 * std::f32::consts::PI;
-            let distance = rand::random_range(8.0..self.spawn_radius);
+            let mut rng = crate::engine::SimpleRng::new(self.walk_time as u64 + 1);
+            
+            let distance = rng.gen_range(8.0..self.spawn_radius);
             
             let spawn_x = player_pos.x + angle.cos() * distance;
             let spawn_z = player_pos.z + angle.sin() * distance;
@@ -1938,3 +1861,4 @@ impl MobSpawner {
         "plains".to_string()
     }
 }
+

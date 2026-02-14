@@ -1,8 +1,6 @@
 use std::collections::{HashMap, VecDeque, HashSet};
-use crate::noise_gen::NoiseGenerator;
-use crate::player::Player;
+use crate::resources::NoiseGenerator;
 use glam::Vec3;
-use serde::{Serialize, Deserialize};
 
 pub struct SimpleRng { pub state: u64 }
 impl SimpleRng {
@@ -11,7 +9,7 @@ impl SimpleRng {
         self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1);
         ((self.state >> 33) ^ self.state) as u32 as f32 / u32::MAX as f32
     }
-    fn gen_range(&mut self, min: f32, max: f32) -> f32 { min + (max - min) * self.next_f32() }
+    pub fn gen_range(&mut self, min: f32, max: f32) -> f32 { min + (max - min) * self.next_f32() }
 }
 
 pub const CHUNK_SIZE_X: usize = 16;

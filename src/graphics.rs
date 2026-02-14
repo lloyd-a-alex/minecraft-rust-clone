@@ -676,7 +676,7 @@ pub fn rebuild_all_chunks(&mut self, world: &World) {
         for cx in -10..10 {
             for cz in -10..10 {
                 let wx = cx * 16; let wz = cz * 16;
-                let noise = crate::noise_gen::NoiseGenerator::new(world.seed);
+                let noise = crate::resources::NoiseGenerator::new(world.seed);
                 if noise.get_noise3d(wx as f64 * 0.01, 0.0, wz as f64 * 0.01) > 0.4 {
                     self.add_face(&mut vertices, &mut indices, &mut offset, wx, cloud_y as i32, wz, 0, 228, 1.0, 1.0);
                     self.add_face(&mut vertices, &mut indices, &mut offset, wx, cloud_y as i32, wz, 1, 228, 1.0, 0.8);
@@ -949,7 +949,7 @@ pub fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Ve
             x += final_scale;
         }
     }
-pub fn render_multiplayer_menu(&mut self, menu: &mut crate::MainMenu, hosting: &crate::ngrok_utils::HostingManager, _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
+pub fn render_multiplayer_menu(&mut self, menu: &mut crate::MainMenu, hosting: &crate::network::HostingManager, _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
     let output = self.surface.get_current_texture()?;
     let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
     let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Multiplayer") });
@@ -1178,7 +1178,7 @@ pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, c
         if player_moved || self.frame_count % 15 == 0 { // Check every 15 frames instead of 30
             self.last_player_chunk = (p_cx, 0, p_cz);
             let r_dist = 12; // Increased from 10 for better chunk loading
-            let max_vertical = crate::world::WORLD_HEIGHT / 16;
+            let max_vertical = crate::engine::WORLD_HEIGHT / 16;
             
             for dx in -r_dist..=r_dist {
                 for dz in -r_dist..=r_dist {
@@ -1206,7 +1206,7 @@ pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, c
         let eye_bp = BlockPos { x: player.position.x.floor() as i32, y: (player.position.y + player.height * 0.4).floor() as i32, z: player.position.z.floor() as i32 };
         let is_underwater = if world.get_block(eye_bp).is_water() { 1.0f32 } else { 0.0f32 };
         
-        let noise_gen = crate::noise_gen::NoiseGenerator::new(world.seed); 
+        let noise_gen = crate::resources::NoiseGenerator::new(world.seed);
         let (cont, eros, _weird, temp) = noise_gen.get_height_params(eye_bp.x, eye_bp.z);
         let humid = noise_gen.get_noise_octaves(eye_bp.x as f64 * 0.01, 44.0, eye_bp.z as f64 * 0.01, 3) as f32;
         let biome = noise_gen.get_biome(cont, eros, temp, humid, eye_bp.y);
@@ -1440,9 +1440,7 @@ pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, c
 // - Combat animations and sound effects
 
 use glam::Vec3;
-use crate::world::World;
-use crate::player::Player;
-use std::collections::HashMap;
+use crate::engine::{World, Player};
 
 /// DIABOLICAL Combat Damage Types
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -2476,10 +2474,7 @@ impl CombatSystem {
 
 use crate::resources::{TextureAtlas, TraditionalTextureAtlas, NoiseGenerator};
 use crate::configuration::GameConfig;
-use wgpu::util::DeviceExt;
-use glam::{Vec2, Vec3};
-use std::sync::Arc;
-use std::collections::HashMap;
+use glam::Vec2;
 
 #[derive(Debug, Clone, Copy)]
 pub enum TextureFilter {
@@ -2664,7 +2659,7 @@ impl MinecraftRenderer {
         }
     }
 
-    pub fn calculate_vertex_light(&self, light_level: u8, vertex_pos: Vec3, surrounding_lights: [u8; 4]) -> f32 {
+    pub fn calculate_vertex_light(&self, light_level: u8, _vertex_pos: Vec3, surrounding_lights: [u8; 4]) -> f32 {
         if !self.ambient_occlusion {
             return light_level as f32 / 15.0;
         }
@@ -2783,7 +2778,7 @@ impl MinecraftRenderer {
         final_color
     }
 
-    pub fn render_sky_with_classic_fog(&self, sky_color: [f32; 4], player_pos: Vec3, render_distance: f32) -> [f32; 4] {
+    pub fn render_sky_with_classic_fog(&self, sky_color: [f32; 4], _player_pos: Vec3, render_distance: f32) -> [f32; 4] {
         let mut final_color = sky_color;
 
         // Apply classic fog to sky
@@ -2947,130 +2942,5 @@ impl TextureGenerator {
         // Simple noise function
         let n = (x.sin() * 12.9898 + y.cos() * 78.233) * 43758.5453;
         (n - n.floor()) * 2.0 - 1.0
-    }
-}
-
-pub struct ClassicBlockRenderer {
-    pub minecraft_renderer: MinecraftRenderer,
-    pub texture_generator: TextureGenerator,
-    pub texture_atlas: HashMap<String, Vec<u8>>,
-}
-
-impl ClassicBlockRenderer {
-    pub fn new() -> Self {
-        Self {
-            minecraft_renderer: MinecraftRenderer::new(),
-            texture_generator: TextureGenerator::new(),
-            texture_atlas: HashMap::new(),
-        }
-    }
-
-    pub fn initialize_textures(&mut self) {
-        // Generate classic programmer art style textures
-        let texture_types = vec![
-            "dirt", "stone", "grass", "sand", "wood", "leaves", 
-            "cobblestone", "gravel", "coal", "iron_ore", "gold_ore", "diamond_ore"
-        ];
-
-        for texture_type in texture_types {
-            let texture_data = self.texture_generator.generate_programmer_art_texture(texture_type, 16);
-            self.texture_atlas.insert(texture_type.to_string(), texture_data);
-        }
-    }
-
-    pub fn get_texture(&self, texture_type: &str) -> Option<&Vec<u8>> {
-        self.texture_atlas.get(texture_type)
-    }
-
-    pub fn render_block(
-        &self,
-        block_type: &str,
-        world_pos: Vec3,
-        normal: Vec3,
-        light_level: u8,
-        surrounding_lights: [u8; 4],
-        distance: f32,
-        uv: Vec2,
-        is_transparent: bool,
-    ) -> [f32; 4] {
-        let base_color = if let Some(texture) = self.get_texture(block_type) {
-            // Get pixel from texture atlas
-            let x = (uv.x * 16.0) as usize;
-            let y = (uv.y * 16.0) as usize;
-            let index = (y * 16 + x) * 4;
-            
-            if index < texture.len() {
-                [
-                    texture[index] as f32 / 255.0,
-                    texture[index + 1] as f32 / 255.0,
-                    texture[index + 2] as f32 / 255.0,
-                    texture[index + 3] as f32 / 255.0,
-                ]
-            } else {
-                [128.0 / 255.0, 128.0 / 255.0, 128.0 / 255.0, 255.0 / 255.0]
-            }
-        } else {
-            // Fallback colors
-            match block_type {
-                "dirt" => [139.0 / 255.0, 90.0 / 255.0, 69.0 / 255.0, 62.0 / 255.0],
-                "stone" => [136.0 / 255.0, 136.0 / 255.0, 136.0 / 255.0, 136.0 / 255.0],
-                "grass" => [124.0 / 255.0, 169.0 / 255.0, 80.0 / 255.0, 62.0 / 255.0],
-                "sand" => [238.0 / 255.0, 220.0 / 255.0, 194.0 / 255.0, 174.0 / 255.0],
-                "wood" => [143.0 / 255.0, 101.0 / 255.0, 69.0 / 255.0, 62.0 / 255.0],
-                "leaves" => [34.0 / 255.0, 89.0 / 255.0, 34.0 / 255.0, 89.0 / 255.0],
-                "cobblestone" => [136.0 / 255.0, 136.0 / 255.0, 136.0 / 255.0, 136.0 / 255.0],
-                "gravel" => [136.0 / 255.0, 136.0 / 255.0, 136.0 / 255.0, 136.0 / 255.0],
-                "coal" => [24.0 / 255.0, 24.0 / 255.0, 24.0 / 255.0, 24.0 / 255.0],
-                "iron_ore" => [136.0 / 255.0, 136.0 / 255.0, 136.0 / 255.0, 136.0 / 255.0],
-                "gold_ore" => [255.0 / 255.0, 215.0 / 255.0, 0.0 / 255.0, 0.0 / 255.0],
-                "diamond_ore" => [136.0 / 255.0, 136.0 / 255.0, 136.0 / 255.0, 136.0 / 255.0],
-                _ => [128.0 / 255.0, 128.0 / 255.0, 128.0 / 255.0, 255.0 / 255.0],
-            }
-        };
-
-        self.minecraft_renderer.render_block_with_classic_lighting(
-            base_color,
-            world_pos,
-            normal,
-            light_level,
-            surrounding_lights,
-            distance,
-            is_transparent,
-        )
-    }
-
-    pub fn render_sky(&self, sky_color: [f32; 4], player_pos: Vec3, render_distance: f32) -> [f32; 4] {
-        self.minecraft_renderer.render_sky_with_classic_fog(sky_color, player_pos, render_distance)
-    }
-
-    pub fn apply_pillow_shading_to_uv(&self, normal: Vec3, uv: Vec2) -> Vec2 {
-        self.minecraft_renderer.apply_pillow_shading(normal, uv)
-    }
-
-    pub fn get_view_bobbing(&self, time: f32) -> Vec3 {
-        self.minecraft_renderer.apply_view_bobbing(time)
-    }
-
-    pub fn get_fog_density(&self, distance: f32) -> f32 {
-        self.minecraft_renderer.get_fog_density(distance)
-    }
-
-    pub fn get_texture_filter_mode(&self) -> u32 {
-        self.minecraft_renderer.get_texture_filter_mode()
-    }
-
-    pub fn should_use_mipmapping(&self) -> bool {
-        self.minecraft_renderer.should_use_mipmapping()
-    }
-
-    pub fn set_rendering_mode(&mut self, mode: ShadingMode) {
-        self.minecraft_renderer.set_shading_mode(mode);
-    }
-
-    pub fn set_fog_settings(&mut self, fog_type: FogType, start: f32, end: f32, color: [f32; 4]) {
-        self.minecraft_renderer.set_fog_type(fog_type);
-        self.minecraft_renderer.fog_start = start;
-        self.minecraft_renderer.fog_end = end;
-        self.minecraft_renderer.fog_color = color;
     }
 }

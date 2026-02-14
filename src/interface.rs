@@ -8,7 +8,7 @@
 // - Responsive design for different screen sizes
 
 use glam::Vec3;
-use crate::engine::{World, BlockPos, BlockType};
+use crate::engine::{BlockPos, BlockType};
 use crate::engine::Player;
 use crate::graphics::Renderer;
 use std::collections::HashMap;
@@ -187,7 +187,7 @@ impl AdvancedHUD {
         }
     }
 
-    pub fn update(&mut self, dt: f32, player: &Player, world: &crate::world::World) {
+    pub fn update(&mut self, dt: f32, player: &Player, world: &crate::engine::World) {
         self.animation_time += dt;
         
         // Update animations
@@ -564,9 +564,8 @@ pub enum NavigationDirection {
     Right,
 }
 use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
 use crate::environment::TimeSystem;
-use crate::world::World;
+use crate::engine::World;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
@@ -1156,8 +1155,7 @@ impl CommandHandler for KillCommand {
         "/kill [player|all]".to_string()
     }
 }
-use crate::engine::{World, BlockPos, BlockType, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z, WORLD_HEIGHT};
-use serde::{Serialize, Deserialize};
+// Removed duplicate imports
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ItemStack {
@@ -1507,7 +1505,7 @@ impl InventoryDragHandler {
         self.drag_start_slot = None;
     }
 
-    pub fn get_drag_preview(&self, inventory: &Inventory) -> Vec<(usize, ItemStack)> {
+    pub fn get_drag_preview(&self, _inventory: &Inventory) -> Vec<(usize, ItemStack)> {
         let mut preview = Vec::new();
 
         if let Some(ref operation) = self.current_operation {
@@ -1641,10 +1639,7 @@ impl CraftingGrid {
         }
     }
 }
-use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
-use glam::Vec3;
-
+// Removed duplicate imports
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerProfile {
     pub player_name: String,

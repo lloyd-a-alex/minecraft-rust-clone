@@ -1,7 +1,6 @@
-use crate::network::Packet;
 use std::thread;
 use std::time::{Duration, Instant};
-use std::net::TcpStream;
+use std::net::{TcpListener, TcpStream};
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use serde::{Serialize, Deserialize};
@@ -226,12 +225,12 @@ impl StressTestManager {
                     // Send block updates
                     if now.duration_since(last_block_update).as_secs_f64() >= 1.0 / config.block_update_frequency_hz {
                         let block_packet = Packet::BlockUpdate {
-                            pos: crate::world::BlockPos {
+                            pos: crate::engine::BlockPos {
                                 x: (block_counter as i32 % 100) - 50,
                                 y: 64,
                                 z: ((block_counter / 100) as i32 % 100) - 50,
                             },
-                            block: crate::world::BlockType::Stone,
+                            block: crate::engine::BlockType::Stone,
                         };
                         
                         if let Err(e) = Self::send_packet(&mut stream, &block_packet) {
@@ -362,7 +361,7 @@ use std::path::{Path, PathBuf};
 use std::fs;
 use std::env;
 use std::process::Command;
-use serde::{Serialize, Deserialize};
+// Removed duplicate serde import
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -699,7 +698,7 @@ impl CrossPlatformSystem {
     }
 
     fn apply_compatibility_settings(&self) {
-        let settings = match self.compatibility_mode {
+        let _settings = match self.compatibility_mode {
             CompatibilityMode::Minimal => PlatformSettings {
                 max_texture_size: 256,
                 render_distance: 2,
@@ -735,7 +734,7 @@ impl ResourceDownloader {
     }
 
     fn get_cache_dir(platform_info: &PlatformInfo) -> PathBuf {
-        let mut cache_dir = match platform_info.os_type {
+        let cache_dir = match platform_info.os_type {
             OSType::Windows => {
                 if let Some(app_data) = env::var_os("LOCALAPPDATA") {
                     PathBuf::from(app_data).join("minecraft-clone")
@@ -845,12 +844,7 @@ impl ResourceDownloader {
         Ok(())
     }
 }
-use std::io::{Read, Write};
-use std::thread;
-use crossbeam_channel::{unbounded, Sender, Receiver};
-use serde::{Serialize, Deserialize};
-use crate::configuration::GameConfig;
-use crate::engine::{World, BlockPos, BlockType};
+// Removed duplicate network imports
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Packet {
@@ -924,7 +918,7 @@ impl NetworkManager {
         let address = "0.0.0.0:25565";
         println!("🔥 HOSTING SERVER ON: {}", address);
 
-        let listener = match TcpListener::bind(&address) {
+        let listener: std::net::TcpListener = match TcpListener::bind(&address) {
             Ok(listener) => listener,
             Err(e) => {
                 log::error!("Failed to bind to port {}: {:?}", address, e);
@@ -940,31 +934,39 @@ impl NetworkManager {
         thread::spawn(move || {
             let mut client_id_counter = 2; // Host is 1
             loop {
-                if let Ok((mut stream, addr)) = listener.accept() {
+                if let Ok((stream, addr)) = listener.accept() {
                     println!("✨ NEW PLAYER CONNECTED: {:?} (ID: {})", addr, client_id_counter);
 
-                    let _ = stream.set_nonblocking(false);
-
-                    // --- RADICAL MULTIPLAYER HANDSHAKE ---
-                    // Forcefully sync the seed and ensure the client receives it before spawning
-                    let handshake = Packet::Handshake { username: "Host".to_string(), seed };
-                    if let Ok(bytes) = bincode::serialize(&handshake) {
-                        let _ = stream.write_all(&bytes);
-                        let _ = stream.flush();
-                    }
-                    // --------------------------------------
-
-                    let mut stream_clone = match stream.try_clone() {
+                    let stream_clone: std::net::TcpStream = match stream.try_clone() {
                         Ok(s) => s,
                         Err(e) => {
                             log::error!("Failed to clone stream: {:?}", e);
                             continue;
                         }
                     };
+                    let _ = stream_clone.set_nonblocking(false);
+
+                    // --- RADICAL MULTIPLAYER HANDSHAKE ---
+                    // Forcefully sync the seed and ensure the client receives it before spawning
+                    let stream_clone: std::net::TcpStream = match stream.try_clone() {
+                        Ok(s) => s,
+                        Err(e) => {
+                            log::error!("Failed to clone stream: {:?}", e);
+                            continue;
+                        }
+                    };
+                    let handshake = Packet::Handshake { username: "Host".to_string(), seed };
+                    if let Ok(bytes) = bincode::serialize(&handshake) {
+                        let _ = stream_clone.write_all(&bytes);
+                        let _ = stream_clone.flush();
+                    }
+                    // --------------------------------------
                     let tx_in_thread = tx_in_clone.clone();
 
                     // Reader
+                    let stream_clone2 = stream_clone.try_clone().expect("Failed to clone stream");
                     thread::spawn(move || {
+                        let mut stream = stream_clone2;
                         let mut buffer = [0u8; 1024];
                         loop {
                             match stream.read(&mut buffer) {
@@ -1136,15 +1138,8 @@ NetworkManager {
         self.receiver.try_recv().ok()
     }
 }
-use std::process::{Command, Child, Stdio};
-use std::io::{BufRead, BufReader, Write};
-use std::net::UdpSocket;
-use std::thread;
-use std::time::{Duration, Instant};
-use std::fs;
-use std::path::Path;
-use std::env;
-use std::sync::{Arc, Mutex};
+use std::process::{Child, Stdio};
+use std::io::{BufRead, BufReader};
 
 #[derive(Clone)]
 pub struct DiscoveredServer {
