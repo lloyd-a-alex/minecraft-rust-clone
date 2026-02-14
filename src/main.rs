@@ -1,4 +1,4 @@
-use winit::{
+﻿use winit::{
     event::{Event, WindowEvent, ElementState, DeviceEvent, MouseButton, MouseScrollDelta, KeyEvent},
     event_loop::EventLoop,
     window::{WindowBuilder, CursorGrabMode},
@@ -150,39 +150,10 @@ fn gen_noise(dur: f32, freq_start: f32, freq_end: f32, reverb: bool) -> Vec<u8> 
     }
 }
 
-mod renderer; mod world; mod texture; mod player; mod logger; mod noise_gen; mod network; mod ngrok_utils;
-use renderer::Renderer; use world::{World, BlockType, BlockPos}; use player::Player; use network::{NetworkManager, Packet};
+use minecraft_clone::{Renderer, World, BlockType, BlockPos, Player, NetworkManager, Packet, GameState, MainMenu, Rect, MenuAction, MenuButton, Hotbar, AudioSystem};
 use glam::Vec3;
 use serde_json::json;
 use std::fs;
-
-// --- MENU SYSTEM ---  
-#[derive(PartialEq)] enum GameState { Loading, Menu, Multiplayer, Playing }
-struct Rect { x: f32, y: f32, w: f32, h: f32 }
-impl Rect { fn contains(&self, nx: f32, ny: f32) -> bool { nx >= self.x - self.w/2.0 && nx <= self.x + self.w/2.0 && ny >= self.y - self.h/2.0 && ny <= self.y + self.h/2.0 } }
-#[derive(Clone)] enum MenuAction { Singleplayer, Host, JoinMenu, JoinAddr(String), Stress, Resume, Quit }
-struct MenuButton { rect: Rect, text: String, action: MenuAction, hovered: bool }
-pub struct MainMenu { buttons: Vec<MenuButton> }
-impl MainMenu {
-    fn new_main() -> Self {
-        let mut b = Vec::new();
-        let w = 0.8; let h = 0.12; let g = 0.05; let sy = 0.3; 
-        b.push(MenuButton{rect:Rect{x:0.0,y:sy,w,h}, text:"SINGLEPLAYER".to_string(), action:MenuAction::Singleplayer, hovered:false});
-        b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g),w,h}, text:"MULTIPLAYER".to_string(), action:MenuAction::JoinMenu, hovered:false});
-        b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g)*2.0,w,h}, text:"HOST WORLD".to_string(), action:MenuAction::Host, hovered:false});
-        b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g)*3.0,w,h}, text:"STRESS TEST".to_string(), action:MenuAction::Stress, hovered:false});
-        b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g)*4.5,w,h}, text:"QUIT".to_string(), action:MenuAction::Quit, hovered:false});
-        MainMenu { buttons: b }
-    }
-
-    fn new_pause() -> Self {
-        let mut b = Vec::new();
-        let w = 0.8; let h = 0.12; let g = 0.05; let sy = 0.1;
-        b.push(MenuButton{rect:Rect{x:0.0,y:sy,w,h}, text:"RESUME GAME".to_string(), action:MenuAction::Resume, hovered:false});
-        b.push(MenuButton{rect:Rect{x:0.0,y:sy-(h+g)*1.5,w,h}, text:"QUIT TO MENU".to_string(), action:MenuAction::Quit, hovered:false});
-        MainMenu { buttons: b }
-    }
-}
 
 // --- UI STRUCTURES ---
 #[repr(C)] #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]

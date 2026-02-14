@@ -1660,7 +1660,7 @@ impl TraditionalTextureGenerator {
         let mut h = x;
         h ^= y << 13;
         h ^= h >> 17;
-        h.wrapping_mul(0x85ebca6b).wrapping_add(0xc2b2ae35)
+        h.wrapping_mul(0x85ebca6bu32 as i32).wrapping_add(0xc2b2ae35u32 as i32)
     }
 }
 

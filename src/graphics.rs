@@ -1440,7 +1440,6 @@ pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, c
 // - Combat animations and sound effects
 
 use glam::Vec3;
-use crate::engine::{World, Player};
 
 /// DIABOLICAL Combat Damage Types
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -2472,7 +2471,6 @@ impl CombatSystem {
 // - Biome and time-based effects
 // - Classic Minecraft aesthetic with modern performance
 
-use crate::resources::{TextureAtlas, TraditionalTextureAtlas, NoiseGenerator};
 use crate::configuration::GameConfig;
 use glam::Vec2;
 
@@ -2499,14 +2497,9 @@ pub enum ShadingMode {
 
 pub struct MinecraftRenderer {
     // Core rendering properties
-    device: Arc<wgpu::Device>,
-    queue: Arc<wgpu::Queue>,
-    config: Arc<GameConfig>,
-    
-    // Traditional texture system
-    traditional_atlas: Arc<TraditionalTextureAtlas>,
-    traditional_texture_bind_group: Option<wgpu::BindGroup>,
-    material_properties_bind_group: Option<wgpu::BindGroup>,
+    pub device: Arc<wgpu::Device>,
+    pub queue: Arc<wgpu::Queue>,
+    pub config: Arc<GameConfig>,
     
     // Enhanced rendering properties
     pub texture_filter: TextureFilter,
@@ -2541,32 +2534,14 @@ pub struct MinecraftRenderer {
     pub fog_end: f32,
     pub fog_color: [f32; 4],
     
-    // Shader pipelines
-    traditional_pipeline: Option<wgpu::RenderPipeline>,
-    enhanced_pipeline: Option<wgpu::RenderPipeline>,
-    classic_pipeline: Option<wgpu::RenderPipeline>,
-    
-    // Uniform buffers
-    uniform_buffer: Option<wgpu::Buffer>,
-    material_buffer: Option<wgpu::Buffer>,
-    
-    // Bind group layouts
-    bind_group_layout: Option<wgpu::BindGroupLayout>,
-    texture_bind_group_layout: Option<wgpu::BindGroupLayout>,
 }
 
 impl MinecraftRenderer {
     pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, config: Arc<GameConfig>) -> Self {
-        let mut traditional_atlas = TraditionalTextureAtlas::new();
-        traditional_atlas.generate_all_traditional_textures();
-        
         Self {
             device,
             queue,
             config,
-            traditional_atlas: Arc::new(traditional_atlas),
-            traditional_texture_bind_group: None,
-            material_properties_bind_group: None,
             texture_filter: TextureFilter::Nearest,
             fog_type: FogType::Classic,
             shading_mode: ShadingMode::Classic,
@@ -2588,13 +2563,6 @@ impl MinecraftRenderer {
             fog_start: 0.0,
             fog_end: 6.0,
             fog_color: [0.7, 0.7, 0.8, 1.0],
-            traditional_pipeline: None,
-            enhanced_pipeline: None,
-            classic_pipeline: None,
-            uniform_buffer: None,
-            material_buffer: None,
-            bind_group_layout: None,
-            texture_bind_group_layout: None,
         }
     }
 

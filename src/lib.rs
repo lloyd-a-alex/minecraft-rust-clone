@@ -9,7 +9,7 @@ pub enum GameState { Loading, Menu, Multiplayer, Playing }
 
 pub struct Rect { pub x: f32, pub y: f32, pub w: f32, pub h: f32 }
 impl Rect { 
-    fn contains(&self, nx: f32, ny: f32) -> bool { 
+    pub fn contains(&self, nx: f32, ny: f32) -> bool { 
         nx >= self.x - self.w/2.0 && nx <= self.x + self.w/2.0 && ny >= self.y - self.h/2.0 && ny <= self.y + self.h/2.0 
     } 
 }

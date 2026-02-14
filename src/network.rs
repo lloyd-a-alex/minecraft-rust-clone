@@ -1,9 +1,11 @@
 use std::thread;
 use std::time::{Duration, Instant};
-use std::net::{TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream, UdpSocket};
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use serde::{Serialize, Deserialize};
+use crossbeam_channel::{unbounded, Receiver, Sender};
+use crate::engine::{BlockPos, BlockType};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StressTestConfig {
@@ -225,12 +227,12 @@ impl StressTestManager {
                     // Send block updates
                     if now.duration_since(last_block_update).as_secs_f64() >= 1.0 / config.block_update_frequency_hz {
                         let block_packet = Packet::BlockUpdate {
-                            pos: crate::engine::BlockPos {
+                            pos: BlockPos {
                                 x: (block_counter as i32 % 100) - 50,
                                 y: 64,
                                 z: ((block_counter / 100) as i32 % 100) - 50,
                             },
-                            block: crate::engine::BlockType::Stone,
+                            block: BlockType::Stone,
                         };
                         
                         if let Err(e) = Self::send_packet(&mut stream, &block_packet) {
@@ -911,8 +913,8 @@ impl Packet {
 
 impl NetworkManager {
     pub fn host(_port: String, seed: u32) -> Self {
-        let (tx_in, rx_in) = unbounded();
-        let (tx_out, rx_out) = unbounded();
+        let (tx_in, rx_in): (Sender<Packet>, Receiver<Packet>) = unbounded();
+        let (tx_out, rx_out): (Sender<Packet>, Receiver<Packet>) = unbounded();
 
         // DIABOLICAL FIX: 0.0.0.0 binds to EVERY interface (LAN, Hamachi, Ngrok) simultaneously
         let address = "0.0.0.0:25565";
@@ -948,7 +950,7 @@ impl NetworkManager {
 
                     // --- RADICAL MULTIPLAYER HANDSHAKE ---
                     // Forcefully sync the seed and ensure the client receives it before spawning
-                    let stream_clone: std::net::TcpStream = match stream.try_clone() {
+                    let mut stream_clone: std::net::TcpStream = match stream.try_clone() {
                         Ok(s) => s,
                         Err(e) => {
                             log::error!("Failed to clone stream: {:?}", e);
@@ -993,7 +995,7 @@ impl NetworkManager {
                     });
 
                     // Writer (Broadcaster)
-                    let rx_out_thread: crossbeam_channel::Receiver<Packet> = rx_out.clone();
+                    let rx_out_thread: Receiver<Packet> = rx_out.clone();
                     thread::spawn(move || {
                         while let Ok(packet) = rx_out_thread.recv() {
                             // Validate packet before sending
@@ -1435,7 +1437,7 @@ impl HostingManager {
                     let msg = String::from_utf8_lossy(&buf[..size]);
                     if msg.starts_with("MC_RUST_CLONE_SERVER:") {
                         let parts: Vec<&str> = msg.split(':').collect();
-                        let port = parts.get(1).unwrap_or(&"25565");
+                        let port: &str = parts.get(1).unwrap_or(&"25565");
                         let addr = format!("{}:{}", src.ip(), port);
                         
                         let mut servers = registry.lock().unwrap();

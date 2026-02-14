@@ -13,6 +13,7 @@ use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use crate::engine::World;
 
 /// DIABOLICAL Game Configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

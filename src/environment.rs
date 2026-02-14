@@ -9,8 +9,9 @@
 // - Seasonal variations
 
 use glam::Vec3;
-use crate::engine::World;
 use crate::graphics::{MinecraftRenderer, FogType};
+use crate::resources::NoiseGenerator;
+use crate::engine::Chunk;
 
 /// DIABOLICAL Weather Types with realistic behaviors
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -527,6 +528,9 @@ impl WeatherSystem {
         // Update atmospheric conditions
         self.atmospheric.update(self.current_weather, self.time_of_day);
 
+        // Update sky color based on weather
+        self.update_sky_color();
+
         // Update lightning strikes for thunderstorms
         if self.current_weather == WeatherType::Thunderstorm {
             self.update_lightning(dt, player_position);
@@ -798,10 +802,9 @@ pub struct WeatherEffects {
     pub precipitation_type: Option<PrecipitationType>,
 }
 
-use serde::{Serialize, Deserialize};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TimeOfDay {
     Dawn,
     Morning,
@@ -1041,10 +1044,7 @@ impl TimeSystem {
         }
     }
 }
-use crate::engine::{BlockPos, BlockType, World, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z, WORLD_HEIGHT};
-use crate::resources::NoiseGenerator;
-use std::collections::HashMap;
-use glam::Vec3;
+use crate::engine::{BlockPos, BlockType, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z, WORLD_HEIGHT};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WaterType {
@@ -1167,7 +1167,7 @@ impl WaterSystem {
 
     fn create_river_at_position(&self, chunk: &mut Chunk, lx: usize, ly: usize, lz: usize, river: &RiverData) {
         let river_width = river.width as i32;
-        let river_depth = river.depth as i32;
+        let _river_depth = river.depth as i32;
         
         // Create river bed (sand/gravel)
         for dx in -river_width..=river_width {
@@ -1359,7 +1359,7 @@ impl WaterSystem {
 
     pub fn is_water_at(&self, pos: BlockPos) -> bool {
         // Check if position is in water (river or ocean)
-        let chunk_pos = (
+        let _chunk_pos = (
             pos.x / 16,
             pos.y / 16,
             pos.z / 16
@@ -1395,8 +1395,7 @@ impl WaterSystem {
     }
 }
 use serde::{Serialize, Deserialize};
-use crate::world::{BlockPos, BlockType, World};
-use glam::Vec3;
+use crate::engine::World;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1554,7 +1553,8 @@ impl Mob {
                 self.wander_timer -= dt;
                 if self.wander_timer <= 0.0 {
                     self.state = MobState::Wandering;
-                    self.wander_timer = rand::random_range(2.0..5.0);
+                    let mut rng = crate::engine::SimpleRng::new((self.position.x * 1000.0) as u64);
+                    self.wander_timer = rng.gen_range(2.0, 5.0);
                 }
                 
                 // Check for player proximity
@@ -1584,7 +1584,8 @@ impl Mob {
                     let angle = rand::random::<f32>() * 2.0 * std::f32::consts::PI;
                     self.velocity.x = angle.cos() * 0.5;
                     self.velocity.z = angle.sin() * 0.5;
-                    self.wander_timer = rand::random_range(1.0..3.0);
+                    let mut rng = crate::engine::SimpleRng::new((self.position.z * 1000.0) as u64);
+                    self.wander_timer = rng.gen_range(1.0, 3.0);
                 }
                 
                 // Check for player proximity
@@ -1779,7 +1780,7 @@ impl MobSpawner {
             let angle = rand::random::<f32>() * 2.0 * std::f32::consts::PI;
             let mut rng = crate::engine::SimpleRng::new(self.walk_time as u64 + 1);
             
-            let distance = rng.gen_range(8.0..self.spawn_radius);
+            let distance = rng.gen_range(8.0, self.spawn_radius);
             
             let spawn_x = player_pos.x + angle.cos() * distance;
             let spawn_z = player_pos.z + angle.sin() * distance;
@@ -1801,7 +1802,9 @@ impl MobSpawner {
                     .collect();
                 
                 if !available_mobs.is_empty() {
-                    let mob_type = available_mobs[rand::random_range(0..available_mobs.len())];
+                    let mut rng = crate::engine::SimpleRng::new(current_time as u64);
+                    let mob_index = rng.gen_range(0.0, available_mobs.len() as f32) as usize;
+                    let mob_type = available_mobs[mob_index];
                     self.last_spawn = current_time;
                     return Some(Mob::new(mob_type, spawn_pos));
                 }
