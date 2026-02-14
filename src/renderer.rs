@@ -775,8 +775,8 @@ fn add_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, x: i32,
             5 => ((rx+s,ry,rz), (rx,ry,rz), (rx,ry+s,rz), (rx+s,ry+s,rz)), _ => return,
         };
         let t = |p: (f32,f32,f32)| { let r = rotate(p.0, p.2); [c[0]+r.0, c[1]+p.1, c[2]+r.1] };
-        v.push(Vertex{position:t(p0), tex_coords:[0.0,1.0], ao:1.0, tex_index:tex, light: 1.0}); v.push(Vertex{position:t(p1), tex_coords:[1.0,1.0], ao:1.0, tex_index:tex, light: 1.0});
-        v.push(Vertex{position:t(p2), tex_coords:[1.0,0.0], ao:1.0, tex_index:tex, light: 1.0}); v.push(Vertex{position:t(p3), tex_coords:[0.0,0.0], ao:1.0, tex_index:tex, light: 1.0});
+        v.push(Vertex{position:t(p0), tex_coords:[0.0,1.0], ao:1.0, tex_index:tex, light: 15.0}); v.push(Vertex{position:t(p1), tex_coords:[1.0,1.0], ao:1.0, tex_index:tex, light: 15.0});
+        v.push(Vertex{position:t(p2), tex_coords:[1.0,0.0], ao:1.0, tex_index:tex, light: 15.0}); v.push(Vertex{position:t(p3), tex_coords:[0.0,0.0], ao:1.0, tex_index:tex, light: 15.0});
         i.push(*off); i.push(*off+1); i.push(*off+2); i.push(*off); i.push(*off+2); i.push(*off+3); *off += 4;
     }
 
@@ -809,10 +809,10 @@ fn _add_cross_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, 
         let (positions, uv) = match face {
             0 => ([[x, y + 1.0, z + h], [x + w, y + 1.0, z + h], [x + w, y + 1.0, z], [x, y + 1.0, z]], [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]]), // Top
             1 => ([[x, y, z], [x + w, y, z], [x + w, y, z + h], [x, y, z + h]], [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]]), // Bottom
-            2 => ([[x + 1.0, y, z + h], [x + 1.0, y + w, z + h], [x + 1.0, y + w, z], [x + 1.0, y, z]], [[0.0, h], [0.0, 0.0], [w, 0.0], [w, h]]), // Right (Corrected)
-            3 => ([[x, y, z], [x, y + w, z], [x, y + w, z + h], [x, y, z + h]], [[0.0, h], [0.0, 0.0], [w, 0.0], [w, h]]), // Left (Corrected)
-            4 => ([[x, y, z + 1.0], [x + w, y, z + 1.0], [x + w, y + h, z + 1.0], [x, y + h, z + 1.0]], [[0.0, h], [w, h], [w, 0.0], [0.0, 0.0]]), // Front
-            5 => ([[x + w, y, z], [x, y, z], [x, y + h, z], [x + w, y + h, z]], [[0.0, h], [w, h], [w, 0.0], [0.0, 0.0]]), // Back
+            2 => ([[x + 1.0, y, z + h], [x + 1.0, y + w, z + h], [x + 1.0, y + w, z], [x + 1.0, y, z]], [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]]), // Right (East)
+            3 => ([[x, y, z], [x, y + w, z], [x, y + w, z + h], [x, y, z + h]], [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]]), // Left (West)
+            4 => ([[x, y, z + 1.0], [x + w, y, z + 1.0], [x + w, y + h, z + 1.0], [x, y + h, z + 1.0]], [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]]), // Front
+            5 => ([[x + w, y, z], [x, y, z], [x, y + h, z], [x + w, y + h, z]], [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]]), // Back
             _ => ([[0.0; 3]; 4], [[0.0; 2]; 4]),
         };
 
