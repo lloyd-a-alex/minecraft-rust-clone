@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crossbeam_channel::{unbounded, Sender, Receiver};
 use crate::engine::{World, BlockPos, BlockType};
 use crate::engine::Player;
-use crate::MainMenu;
+use crate::{MainMenu, SettingsMenu};
 use std::fs::File;
 use std::io::Write;
 
@@ -98,6 +98,7 @@ pub start_time: Instant,
     pub render_distance: u32,
     pub max_fps: u32,
     pub fov: f32,
+    pub current_shader_type: crate::ShaderType,
 }
 
 #[repr(C)]
@@ -136,7 +137,8 @@ impl<'a> Renderer<'a> {
         
         let forward = glam::Vec3::new(yaw_cos * pitch_cos, pitch_sin, yaw_sin * pitch_cos).normalize();
         let view = glam::Mat4::look_at_rh(eye_pos, eye_pos + forward, glam::Vec3::Y);
-        let proj = glam::Mat4::perspective_rh(75.0f32.to_radians(), aspect, 0.1, 512.0);
+        let fov_rad = self.fov.to_radians();
+        let proj = glam::Mat4::perspective_rh(fov_rad, aspect, 0.1, 512.0);
         
         let correction = glam::Mat4::from_cols_array(&[
             1.0, 0.0, 0.0, 0.0,
@@ -159,6 +161,111 @@ impl<'a> Renderer<'a> {
     
     pub fn set_fov(&mut self, fov: f32) {
         self.fov = fov;
+    }
+    
+    pub fn switch_shader(&mut self, shader_type: crate::ShaderType) -> Result<(), Box<dyn std::error::Error>> {
+        // Load the new shader
+        let shader_code = match shader_type {
+            crate::ShaderType::Classic => include_str!("minecraft_shaders.wgsl"),
+            crate::ShaderType::Traditional => include_str!("traditional_shaders.wgsl"),
+            crate::ShaderType::Basic => include_str!("shader.wgsl"),
+        };
+
+        let new_shader = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some(&format!("{} Shader", shader_type.get_display_name())),
+            source: wgpu::ShaderSource::Wgsl(shader_code.into()),
+        });
+
+        // Recreate pipelines with new shader
+        let new_pipeline = self.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some(&format!("{} Render Pipeline", shader_type.get_display_name())),
+            layout: None,
+            vertex: wgpu::VertexState {
+                module: &new_shader,
+                entry_point: "vs_main",
+                buffers: &[Vertex::desc()],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &new_shader,
+                entry_point: "fs_main",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: self.config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth24Plus,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+        });
+
+        let new_ui_pipeline = self.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some(&format!("{} UI Pipeline", shader_type.get_display_name())),
+            layout: None,
+            vertex: wgpu::VertexState {
+                module: &new_shader,
+                entry_point: "vs_main",
+                buffers: &[Vertex::desc()],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &new_shader,
+                entry_point: "fs_main",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: self.config.format,
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::SrcAlpha,
+                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                        alpha: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::One,
+                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                    }),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+        });
+
+        // Update the pipelines
+        self.pipeline = new_pipeline;
+        self.ui_pipeline = new_ui_pipeline;
+        self.current_shader_type = shader_type;
+
+        // Force rebuild all chunks to apply new shader
+        self.chunk_meshes.clear();
+
+        log::info!("🎨 Switched to {} shader", shader_type.get_display_name());
+        Ok(())
     }
     
     pub async fn new(window: &'a Window) -> Self {
@@ -474,6 +581,7 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
             render_distance: 12,
             max_fps: 60,
             fov: 75.0,
+            current_shader_type: crate::ShaderType::Basic,
         }
     }
 
@@ -506,9 +614,11 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
             }
             
             self.pending_chunks.remove(&(task.cx, task.cy, task.cz));
-            self.chunk_meshes.remove(&(task.cx, task.cy, task.cz));
 
             if !task.vertices.is_empty() {
+                // Only remove existing mesh if we're replacing it with a non-empty mesh
+                self.chunk_meshes.remove(&(task.cx, task.cy, task.cz));
+                
                 // FAST PATH: Skip validation for release builds
                 #[cfg(debug_assertions)]
                 {
@@ -537,6 +647,9 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
                     _ranges: task.ranges, 
                     total_indices: task.indices.len() as u32 
                 }, task.lod));
+            } else {
+                // For empty chunks, remove the mesh to make them invisible
+                self.chunk_meshes.remove(&(task.cx, task.cy, task.cz));
             }
             processed += 1;
         }
@@ -848,7 +961,7 @@ fn add_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, x: i32,
             1 => ([x,y,z], [x+1.0,y,z], [x+1.0,y,z+1.0], [x,y,z+1.0], [0.0,0.0], [1.0,0.0], [1.0,1.0], [0.0,1.0]),
             2 => ([x,y,z], [x,y,z+1.0], [x,y+h,z+1.0], [x,y+h,z], [0.0,1.0], [1.0,1.0], [1.0,0.0], [0.0,0.0]),
             3 => ([x+1.0,y,z+1.0], [x+1.0,y,z], [x+1.0,y+h,z], [x+1.0,y+h,z+1.0], [0.0,1.0], [1.0,1.0], [1.0,0.0], [0.0,0.0]),
-            4 => ([x,y,z+1.0], [x+1.0,y,z+1.0], [x+1.0,y+h,z+1.0], [x,y+h,z+1.0], [0.0,1.0], [1.0,1.0], [1.0,0.0], [0.0,0.0]),
+            4 => ([x,y,z+1.0], [x+1.0,y,z+1.0], [x+1.0,y+h,z+1.0], [x,y+h,z+1.0], [1.0,1.0], [0.0,1.0], [0.0,0.0], [1.0,0.0]), // Fixed east face UV
             5 => ([x+1.0,y,z], [x,y,z], [x,y+h,z], [x+1.0,y+h,z], [0.0,1.0], [1.0,1.0], [1.0,0.0], [0.0,0.0]),
             _ => return,
         };
@@ -1064,7 +1177,113 @@ self.queue.submit(std::iter::once(encoder.finish()));
     Ok(())
 }
 
-pub fn render_pause_menu(&mut self, menu: &MainMenu, world: &World, player: &Player, cursor_pos: (f64, f64), width: u32, height: u32) -> Result<(), wgpu::SurfaceError> {
+    pub fn render_settings_menu(&mut self, menu: &SettingsMenu, _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
+    let output = self.surface.get_current_texture()?;
+    let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Settings") });
+
+    let mut vertices: Vec<Vertex> = Vec::new();
+    let mut indices: Vec<u32> = Vec::new();
+    let mut idx_offset = 0;
+
+    // Professional dark overlay with vignette effect
+    self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, -1.0, -1.0, 2.0, 2.0, 240);
+    
+    // Professional menu background panel
+    let panel_width = 0.7;
+    let panel_height = 0.6;
+    let panel_x = 0.0;
+    let panel_y = 0.0;
+    
+    // Main panel background with border
+    self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, 
+        panel_x - panel_width/2.0, panel_y - panel_height/2.0, 
+        panel_width, panel_height, 252); // Dark panel texture
+    
+    // Panel border
+    let border_size = 0.008;
+    // Top border
+    self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, 
+        panel_x - panel_width/2.0, panel_y + panel_height/2.0 - border_size, 
+        panel_width, border_size, 253); // Border texture
+    // Bottom border
+    self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, 
+        panel_x - panel_width/2.0, panel_y - panel_height/2.0, 
+        panel_width, border_size, 253);
+    // Left border
+    self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, 
+        panel_x - panel_width/2.0, panel_y - panel_height/2.0, 
+        border_size, panel_height, 253);
+    // Right border
+    self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, 
+        panel_x + panel_width/2.0 - border_size, panel_y - panel_height/2.0, 
+        border_size, panel_height, 253);
+
+    // Menu title
+    self.draw_text("SETTINGS", 0.0, panel_y + panel_height/2.0 - 0.08, 0.025, &mut vertices, &mut indices, &mut idx_offset);
+
+    // Render settings options with values
+    for (i, btn) in menu.buttons.iter().enumerate() {
+        let button_width = 0.5;
+        let button_height = 0.06;
+        let button_spacing = 0.08;
+        let start_y = panel_y - button_spacing/2.0;
+        let button_y = start_y - (i as f32 * button_spacing);
+        
+        // Button background with hover effect
+        let tex_id = if btn.hovered { 251 } else { 250 };
+        self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, 
+            panel_x - button_width/2.0, button_y - button_height/2.0, 
+            button_width, button_height, tex_id);
+        
+        // Button text with better positioning
+        let text_scale = 0.015;
+        let text_width = btn.text.len() as f32 * text_scale * 0.8;
+        self.draw_text(&btn.text, panel_x - text_width/2.0, button_y + text_scale/4.0, text_scale, &mut vertices, &mut indices, &mut idx_offset);
+        
+        // Display current setting value
+        let value_text = match i {
+            0 => format!("{:.0}%", menu.settings_values.master_volume * 100.0),
+            1 => format!("{:.0}%", menu.settings_values.music_volume * 100.0),
+            2 => format!("{:.0}%", menu.settings_values.sfx_volume * 100.0),
+            3 => format!("{} chunks", menu.settings_values.render_distance),
+            4 => format!("{:.0}°", menu.settings_values.fov),
+            5 => format!("{} FPS", menu.settings_values.max_fps),
+            6 => menu.settings_values.shader_type.get_display_name().to_string(),
+            _ => String::new(),
+        };
+        
+        if !value_text.is_empty() {
+            let value_scale = 0.012;
+            let value_width = value_text.len() as f32 * value_scale * 0.8;
+            self.draw_text(&value_text, panel_x + button_width/2.0 - value_width - 0.02, button_y + value_scale/4.0, value_scale, &mut vertices, &mut indices, &mut idx_offset);
+        }
+    }
+
+    let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Settings VB"), contents: bytemuck::cast_slice(&vertices), usage: wgpu::BufferUsages::VERTEX });
+    let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Settings IB"), contents: bytemuck::cast_slice(&indices), usage: wgpu::BufferUsages::INDEX });
+
+    {
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Settings Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &view, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store } })],
+            depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
+        });
+        rpass.set_pipeline(&self.ui_pipeline);
+        rpass.set_bind_group(0, &self.bind_group, &[]);
+        rpass.set_bind_group(1, &self.camera_bind_group, &[]);
+        rpass.set_bind_group(2, &self.time_bind_group, &[]);
+        rpass.set_vertex_buffer(0, vb.slice(..));
+        rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+        rpass.draw_indexed(0..indices.len() as u32, 0, 0..1);
+    }
+
+    self.queue.submit(std::iter::once(encoder.finish()));
+    output.present();
+    Ok(())
+}
+
+pub fn render_pause_menu(&mut self, menu: &MainMenu, world: &World, player: &Player, cursor_pos: (f64, f64), _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
     let output = self.surface.get_current_texture()?;
     let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
     let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Pause") });
@@ -1076,18 +1295,60 @@ pub fn render_pause_menu(&mut self, menu: &MainMenu, world: &World, player: &Pla
     let mut indices: Vec<u32> = Vec::new();
     let mut idx_offset = 0;
 
-    // Dim overlay
+    // Professional dark overlay with vignette effect
     self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, -1.0, -1.0, 2.0, 2.0, 240);
+    
+    // Professional menu background panel
+    let panel_width = 0.6;
+    let panel_height = 0.4;
+    let panel_x = 0.0;
+    let panel_y = 0.0;
+    
+    // Main panel background with border
+    self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, 
+        panel_x - panel_width/2.0, panel_y - panel_height/2.0, 
+        panel_width, panel_height, 252); // Dark panel texture
+    
+    // Panel border
+    let border_size = 0.008;
+    // Top border
+    self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, 
+        panel_x - panel_width/2.0, panel_y + panel_height/2.0 - border_size, 
+        panel_width, border_size, 253); // Border texture
+    // Bottom border
+    self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, 
+        panel_x - panel_width/2.0, panel_y - panel_height/2.0, 
+        panel_width, border_size, 253);
+    // Left border
+    self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, 
+        panel_x - panel_width/2.0, panel_y - panel_height/2.0, 
+        border_size, panel_height, 253);
+    // Right border
+    self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, 
+        panel_x + panel_width/2.0 - border_size, panel_y - panel_height/2.0, 
+        border_size, panel_height, 253);
 
-    for btn in &menu.buttons {
-        let tex_id = if btn.hovered { 251 } else { 250 };
-        let rect = &btn.rect;
-        self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, rect.x - rect.w/2.0, rect.y - rect.h/2.0, rect.w, rect.h, tex_id);
+    // Menu title
+    self.draw_text("GAME PAUSED", 0.0, panel_y + panel_height/2.0 - 0.08, 0.025, &mut vertices, &mut indices, &mut idx_offset);
+
+    // Render buttons with professional styling
+    for (i, btn) in menu.buttons.iter().enumerate() {
+        let button_width = 0.4;
+        let button_height = 0.06;
+        let button_spacing = 0.08;
+        let start_y = panel_y - button_spacing/2.0;
+        let button_y = start_y - (i as f32 * button_spacing);
         
-        let tx = (rect.x + 1.0) * 0.5 * width as f32;
-        let ty = (1.0 - rect.y) * 0.5 * height as f32;
-        let tw = btn.text.len() as f32 * 14.0;
-        self.draw_text(&btn.text, (tx - tw / 2.0) / width as f32 * 2.0 - 1.0, 1.0 - (ty - 10.0) / height as f32 * 2.0, 0.003, &mut vertices, &mut indices, &mut idx_offset);
+        // Button background with hover effect
+        let tex_id = if btn.hovered { 251 } else { 250 };
+        self.add_ui_quad(&mut vertices, &mut indices, &mut idx_offset, 
+            panel_x - button_width/2.0, button_y - button_height/2.0, 
+            button_width, button_height, tex_id);
+        
+        // Button text with better positioning
+        let text_scale = 0.018;
+        let text_width = btn.text.len() as f32 * text_scale * 0.8;
+        self.draw_text(&btn.text, panel_x - text_width/2.0, button_y + text_scale/4.0, text_scale, &mut vertices, &mut indices, &mut idx_offset);
     }
 
     let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("Pause VB"), contents: bytemuck::cast_slice(&vertices), usage: wgpu::BufferUsages::VERTEX });
@@ -1113,7 +1374,7 @@ pub fn render_pause_menu(&mut self, menu: &MainMenu, world: &World, player: &Pla
     Ok(())
 }
 
-pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, cursor_pos: (f64, f64), _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
+    pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, cursor_pos: (f64, f64), _width: u32, _height: u32) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&TextureViewDescriptor::default());
         let mut encoder = self.device.create_command_encoder(&CommandEncoderDescriptor { label: Some("Render Encoder") });
@@ -1368,7 +1629,11 @@ pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, c
                 if let Some(stack) = &player.inventory.slots[i] {
                     let (t, _, _) = stack.item.get_texture_indices();
                     self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, by+0.02*aspect, sw-0.04, sh-0.04*aspect, t);
-                    if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x + 0.07, by + 0.02, 0.04, &mut uv, &mut ui, &mut uoff); }
+                    if stack.count > 1 { 
+                        let text_scale = if stack.count >= 10 { 0.03 } else { 0.04 };
+                        let text_x = if stack.count >= 10 { x + 0.05 } else { x + 0.07 };
+                        self.draw_text(&format!("{}", stack.count), text_x, by + 0.02, text_scale, &mut uv, &mut ui, &mut uoff); 
+                    }
                 }
             }
             if !player.inventory_open {
@@ -1384,7 +1649,11 @@ pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, c
                 if let Some(stack) = &player.inventory.slots[idx] { 
                     let (t, _, _) = stack.item.get_texture_indices(); 
                     self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, y+0.02*aspect, sw-0.04, sh-0.04*aspect, t); 
-                    if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x+0.01, y+0.01, 0.03, &mut uv, &mut ui, &mut uoff); } 
+                    if stack.count > 1 { 
+                        let text_scale = if stack.count >= 10 { 0.025 } else { 0.03 };
+                        let text_x = if stack.count >= 10 { x-0.01 } else { x+0.01 };
+                        self.draw_text(&format!("{}", stack.count), text_x, y+0.01, text_scale, &mut uv, &mut ui, &mut uoff); 
+                    } 
                 }
             }}
             let cx = 0.3; let cy = 0.5;
@@ -1397,7 +1666,11 @@ pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, c
                 if let Some(stack) = &player.inventory.crafting_grid[idx] { 
                     let (t, _, _) = stack.item.get_texture_indices(); 
                     self.add_ui_quad(&mut uv, &mut ui, &mut uoff, x+0.02, y+0.02*aspect, sw-0.04, sh-0.04*aspect, t); 
-                    if stack.count > 1 { self.draw_text(&format!("{}", stack.count), x+0.01, y+0.01, 0.03, &mut uv, &mut ui, &mut uoff); }
+                    if stack.count > 1 { 
+                        let text_scale = if stack.count >= 10 { 0.025 } else { 0.03 };
+                        let text_x = if stack.count >= 10 { x-0.01 } else { x+0.01 };
+                        self.draw_text(&format!("{}", stack.count), text_x, y+0.01, text_scale, &mut uv, &mut ui, &mut uoff); 
+                    }
                 }
             }}
             let ox = cx + 3.0*sw; let oy = cy - 0.5*sh;
@@ -1406,7 +1679,11 @@ pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, c
             if let Some(stack) = &player.inventory.crafting_output { 
                 let (t, _, _) = stack.item.get_texture_indices(); 
                 self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ox+0.02, oy+0.02*aspect, sw-0.04, sh-0.04*aspect, t); 
-                if stack.count > 1 { self.draw_text(&format!("{}", stack.count), ox+0.01, oy+0.01, 0.03, &mut uv, &mut ui, &mut uoff); } 
+                if stack.count > 1 { 
+                    let text_scale = if stack.count >= 10 { 0.025 } else { 0.03 };
+                    let text_x = if stack.count >= 10 { ox-0.01 } else { ox+0.01 };
+                    self.draw_text(&format!("{}", stack.count), text_x, oy+0.01, text_scale, &mut uv, &mut ui, &mut uoff); 
+                } 
             }
             let (mx, my) = cursor_pos; 
             let ndc_x = (mx as f32 / self.config.width as f32)*2.0-1.0; 
@@ -1414,7 +1691,11 @@ pub fn render_game(&mut self, world: &World, player: &Player, is_paused: bool, c
             if let Some(stack) = &player.inventory.cursor_item {
                 let (t, _, _) = stack.item.get_texture_indices();
                 self.add_ui_quad(&mut uv, &mut ui, &mut uoff, ndc_x - sw/2.0, ndc_y - sh/2.0, sw, sh, t);
-                if stack.count > 1 { self.draw_text(&format!("{}", stack.count), ndc_x - sw/2.0, ndc_y - sh/2.0, 0.03, &mut uv, &mut ui, &mut uoff); }
+                if stack.count > 1 { 
+                    let text_scale = if stack.count >= 10 { 0.025 } else { 0.03 };
+                    let text_x = if stack.count >= 10 { ndc_x - sw/2.0 - 0.02 } else { ndc_x - sw/2.0 };
+                    self.draw_text(&format!("{}", stack.count), text_x, ndc_y - sh/2.0, text_scale, &mut uv, &mut ui, &mut uoff); 
+                }
             }
         }
 

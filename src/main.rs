@@ -7,7 +7,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 use std::time::{SystemTime, UNIX_EPOCH};
-use minecraft_clone::{Renderer, World, BlockType, BlockPos, Player, NetworkManager, GameState, MainMenu, MenuAction, AudioSystem};
+use minecraft_clone::{Renderer, World, BlockType, BlockPos, Player, NetworkManager, GameState, MainMenu, MenuAction, AudioSystem, Rect, SettingsMenu};
 use minecraft_clone::network::Packet;
 use glam::Vec3;
 use serde_json::json;
@@ -62,7 +62,8 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
         window.set_cursor_visible(false);
     }
     let mut main_menu = MainMenu::new_main();
-    let pause_menu = MainMenu::new_pause();
+    let mut pause_menu = MainMenu::new_pause();
+    let mut settings_menu = SettingsMenu::new();
     let mut hosting_mgr = minecraft_clone::network::HostingManager::new();
     let mut network_mgr: Option<NetworkManager> = None;
     
@@ -84,7 +85,6 @@ let mut renderer = pollster::block_on(Renderer::new(&window_arc));
     let mut death_timer = 0.0;
     let mut is_paused = false;
     let mut cursor_pos = (0.0, 0.0);
-    let mut modifiers = winit::keyboard::ModifiersState::default(); 
     let mut win_size = (window.inner_size().width, window.inner_size().height);
     let window_clone = window.clone();
 let audio = AudioSystem::new();
@@ -97,7 +97,7 @@ let audio = AudioSystem::new();
     let _ = window.set_cursor_grab(CursorGrabMode::None);
     window.set_cursor_visible(true);
 
-    event_loop.run(move |event, elwt| {
+    let _ = event_loop.run(move |event, elwt| {
         match event {
             Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => elwt.exit(),
             Event::WindowEvent { event: WindowEvent::Resized(size), .. } => {
@@ -106,17 +106,43 @@ let audio = AudioSystem::new();
             },
 Event::WindowEvent { event: WindowEvent::CursorMoved { position, .. }, .. } => {
                 cursor_pos = (position.x, position.y);
-                if game_state == GameState::Menu || is_paused || player.inventory_open {
+                if game_state == GameState::Menu || is_paused || player.inventory_open || game_state == GameState::Settings {
                     let ndc_x = (position.x as f32 / win_size.0 as f32) * 2.0 - 1.0;
                     let ndc_y = 1.0 - (position.y as f32 / win_size.1 as f32) * 2.0;
                     for btn in &mut main_menu.buttons { btn.hovered = btn.rect.contains(ndc_x, ndc_y); }
+                    // Update pause menu hover state
+                    if is_paused {
+                        for btn in &mut pause_menu.buttons { 
+                            // Calculate button position based on new professional layout
+                            let button_width = 0.4;
+                            let button_height = 0.06;
+                            let button_spacing = 0.08;
+                            let panel_x = 0.0;
+                            let panel_y = 0.0;
+                            let start_y = panel_y - button_spacing/2.0;
+                            let button_y = start_y - (btn.rect.y / button_spacing) * button_spacing;
+                            
+                            let btn_rect_x = panel_x - button_width/2.0;
+                            let btn_rect_y = button_y - button_height/2.0;
+                            let btn_rect_w = button_width;
+                            let btn_rect_h = button_height;
+                            
+                            // Create a temporary rect for hover detection
+                            let temp_rect = Rect { x: btn_rect_x, y: btn_rect_y, w: btn_rect_w, h: btn_rect_h };
+                            btn.hovered = temp_rect.contains(ndc_x, ndc_y);
+                        }
+                    }
+                    // Update settings menu hover state
+                    if game_state == GameState::Settings {
+                        for btn in &mut settings_menu.buttons { 
+                            btn.hovered = btn.rect.contains(ndc_x, ndc_y);
+                        }
+                    }
                 }
             },
             Event::DeviceEvent { event: DeviceEvent::MouseMotion { delta }, .. } => { 
                 if game_state == GameState::Playing && !is_paused && !player.inventory_open { player.process_mouse(delta.0, delta.1); } 
             },
-            Event::WindowEvent { event: WindowEvent::ModifiersChanged(m), .. } => modifiers = m.state(),
-            
 // --- MOUSE INPUT ---
 Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } => {
                 let pressed = state == ElementState::Pressed;
@@ -135,6 +161,9 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                                 game_state = GameState::Loading; // Transition to loading bar
                                 load_step = 0;
                                 spawn_found = false;
+                            },
+                            MenuAction::Settings => {
+                                game_state = GameState::Settings;
                             },
                             MenuAction::JoinMenu => {
                                 game_state = GameState::Multiplayer;
@@ -181,11 +210,47 @@ Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } 
                     }
                 } else if is_paused && pressed && button == MouseButton::Left {
                     let mut action = None;
-                    for btn in &pause_menu.buttons { if btn.rect.contains(ndc_x, ndc_y) { action = Some(&btn.action); break; } }
+                    for (i, btn) in pause_menu.buttons.iter().enumerate() {
+                        // Calculate button position based on new professional layout
+                        let button_width = 0.4;
+                        let button_height = 0.06;
+                        let button_spacing = 0.08;
+                        let panel_x = 0.0;
+                        let panel_y = 0.0;
+                        let start_y = panel_y - button_spacing/2.0;
+                        let button_y = start_y - (i as f32 * button_spacing);
+                        
+                        let btn_rect_x = panel_x - button_width/2.0;
+                        let btn_rect_y = button_y - button_height/2.0;
+                        let btn_rect_w = button_width;
+                        let btn_rect_h = button_height;
+                        
+                        // Create a temporary rect for click detection
+                        let temp_rect = Rect { x: btn_rect_x, y: btn_rect_y, w: btn_rect_w, h: btn_rect_h };
+                        if temp_rect.contains(ndc_x, ndc_y) { 
+                            action = Some(&btn.action); 
+                            break; 
+                        }
+                    }
                     if let Some(act) = action {
                         match act {
                             MenuAction::Resume => { is_paused = false; let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); window_clone.set_cursor_visible(false); },
+                            MenuAction::Settings => { game_state = GameState::Settings; },
                             MenuAction::Quit => { game_state = GameState::Menu; is_paused = false; window_clone.set_cursor_visible(true); let _ = window_clone.set_cursor_grab(CursorGrabMode::None); },
+                            _ => {}
+                        }
+                    }
+                } else if game_state == GameState::Settings && pressed && button == MouseButton::Left {
+                    let mut action = None;
+                    for btn in &settings_menu.buttons {
+                        if btn.rect.contains(ndc_x, ndc_y) { 
+                            action = Some(&btn.action); 
+                            break; 
+                        }
+                    }
+                    if let Some(act) = action {
+                        match act {
+                            MenuAction::Quit => { game_state = GameState::Menu; },
                             _ => {}
                         }
                     }
@@ -357,7 +422,7 @@ player.inventory.craft();
                                                     }
                                                 }
                                             }
-let _c = world.place_block(place, actual_blk);
+                                            let _c = world.place_block(place, actual_blk);
                                             let head_p = BlockPos { x: player.position.x as i32, y: (player.position.y + 1.5) as i32, z: player.position.z as i32 };
                                             let is_submerged = world.get_block(head_p).is_water();
                                             audio.play("place", is_submerged);
@@ -369,82 +434,6 @@ let _c = world.place_block(place, actual_blk);
                                     }
                                 }
                             }
-                        }
-                    }
-                }
-            },
-            
-            // --- KEYBOARD INPUT ---
-            Event::WindowEvent { event: WindowEvent::KeyboardInput { event: KeyEvent { physical_key: PhysicalKey::Code(key), state, .. }, .. }, .. } => {
-                let pressed = state == ElementState::Pressed;
-                if game_state == GameState::Playing {
-if key == KeyCode::Escape && pressed {
-                        if player.inventory_open { 
-                            player.inventory_open = false; 
-                            let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); window_clone.set_cursor_visible(false);
-                            if let Some(c) = player.inventory.cursor_item { player.inventory.add_item(c.item); player.inventory.cursor_item = None; }
-                        } else if is_paused {
-                            is_paused = false;
-                            let _ = window_clone.set_cursor_grab(CursorGrabMode::Locked); window_clone.set_cursor_visible(false);
-                        } else {
-                            is_paused = true;
-                            let _ = window_clone.set_cursor_grab(CursorGrabMode::None); window_clone.set_cursor_visible(true);
-                        }
-} else if key == KeyCode::KeyE && pressed && !is_paused {
-player.inventory_open = !player.inventory_open;
-                        player.crafting_open = false; 
-                        player.keys.reset(); 
-                        left_click = false; // Stop mining when opening inventory
-audio.play("click", false); // Sound for opening inventory
-                        if player.inventory_open { 
-                            let _ = window_clone.set_cursor_grab(CursorGrabMode::None);
-                            window_clone.set_cursor_visible(true); 
-                        } else { 
-                            let _ = window_clone.set_cursor_grab(CursorGrabMode::Confined); // Confined keeps it in window!
-                            window_clone.set_cursor_visible(false); 
-                        }
-                    } else if key == KeyCode::KeyQ && pressed && !is_paused && !player.inventory_open {
-                        let drop_all = modifiers.shift_key(); 
-                        if let Some(stack) = player.inventory.drop_item(drop_all) {
-                            let base_dir = glam::Vec3::new(player.rotation.y.cos() * player.rotation.x.cos(), player.rotation.x.sin(), player.rotation.y.sin() * player.rotation.x.cos()).normalize();
-                            let loop_count = if drop_all { stack.count } else { 1 };
-                            for i in 0..loop_count {
-                                let i_u32 = i as u32;
-                                let px_u32 = (player.position.x * 100.0) as u32;
-                                let py_u32 = (player.position.y * 100.0) as u32;
-                                let pz_u32 = (player.position.z * 100.0) as u32;
-                                let r_x = (i_u32.wrapping_mul(13).wrapping_add(px_u32) % 20) as f32 / 40.0 - 0.25;
-                                let r_y = (i_u32.wrapping_mul(7).wrapping_add(py_u32) % 20) as f32 / 40.0 - 0.25;
-                                let r_z = (i_u32.wrapping_mul(19).wrapping_add(pz_u32) % 20) as f32 / 40.0 - 0.25;
-                                let jitter = glam::Vec3::new(r_x, r_y, r_z);
-let ent = minecraft_clone::engine::ItemEntity { position: player.position + glam::Vec3::new(0.0, 1.5, 0.0), velocity: (base_dir + jitter).normalize() * 10.0, item_type: stack.item, count: 1, pickup_delay: 1.5, lifetime: 300.0, rotation: 0.0, bob_offset: i as f32 * 0.5 };
-world.entities.push(ent);
-                                let head_p = BlockPos { x: player.position.x as i32, y: (player.position.y + 1.5) as i32, z: player.position.z as i32 };
-                                let is_submerged = world.get_block(head_p).is_water();
-                                audio.play("drop", is_submerged);
-                            }
-                        }
-                    } else if !is_paused && !player.inventory_open { 
-                        player.handle_input(key, pressed);
-                        
-                        if pressed && key == KeyCode::KeyF { player.is_flying = !player.is_flying; if player.is_flying { player.velocity = glam::Vec3::ZERO; } }
-                        if pressed && key == KeyCode::KeyT {
-                            let top_y = world.get_height_at(player.position.x.floor() as i32, player.position.z.floor() as i32);
-                            player.position.y = top_y as f32 + 2.5;
-                            player.velocity.y = 0.0;
-                            log::info!("🚀 Teleported to surface: {}", top_y);
-                        }
-                        if pressed && key == KeyCode::KeyN { 
-                            player.is_noclip = !player.is_noclip; 
-                            player.is_flying = player.is_noclip; 
-                            player.admin_speed = if player.is_noclip { 5.0 } else { 1.0 }; 
-                        }
-                        if pressed && key == KeyCode::Equal { player.admin_speed = (player.admin_speed + 1.0).min(10.0); }
-                        if pressed && key == KeyCode::Minus { player.admin_speed = (player.admin_speed - 1.0).max(1.0); }
-                        if key == KeyCode::ControlLeft { player.is_sprinting = pressed; }
-                        if pressed {
-                            let slot = match key { KeyCode::Digit1=>Some(0), KeyCode::Digit2=>Some(1), KeyCode::Digit3=>Some(2), KeyCode::Digit4=>Some(3), KeyCode::Digit5=>Some(4), KeyCode::Digit6=>Some(5), KeyCode::Digit7=>Some(6), KeyCode::Digit8=>Some(7), KeyCode::Digit9=>Some(8), _=>None };
-                            if let Some(s) = slot { player.inventory.selected_hotbar_slot = s; }
                         }
                     }
                 }
@@ -821,11 +810,13 @@ if !is_paused {
                                     }
                                 } else { breaking_pos = None; break_progress = 0.0; }
                             } else { breaking_pos = None; break_progress = 0.0; }
-                        }
+                    }
                     }
                     renderer.break_progress = if breaking_pos.is_some() { break_progress } else { 0.0 };
                     
-                    let result = if is_paused {
+                    let result = if game_state == GameState::Settings {
+                        renderer.render_settings_menu(&settings_menu, win_size.0, win_size.1)
+                    } else if is_paused {
                         renderer.render_pause_menu(&pause_menu, &world, &player, cursor_pos, win_size.0, win_size.1)
                     } else {
                         renderer.render_game(&world, &player, is_paused, cursor_pos, win_size.0, win_size.1)
@@ -847,7 +838,7 @@ if !is_paused {
                     if let Err(_) = renderer.render_main_menu(&main_menu, win_size.0, win_size.1) { renderer.resize(win_size.0, win_size.1); }
                 }
             }
-Event::AboutToWait => {
+            Event::AboutToWait => {
                 // DIABOLICAL THREADING: Only process world-gen and cursor logic if we are actually in the game.
                 if game_state == GameState::Playing && !is_paused && !player.inventory_open {
                     // DIABOLICAL SPAWN SAFETY: If player falls into void/water on load (Y < 20), teleport to surface
@@ -871,6 +862,6 @@ Event::AboutToWait => {
                 window.request_redraw();
             },
             _ => {}
-        }
-    }).unwrap();
+}
+    });
 }

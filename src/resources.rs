@@ -1168,7 +1168,7 @@ impl TraditionalTextureGenerator {
 
     fn create_traditional_palette() -> TraditionalPalette {
         TraditionalPalette {
-            // Warm, traditional stone colors
+            // Minecraft-style stone colors - more gray and defined
             stone_colors: [
                 [136, 136, 136], // Light stone
                 [119, 119, 119], // Medium stone
@@ -1179,7 +1179,7 @@ impl TraditionalTextureGenerator {
                 [68, 68, 68],     // Shadow stone
                 [187, 187, 187], // Weathered stone
             ],
-            // Natural wood colors with grain
+            // Minecraft wood colors - more natural and distinct
             wood_colors: [
                 [143, 101, 69],  // Oak wood
                 [92, 51, 23],    // Dark oak
@@ -1188,14 +1188,14 @@ impl TraditionalTextureGenerator {
                 [160, 106, 66],  // Jungle wood
                 [247, 233, 163], // Acacia wood
             ],
-            // Earth tones
+            // Minecraft dirt colors - richer earth tones
             dirt_colors: [
                 [139, 90, 69],   // Light dirt
                 [121, 85, 61],   // Medium dirt
                 [109, 77, 54],   // Dark dirt
                 [155, 118, 87],  // Sandy dirt
             ],
-            // Natural grass colors
+            // Minecraft grass colors - more vibrant and natural
             grass_colors: [
                 [124, 169, 80],  // Healthy grass
                 [134, 179, 90],  // Lush grass
@@ -1203,13 +1203,13 @@ impl TraditionalTextureGenerator {
                 [144, 189, 100], // Tropical grass
                 [104, 149, 60],  // Sparse grass
             ],
-            // Sandy colors
+            // Minecraft sand colors - more desert-like
             sand_colors: [
                 [238, 220, 194], // Light sand
                 [218, 200, 174], // Medium sand
                 [198, 180, 154], // Dark sand
             ],
-            // Rich ore colors
+            // Minecraft ore colors - more vibrant and distinct
             ore_colors: [
                 [24, 24, 24],     // Coal
                 [210, 180, 140], // Iron
@@ -1222,7 +1222,7 @@ impl TraditionalTextureGenerator {
                 [128, 0, 128],   // Amethyst
                 [255, 255, 255], // Quartz
             ],
-            // Vibrant plant colors
+            // Minecraft plant colors - more natural and varied
             plant_colors: [
                 [34, 89, 34],    // Green leaves
                 [124, 169, 80],  // Grass green
@@ -1237,7 +1237,7 @@ impl TraditionalTextureGenerator {
                 [255, 0, 255],   // Magenta flowers
                 [192, 192, 192], // Gray flowers
             ],
-            // Metallic colors
+            // Minecraft metallic colors - more authentic
             metal_colors: [
                 [192, 192, 192], // Iron
                 [255, 215, 0],   // Gold
@@ -1389,112 +1389,8 @@ impl TraditionalTextureGenerator {
         templates
     }
 
-    pub fn generate_traditional_texture(
-        &self,
-        material_type: MaterialType,
-        size: usize,
-        biome_modifier: Option<BiomeModifier>,
-        time_modifier: Option<TimeModifier>,
-    ) -> Vec<u8> {
-        let template = &self.templates[&material_type];
-        let mut texture_data = Vec::with_capacity(size * size * 4);
-
-        for y in 0..size {
-            for x in 0..size {
-                let uv = [x as f32 / size as f32, y as f32 / size as f32];
-                
-                // Generate base color with pattern
-                let base_color = self.generate_pattern_color(template, uv);
-                
-                // Apply biome and time modifiers
-                let modified_color = self.apply_modifiers(base_color, biome_modifier, time_modifier);
-                
-                // Add detail layers
-                let final_color = self.add_detail_layers(template, modified_color, uv);
-                
-                texture_data.extend([final_color[0], final_color[1], final_color[2], 255]);
-            }
-        }
-
-        texture_data
-    }
-
-    fn generate_pattern_color(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
-        match template.pattern_type {
-            PatternType::Solid => template.base_color,
-            PatternType::Grain => self.generate_grain_pattern(template, uv),
-            PatternType::Veined => self.generate_veined_pattern(template, uv),
-            PatternType::Crystalline => self.generate_crystalline_pattern(template, uv),
-            PatternType::Fabric => self.generate_fabric_pattern(template, uv),
-            PatternType::Metallic => self.generate_metallic_pattern(template, uv),
-            PatternType::Organic => self.generate_organic_pattern(template, uv),
-            PatternType::Geometric => self.generate_geometric_pattern(template, uv),
-        }
-    }
-
-    fn generate_grain_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
-        let noise = self.perlin_noise(uv[0] * 8.0, uv[1] * 8.0);
-        let color_index = (noise * template.detail_colors.len() as f32) as usize % template.detail_colors.len();
-        template.detail_colors[color_index]
-    }
-
-    fn generate_veined_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
-        let vein_noise = self.perlin_noise(uv[0] * 16.0, uv[1] * 16.0);
-        let base_noise = self.perlin_noise(uv[0] * 4.0, uv[1] * 4.0);
-        
-        if vein_noise > 0.7 {
-            template.detail_colors[0] // Vein color
-        } else {
-            self.blend_colors(template.base_color, template.detail_colors[1], base_noise)
-        }
-    }
-
-    fn generate_crystalline_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
-        let crystal_noise = self.perlin_noise(uv[0] * 12.0, uv[1] * 12.0);
-        let facet_noise = self.perlin_noise(uv[0] * 24.0, uv[1] * 24.0);
-        
-        let base_color = self.blend_colors(template.base_color, template.detail_colors[0], crystal_noise);
-        self.blend_colors(base_color, template.detail_colors[1], facet_noise * 0.3)
-    }
-
-    fn generate_fabric_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
-        let weave_x = (uv[0] * 20.0).sin() * 0.5 + 0.5;
-        let weave_y = (uv[1] * 20.0).cos() * 0.5 + 0.5;
-        let weave_pattern = (weave_x * weave_y).powf(2.0);
-        
-        self.blend_colors(template.base_color, template.detail_colors[0], weave_pattern)
-    }
-
-    fn generate_metallic_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
-        let metal_noise = self.perlin_noise(uv[0] * 32.0, uv[1] * 32.0);
-        let polish_pattern = (uv[0] * 100.0).sin() * (uv[1] * 100.0).cos() * 0.1 + 0.9;
-        
-        let base_color = self.blend_colors(template.base_color, template.detail_colors[0], metal_noise);
-        self.blend_colors(base_color, template.detail_colors[1], polish_pattern)
-    }
-
-    fn generate_organic_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
-        let organic_noise = self.perlin_noise(uv[0] * 6.0, uv[1] * 6.0);
-        let detail_noise = self.perlin_noise(uv[0] * 12.0, uv[1] * 12.0);
-        
-        self.blend_colors(template.base_color, template.detail_colors[0], organic_noise * 0.7 + detail_noise * 0.3)
-    }
-
-    fn generate_geometric_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
-        let grid_x = (uv[0] * 8.0) as usize % 2;
-        let grid_y = (uv[1] * 8.0) as usize % 2;
-        let checker_pattern = if (grid_x + grid_y) % 2 == 0 { 1.0 } else { 0.0 };
-        
-        self.blend_colors(template.base_color, template.detail_colors[0], checker_pattern)
-    }
-
-    fn apply_modifiers(
-        &self,
-        color: [u8; 3],
-        biome_modifier: Option<BiomeModifier>,
-        time_modifier: Option<TimeModifier>,
-    ) -> [u8; 3] {
-        let mut modified_color = color;
+    fn apply_modifiers(&self, base_color: [u8; 3], biome_modifier: Option<BiomeModifier>, time_modifier: Option<TimeModifier>) -> [u8; 3] {
+        let mut modified_color = base_color;
         
         if let Some(biome) = biome_modifier {
             modified_color = self.apply_biome_modifier(modified_color, biome);
@@ -1505,6 +1401,18 @@ impl TraditionalTextureGenerator {
         }
         
         modified_color
+    }
+
+    fn generate_minecraft_geometric_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
+        let pixel_x = (uv[0] * 4.0) as u8 % 2;
+        let pixel_y = (uv[1] * 4.0) as u8 % 2;
+        
+        let checker_pattern = (pixel_x + pixel_y) % 2;
+        if checker_pattern == 1 && !template.detail_colors.is_empty() {
+            template.detail_colors[0]
+        } else {
+            template.base_color
+        }
     }
 
     fn apply_biome_modifier(&self, color: [u8; 3], biome: BiomeModifier) -> [u8; 3] {
@@ -1661,6 +1569,132 @@ impl TraditionalTextureGenerator {
         h ^= y << 13;
         h ^= h >> 17;
         h.wrapping_mul(0x85ebca6bu32 as i32).wrapping_add(0xc2b2ae35u32 as i32)
+    }
+
+    fn generate_minecraft_grain_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
+        let pixel_x = (uv[0] * 16.0) as u8 % 4;
+        let pixel_y = (uv[1] * 16.0) as u8 % 4;
+        let grain_pattern = (pixel_x + pixel_y) % 3;
+        
+        let base_index = if grain_pattern == 0 { 0 } else { 1 + grain_pattern as usize % (template.detail_colors.len() - 1) };
+        template.detail_colors[base_index.min(template.detail_colors.len() - 1)]
+    }
+
+    fn generate_minecraft_veined_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
+        let pixel_x = (uv[0] * 8.0) as u8;
+        let pixel_y = (uv[1] * 8.0) as u8;
+        
+        let pixel_x_mod = (pixel_x % 4) as u8;
+        let pixel_y_mod = (pixel_y % 4) as u8;
+        
+        let vein_pattern = match (pixel_x_mod, pixel_y_mod) {
+            (1, 0) | (1, 1) => 1,
+            (1, 2) => 2,
+            (1, 3) => 1,
+            (2, 1) | (2, 2) => 1, 
+            (0, 1) => 2, 
+            (0, 0) | (2, 0) | (3, 0) | (3, 1) | (3, 2) | (0, 2) | (2, 3) | (3, 3) => 0,
+            _ => 0,
+        };
+        
+        if vein_pattern > 0 && vein_pattern < template.detail_colors.len() as u8 + 1 {
+            template.detail_colors[vein_pattern as usize - 1]
+        } else {
+            template.base_color
+        }
+    }
+
+    fn generate_minecraft_crystalline_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
+        let pixel_x = (uv[0] * 4.0) as u8 % 2;
+        let pixel_y = (uv[1] * 4.0) as u8 % 2;
+        
+        let facet_pattern = (pixel_x ^ pixel_y) as usize;
+        if facet_pattern < template.detail_colors.len() {
+            template.detail_colors[facet_pattern]
+        } else {
+            template.base_color
+        }
+    }
+
+    fn generate_minecraft_fabric_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
+        let pixel_x = (uv[0] * 8.0) as u8 % 4;
+        let pixel_y = (uv[1] * 8.0) as u8 % 4;
+        
+        let weave_pattern = (pixel_x % 2) ^ (pixel_y % 2);
+        if weave_pattern == 1 && !template.detail_colors.is_empty() {
+            template.detail_colors[0]
+        } else {
+            template.base_color
+        }
+    }
+
+    fn generate_minecraft_metallic_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
+        let pixel_x = (uv[0] * 16.0) as u8 % 8;
+        let pixel_y = (uv[1] * 16.0) as u8 % 8;
+        
+        let highlight_pattern = match (pixel_x % 4, pixel_y % 4) {
+            (0, 0) | (3, 3) => 1, 
+            (1, 1) | (2, 2) => 2, 
+            _ => 0,
+        };
+        
+        if highlight_pattern > 0 && highlight_pattern < template.detail_colors.len() as u8 + 1 {
+            template.detail_colors[highlight_pattern as usize - 1]
+        } else {
+            template.base_color
+        }
+    }
+
+    fn generate_minecraft_organic_pattern(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
+        let pixel_x = (uv[0] * 4.0) as u8 % 2;
+        let pixel_y = (uv[1] * 4.0) as u8 % 2;
+        
+        let organic_pattern = (pixel_x + pixel_y) % 3;
+        let color_index = organic_pattern as usize % template.detail_colors.len();
+        template.detail_colors[color_index]
+    }
+
+    fn generate_pattern_color(&self, template: &TextureTemplate, uv: [f32; 2]) -> [u8; 3] {
+        match template.pattern_type {
+            PatternType::Solid => template.base_color,
+            PatternType::Grain => self.generate_minecraft_grain_pattern(template, uv),
+            PatternType::Veined => self.generate_minecraft_veined_pattern(template, uv),
+            PatternType::Crystalline => self.generate_minecraft_crystalline_pattern(template, uv),
+            PatternType::Fabric => self.generate_minecraft_fabric_pattern(template, uv),
+            PatternType::Metallic => self.generate_minecraft_metallic_pattern(template, uv),
+            PatternType::Organic => self.generate_minecraft_organic_pattern(template, uv),
+            PatternType::Geometric => self.generate_minecraft_geometric_pattern(template, uv),
+        }
+    }
+
+    pub fn generate_traditional_texture(
+        &self,
+        material_type: MaterialType,
+        size: usize,
+        biome_modifier: Option<BiomeModifier>,
+        time_modifier: Option<TimeModifier>,
+    ) -> Vec<u8> {
+        let template = &self.templates[&material_type];
+        let mut texture_data = Vec::with_capacity(size * size * 4);
+
+        for y in 0..size {
+            for x in 0..size {
+                let uv = [x as f32 / size as f32, y as f32 / size as f32];
+                
+                // Generate base color with pattern
+                let base_color = self.generate_pattern_color(template, uv);
+                
+                // Apply biome and time modifiers
+                let modified_color = self.apply_modifiers(base_color, biome_modifier, time_modifier);
+                
+                // Add detail layers
+                let final_color = self.add_detail_layers(template, modified_color, uv);
+                
+                texture_data.extend([final_color[0], final_color[1], final_color[2], 255]);
+            }
+        }
+
+        texture_data
     }
 }
 
