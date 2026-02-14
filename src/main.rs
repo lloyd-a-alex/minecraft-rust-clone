@@ -10,18 +10,25 @@ use rodio::{Decoder, OutputStream, Sink};
 use std::io::Cursor;
 use std::time::{SystemTime, UNIX_EPOCH};
 pub struct AudioSystem {
-    _stream: OutputStream,
-    stream_handle: rodio::OutputStreamHandle,
+    _stream: Option<OutputStream>,
+    stream_handle: Option<rodio::OutputStreamHandle>,
 }
 
 impl AudioSystem {
     pub fn new() -> Self {
-        let (stream, handle) = OutputStream::try_default().unwrap();
+        let (stream, handle) = match OutputStream::try_default() {
+            Ok((s, h)) => (Some(s), Some(h)),
+            Err(_) => (None, None),
+        };
         Self { _stream: stream, stream_handle: handle }
     }
 
     pub fn play_step(&self, category: &str, variant: usize, in_cave: bool) {
-        let sink = Sink::try_new(&self.stream_handle).unwrap();
+        let handle = match &self.stream_handle {
+            Some(h) => h,
+            None => return,
+        };
+        let sink = Sink::try_new(handle).unwrap();
         
         // DIABOLICAL VARIANT MODULATION: Each variant (0-4) slightly shifts frequency and duration
         let v_mod = 0.92 + (variant as f32 * 0.04); // Pitch range: 0.92 to 1.08
@@ -48,7 +55,11 @@ impl AudioSystem {
     }
 
 pub fn play(&self, sound_type: &str, in_cave: bool) {
-        let sink = Sink::try_new(&self.stream_handle).unwrap();
+        let handle = match &self.stream_handle {
+            Some(h) => h,
+            None => return,
+        };
+        let sink = Sink::try_new(handle).unwrap();
         let mut dur = match sound_type {
             "click" | "pickup" => 0.05,
 "land" => 0.2,

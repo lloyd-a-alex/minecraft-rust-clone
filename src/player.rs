@@ -184,6 +184,7 @@ pub bob_timer: f32,
     pub grounded_latch: f32,   // Coyote Time / Hysteresis buffer
     pub jump_buffer_timer: f32, // Allows pressing jump slightly before hitting ground
     pub last_step_variant: usize,
+    pub stasis: bool,
 }
 
 #[derive(Default)]
@@ -235,6 +236,7 @@ bob_timer: 0.0,
             grounded_latch: 0.0,
             jump_buffer_timer: 0.0,
             last_step_variant: 0,
+            stasis: false,
         }
     }
     pub fn respawn(&mut self) { self.position = Vec3::new(0.0, 80.0, 0.0); self.velocity = Vec3::ZERO; self.health = self.max_health; self.is_dead = false; self.invincible_timer = 3.0; }
