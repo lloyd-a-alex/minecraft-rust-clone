@@ -9,6 +9,11 @@ use std::time::Instant;
 use rodio::{Decoder, OutputStream, Sink};
 use std::io::Cursor;
 use std::time::{SystemTime, UNIX_EPOCH};
+use minecraft_clone::{Renderer, World, BlockType, BlockPos, Player, NetworkManager, Packet, GameState, MainMenu, Rect, MenuAction, MenuButton, Hotbar, AudioSystem};
+use glam::Vec3;
+use serde_json::json;
+use std::fs;
+
 pub struct AudioSystem {
     _stream: Option<OutputStream>,
     stream_handle: Option<rodio::OutputStreamHandle>,
@@ -150,16 +155,10 @@ fn gen_noise(dur: f32, freq_start: f32, freq_end: f32, reverb: bool) -> Vec<u8> 
     }
 }
 
-use minecraft_clone::{Renderer, World, BlockType, BlockPos, Player, NetworkManager, Packet, GameState, MainMenu, Rect, MenuAction, MenuButton, Hotbar, AudioSystem};
-use glam::Vec3;
-use serde_json::json;
-use std::fs;
 
 // --- UI STRUCTURES ---
 #[repr(C)] #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct UIElement { pub pos: [f32; 2], pub size: [f32; 2], pub tex_idx: u32, pub padding: u32 }
-pub struct Hotbar { pub slots: [Option<(world::BlockType, u32)>; 9], pub selected_slot: usize }
-impl Hotbar { fn new() -> Self { Self { slots: [None; 9], selected_slot: 0 } } }
 
 fn main() {
     logger::init_logger();
