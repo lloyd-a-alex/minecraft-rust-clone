@@ -131,7 +131,7 @@ impl<'a> Renderer<'a> {
         let mut eye_pos = pos + glam::Vec3::new(0.0, player.height * 0.4, 0.0);
         
         // Bobbing interpolation
-        if player.on_ground && (player.keys.forward || player.keys.backward || player.keys.left || player.keys.right) { 
+        if player.on_ground && (player.input.forward || player.input.backward || player.input.left || player.input.right) { 
             eye_pos.y += (player.walk_time * 2.0).sin() * 0.02; 
         }
         
