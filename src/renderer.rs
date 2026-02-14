@@ -93,6 +93,11 @@ pub start_time: Instant,
     pub transition_alpha: f32,
     pub init_time: Instant,
     pub adapter_info: wgpu::AdapterInfo,
+    
+    // CONFIGURATION FIELDS
+    pub render_distance: u32,
+    pub max_fps: u32,
+    pub fov: f32,
 }
 
 #[repr(C)]
@@ -143,6 +148,19 @@ impl<'a> Renderer<'a> {
         let view_proj = (correction * proj * view).to_cols_array_2d();
         self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[view_proj]));
     }
+    
+    pub fn set_render_distance(&mut self, render_distance: u32) {
+        self.render_distance = render_distance;
+    }
+    
+    pub fn set_max_fps(&mut self, max_fps: u32) {
+        self.max_fps = max_fps;
+    }
+    
+    pub fn set_fov(&mut self, fov: f32) {
+        self.fov = fov;
+    }
+    
     pub async fn new(window: &'a Window) -> Self {
         // --- KEY FIX: Use empty flags for compatibility ---
 let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -453,6 +471,9 @@ let entity_index_buffer = device.create_buffer(&BufferDescriptor { label: Some("
             transition_alpha: 1.0,
             init_time: Instant::now(),
             adapter_info,
+            render_distance: 12,
+            max_fps: 60,
+            fov: 75.0,
         }
     }
 
@@ -897,13 +918,13 @@ fn _add_cross_face(&self, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32, 
         *i_count += 4;
     }
 
-fn add_ui_quad(&self, uv: &mut Vec<Vertex>, ui: &mut Vec<u32>, uoff: &mut u32, x: f32, y: f32, w: f32, h: f32, tex_index: u32) {
+pub fn add_ui_quad(&self, uv: &mut Vec<Vertex>, ui: &mut Vec<u32>, uoff: &mut u32, x: f32, y: f32, w: f32, h: f32, tex_index: u32) {
         uv.push(Vertex{position:[x,y+h,0.0], tex_coords:[0.0,0.0], ao:1.0, tex_index, light: 1.0}); uv.push(Vertex{position:[x+w,y+h,0.0], tex_coords:[1.0,0.0], ao:1.0, tex_index, light: 1.0});
         uv.push(Vertex{position:[x+w,y,0.0], tex_coords:[1.0,1.0], ao:1.0, tex_index, light: 1.0}); uv.push(Vertex{position:[x,y,0.0], tex_coords:[0.0,1.0], ao:1.0, tex_index, light: 1.0});
         ui.push(*uoff); ui.push(*uoff+1); ui.push(*uoff+2); ui.push(*uoff); ui.push(*uoff+2); ui.push(*uoff+3); *uoff += 4;
     }
 
-fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32) {
+pub fn draw_text(&self, text: &str, start_x: f32, y: f32, scale: f32, v: &mut Vec<Vertex>, i: &mut Vec<u32>, off: &mut u32) {
         let aspect = self.config.width as f32 / self.config.height as f32;
         let mut x = start_x;
         let mut final_scale = scale;

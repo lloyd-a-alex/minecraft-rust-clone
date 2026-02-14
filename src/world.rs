@@ -507,6 +507,24 @@ pub fn get_light_world(&self, pos: BlockPos) -> u8 {
         }
         64 // Default fallback height
     }
+    pub fn get_ground_height(&self, x: f32, z: f32) -> f32 {
+        let chunk_x = (x as i32).div_euclid(16);
+        let chunk_z = (z as i32).div_euclid(16);
+        
+        if let Some(chunk) = self.chunks.get(&(chunk_x, 0, chunk_z)) {
+            let local_x = (x as i32).rem_euclid(16) as usize;
+            let local_z = (z as i32).rem_euclid(16) as usize;
+            
+            for y in (0..256).rev() {
+                let block_type = chunk.blocks[local_x][y][local_z];
+                if block_type.is_solid() {
+                    return y as f32 + 1.0;
+                }
+            }
+        }
+        
+        0.0 // Default ground height if no chunk found
+    }
     pub fn get_block(&self, pos: BlockPos) -> BlockType {
         let cx = pos.x.div_euclid(16); let cy = pos.y.div_euclid(16); let cz = pos.z.div_euclid(16);
         let lx = pos.x.rem_euclid(16) as usize; let ly = pos.y.rem_euclid(16) as usize; let lz = pos.z.rem_euclid(16) as usize;

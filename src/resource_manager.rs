@@ -3,7 +3,6 @@
 //! This module provides centralized resource management to prevent memory exhaustion
 //! and ensure proper cleanup of game resources.
 
-use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -203,7 +202,7 @@ impl CleanupStats {
         self.chunks_cleaned + self.entities_cleaned + self.particles_cleaned + self.tasks_cancelled
     }
 
-    pub fn has_cleaned anything(&self) -> bool {
+    pub fn has_cleaned_anything(&self) -> bool {
         self.total_cleaned() > 0 || self.memory_freed_mb > 0
     }
 }
@@ -213,6 +212,7 @@ static mut RESOURCE_MANAGER: Option<ResourceCleanupManager> = None;
 static INIT: std::sync::Once = std::sync::Once::new();
 
 /// Get the global resource manager
+#[allow(static_mut_refs)]
 pub fn get_resource_manager() -> &'static mut ResourceCleanupManager {
     unsafe {
         INIT.call_once(|| {

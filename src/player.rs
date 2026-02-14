@@ -147,7 +147,6 @@ pub fn check_recipes(&mut self) {
     }
 }
 
-#[allow(dead_code)]
 pub struct Player {
     pub position: Vec3,
     pub rotation: Vec3,
@@ -240,6 +239,15 @@ bob_timer: 0.0,
         }
     }
     pub fn respawn(&mut self) { self.position = Vec3::new(0.0, 80.0, 0.0); self.velocity = Vec3::ZERO; self.health = self.max_health; self.is_dead = false; self.invincible_timer = 3.0; }
+    
+    pub fn take_damage(&mut self, amount: f32, _damage_type: &str) {
+        if self.invincible_timer > 0.0 { return; }
+        self.health -= amount;
+        if self.health <= 0.0 {
+            self.health = 0.0;
+            self.is_dead = true;
+        }
+    }
     
     pub fn handle_input(&mut self, key: KeyCode, pressed: bool) {
         match key {
