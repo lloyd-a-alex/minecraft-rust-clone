@@ -117,7 +117,17 @@ impl Hotbar {
     } 
 }
 
+pub mod minecraft_rendering;
+pub mod traditional_textures;
+pub mod weather_system;
+pub mod combat_system;
+pub mod ui_system;
+pub mod config_system;
 pub mod logger;
+pub mod chat_system;
+pub mod time_system;
+pub mod advanced_logger;
+pub mod stress_test;
 pub mod network;
 pub mod ngrok_utils;
 pub mod noise_gen;
@@ -129,6 +139,9 @@ pub mod ui_system;
 pub mod weather_system;
 pub mod combat_system;
 pub mod config_system;
+pub mod stress_test;
+pub mod save_menu;
+pub mod save_system;
 pub mod world;
 
 // Re-export commonly used types for convenience

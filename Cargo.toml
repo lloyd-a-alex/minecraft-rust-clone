@@ -23,3 +23,7 @@ rand = "0.9.2"
 rodio = "0.17"
 hound = "3.5"
 num_cpus = "1.16"
+chrono = { version = "0.4", features = ["serde"] }
+md5 = "0.7"
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["processthreadsapi", "winbase"] }

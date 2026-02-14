@@ -10,6 +10,8 @@
 
 use glam::Vec3;
 use crate::world::World;
+use crate::minecraft_rendering::{MinecraftRenderer, FogType, ShadingMode};
+use crate::time_system::TimeSystem;
 
 /// DIABOLICAL Weather Types with realistic behaviors
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -415,6 +417,8 @@ pub struct WeatherSystem {
     pub lightning_strikes: Vec<LightningStrike>,
     pub ambient_light_color: [f32; 3],
     pub fog_density: f32,
+    pub minecraft_renderer: Option<MinecraftRenderer>,
+    pub time_system: Option<TimeSystem>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -449,7 +453,14 @@ impl WeatherSystem {
             lightning_strikes: Vec::new(),
             ambient_light_color: [1.0, 1.0, 1.0],
             fog_density: 0.0,
+            minecraft_renderer: None,
+            time_system: None,
         }
+    }
+
+    pub fn with_classic_rendering(&mut self, minecraft_renderer: MinecraftRenderer, time_system: TimeSystem) {
+        self.minecraft_renderer = Some(minecraft_renderer);
+        self.time_system = Some(time_system);
     }
 
     pub fn update(&mut self, dt: f32, world: &World, player_position: Vec3) {
@@ -655,6 +666,256 @@ impl WeatherSystem {
             WeatherType::MagicalStorm => 1.2,
         }
     }
+
+    // Classic Minecraft Rendering Integration
+    pub fn update_classic_rendering(&mut self) {
+        // Get fog settings first to avoid borrow issues
+        let fog_settings = match self.current_weather {
+            WeatherType::Clear => FogSettings {
+                fog_type: FogType::Classic,
+                fog_color: [0.7, 0.7, 0.8, 1.0],
+                fog_end: 6.0,
+            },
+            WeatherType::Cloudy => FogSettings {
+                fog_type: FogType::Classic,
+                fog_color: [0.6, 0.6, 0.7, 1.0],
+                fog_end: 5.0,
+            },
+            WeatherType::Rain => FogSettings {
+                fog_type: FogType::Classic,
+                fog_color: [0.4, 0.4, 0.5, 1.0],
+                fog_end: 4.0,
+            },
+            WeatherType::HeavyRain => FogSettings {
+                fog_type: FogType::Classic,
+                fog_color: [0.3, 0.3, 0.4, 1.0],
+                fog_end: 3.0,
+            },
+            WeatherType::Thunderstorm => FogSettings {
+                fog_type: FogType::Classic,
+                fog_color: [0.2, 0.2, 0.3, 1.0],
+                fog_end: 2.5,
+            },
+            WeatherType::Snow => FogSettings {
+                fog_type: FogType::Classic,
+                fog_color: [0.8, 0.8, 0.9, 1.0],
+                fog_end: 5.5,
+            },
+            WeatherType::Blizzard => FogSettings {
+                fog_type: FogType::Classic,
+                fog_color: [0.7, 0.7, 0.8, 1.0],
+                fog_end: 3.0,
+            },
+            WeatherType::Fog => FogSettings {
+                fog_type: FogType::Classic,
+                fog_color: [0.5, 0.5, 0.6, 1.0],
+                fog_end: 2.0,
+            },
+            WeatherType::Sandstorm => FogSettings {
+                fog_type: FogType::Classic,
+                fog_color: [0.8, 0.7, 0.5, 1.0],
+                fog_end: 1.5,
+            },
+            WeatherType::MagicalStorm => FogSettings {
+                fog_type: FogType::Classic,
+                fog_color: [0.3, 0.1, 0.5, 1.0],
+                fog_end: 1.0,
+            },
+        };
+        
+        if let Some(renderer) = &mut self.minecraft_renderer {
+            // Apply all settings at once
+            renderer.set_fog_type(fog_settings.fog_type);
+            renderer.fog_color = [
+                fog_settings.fog_color[0],
+                fog_settings.fog_color[1], 
+                fog_settings.fog_color[2], 
+                fog_settings.fog_color[3]
+            ];
+            renderer.fog_end = fog_settings.fog_end;
+        }
+    }
+
+    
+fn update_sky_color(&mut self) {
+    let time_modifier = if let Some(ref time_system) = self.time_system {
+        let sky_color: [f32; 3] = time_system.get_sky_color();
+        sky_color[0] + sky_color[1] + sky_color[2]
+    } else {
+        2.1 // Default bright sky
+    };
+
+    let weather_color = match self.current_weather {
+        WeatherType::Clear => [time_modifier, time_modifier, time_modifier],
+        WeatherType::Cloudy => [time_modifier * 0.8, time_modifier * 0.8, time_modifier * 0.9],
+        WeatherType::Rain => [time_modifier * 0.4, time_modifier * 0.4, time_modifier * 0.5],
+        WeatherType::HeavyRain => [time_modifier * 0.3, time_modifier * 0.3, time_modifier * 0.4],
+        WeatherType::Thunderstorm => [time_modifier * 0.2, time_modifier * 0.2, time_modifier * 0.3],
+        WeatherType::Snow => [time_modifier * 0.9, time_modifier * 0.9, time_modifier * 1.0],
+        WeatherType::Blizzard => [time_modifier * 0.7, time_modifier * 0.7, time_modifier * 0.8],
+        WeatherType::Fog => [time_modifier * 0.6, time_modifier * 0.6, time_modifier * 0.7],
+        WeatherType::Sandstorm => [time_modifier * 0.8, time_modifier * 0.7, time_modifier * 0.5],
+        WeatherType::MagicalStorm => [time_modifier * 0.3, time_modifier * 0.1, time_modifier * 0.5],
+    };
+
+    if let Some(ref mut renderer) = self.minecraft_renderer {
+        renderer.fog_color[0] = weather_color[0];
+        renderer.fog_color[1] = weather_color[1];
+        renderer.fog_color[2] = weather_color[2];
+    }
+}
+
+fn update_fog(&mut self) {
+    match self.current_weather {
+        WeatherType::Fog => {
+            self.fog_density = 0.8;
+        }
+        WeatherType::Rain | WeatherType::HeavyRain => {
+            self.fog_density = 0.3;
+        }
+        WeatherType::Blizzard => {
+            self.fog_density = 0.6;
+        }
+        _ => {
+            self.fog_density = 0.0;
+        }
+    }
+}
+}
+
+pub fn get_classic_fog_density(&self) -> f32 {
+    if let Some(ref renderer) = self.minecraft_renderer {
+        renderer.get_fog_density(10.0_f32) // Sample at 10 blocks distance
+    } else {
+        self.fog_density
+    }
+}
+
+pub fn get_classic_ambient_light(&self) -> f32 {
+    if let Some(ref time_system) = self.time_system {
+        let base_light: f32 = time_system.get_ambient_light();
+        let weather_modifier = match self.current_weather {
+            WeatherType::Clear => 1.0,
+            WeatherType::Cloudy => 0.9,
+            WeatherType::Rain => 0.7,
+            WeatherType::HeavyRain => 0.5,
+            WeatherType::Thunderstorm => 0.4,
+            WeatherType::Snow => 0.8,
+            WeatherType::Blizzard => 0.6,
+            WeatherType::Fog => 0.6,
+            WeatherType::Sandstorm => 0.5,
+            WeatherType::MagicalStorm => 0.3,
+        };
+        base_light * weather_modifier
+    } else {
+        1.0
+    }
+}
+
+pub fn should_use_classic_lighting(&self) -> bool {
+    self.minecraft_renderer.is_some()
+}
+
+pub fn get_texture_filter_mode(&self) -> Option<u32> {
+    self.minecraft_renderer.as_ref().map(|r: &crate::minecraft_rendering::MinecraftRenderer| r.get_texture_filter_mode())
+}
+
+pub fn should_use_mipmapping(&self) -> bool {
+    self.minecraft_renderer.as_ref().map_or(false, |r: &crate::minecraft_rendering::MinecraftRenderer| r.should_use_mipmapping())
+}
+
+pub fn apply_view_bobbing(&self, time: f32) -> Option<Vec3> {
+    self.minecraft_renderer.as_ref().map(|r| r.apply_view_bobbing(time))
+}
+
+pub fn get_weather_effects(&self) -> WeatherEffects {
+    WeatherEffects {
+        visibility_modifier: self.atmospheric.visibility,
+        movement_speed_modifier: self.get_movement_speed_modifier(),
+        block_interaction_modifier: self.get_block_interaction_modifier(),
+        ambient_light_color: self.ambient_light_color,
+        fog_density: self.fog_density,
+        precipitation_type: self.current_weather.get_precipitation_type(),
+    }
+}
+
+fn get_movement_speed_modifier(&self) -> f32 {
+    match self.current_weather {
+        WeatherType::Clear => 1.0,
+        WeatherType::Cloudy => 0.95,
+        WeatherType::Rain => 0.8,
+        WeatherType::HeavyRain => 0.7,
+        WeatherType::Thunderstorm => 0.6,
+        WeatherType::Snow => 0.9,
+        WeatherType::Blizzard => 0.5,
+        WeatherType::Fog => 0.8,
+        WeatherType::Sandstorm => 0.3,
+        WeatherType::MagicalStorm => 0.8,
+    }
+}
+
+fn get_block_interaction_modifier(&self) -> f32 {
+    match self.current_weather {
+        WeatherType::Clear => 1.0,
+        WeatherType::Cloudy => 1.0,
+        WeatherType::Rain => 1.0,
+        WeatherType::HeavyRain => 1.0,
+        WeatherType::Thunderstorm => 1.0,
+        WeatherType::Snow => 0.9,
+        WeatherType::Blizzard => 0.6,
+        WeatherType::Fog => 1.0,
+        WeatherType::Sandstorm => 0.4,
+        WeatherType::MagicalStorm => 1.2,
+    }
+}
+
+fn get_movement_speed_modifier(&self) -> f32 {
+    match self.current_weather {
+        WeatherType::Clear => 1.0,
+        WeatherType::Cloudy => 0.95,
+        WeatherType::Rain => 0.8,
+        WeatherType::HeavyRain => 0.7,
+        WeatherType::Thunderstorm => 0.6,
+        WeatherType::Snow => 0.9,
+        WeatherType::Blizzard => 0.5,
+        WeatherType::Fog => 0.8,
+        WeatherType::Sandstorm => 0.3,
+        WeatherType::MagicalStorm => 0.8,
+    }
+}
+
+fn get_block_interaction_modifier(&self) -> f32 {
+    match self.current_weather {
+        WeatherType::Clear => 1.0,
+        WeatherType::Cloudy => 1.0,
+        WeatherType::Rain => 1.0,
+        WeatherType::HeavyRain => 1.0,
+        WeatherType::Thunderstorm => 1.0,
+        WeatherType::Snow => 0.9,
+        WeatherType::Blizzard => 0.6,
+        WeatherType::Fog => 1.0,
+        WeatherType::Sandstorm => 0.4,
+        WeatherType::MagicalStorm => 1.2,
+    }
+}
+
+#[derive(Debug, Clone)]
+struct FogSettings {
+    pub fog_type: FogType,
+    pub fog_color: [f32; 4],
+    pub fog_end: f32,
+}
+
+#[derive(Debug, Clone)]
+struct AmbientLightingSettings {
+    pub ambient_light: f32,
+}
+
+#[derive(Debug, Clone)]
+struct SkyColorSettings {
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
 }
 
 impl WeatherType {

@@ -26,7 +26,7 @@ pub struct BlockPos { pub x: i32, pub y: i32, pub z: i32 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BlockType {
     Air = 0, Grass = 1, Dirt = 2, Stone = 3, Wood = 4, Leaves = 5, Snow = 6, Sand = 7, Bedrock = 8, Water = 9,
-    CoalOre = 10, IronOre = 11, GoldOre = 12, DiamondOre = 13, RedstoneOre = 125, LapisOre = 126,
+    CoalOre = 10, IronOre = 11, GoldOre = 12, DiamondOre = 13, RedstoneOre = 140, LapisOre = 141,
 Planks = 14, Stick = 15, Cobblestone = 16, IronIngot = 17, GoldIngot = 18, Diamond = 19, Torch = 20,
     SprucePlanks = 170, BirchPlanks = 171,
     WoodPickaxe = 21, StonePickaxe = 22, IronPickaxe = 23, GoldPickaxe = 24, DiamondPickaxe = 25,
@@ -38,17 +38,21 @@ Planks = 14, Stick = 15, Cobblestone = 16, IronIngot = 17, GoldIngot = 18, Diamo
     FarmlandDry = 48, FarmlandWet = 49,
     Gravel = 50, Clay = 51, Sandstone = 52, Obsidian = 53, Cactus = 54,
     Coal = 76, IronIngotItem = 77, GoldIngotItem = 78, DiamondItem = 79, // Added missing items
-    GoldBlock = 120, IronBlock = 121, DiamondBlock = 122,
+    GoldBlock = 180, IronBlock = 181, DiamondBlock = 182,
     Ice = 501, Mycelium = 502, LilyPad = 503, Vine = 504,
     Rose = 55, Dandelion = 56, DeadBush = 57, TallGrass = 58, Sugarcane = 59,
-OakSapling = 60, Glass = 61, Bookshelf = 62, TNT = 63, Pumpkin = 64, Melon = 65,
+    OakSapling = 60, Glass = 61, Bookshelf = 62, TNT = 63, Pumpkin = 64, Melon = 65,
     BrickBlock = 66, MossyCobble = 67, Lava = 70, Fire = 71,
     SpruceWood = 72, SpruceLeaves = 73, BirchWood = 74, BirchLeaves = 75,
-Wheat0 = 85, Wheat1 = 86, Wheat2 = 87, Wheat3 = 88, Wheat4 = 89, Wheat5 = 90, Wheat6 = 91, Wheat7 = 92,
+    Wheat0 = 85, Wheat1 = 86, Wheat2 = 87, Wheat3 = 88, Wheat4 = 89, Wheat5 = 90, Wheat6 = 91, Wheat7 = 92,
     Cloud = 95,
     CraftingTable = 100, Furnace = 101, FurnaceActive = 102, Chest = 103,
     ChestLeft = 104, ChestRight = 105,
     WheatSeeds = 110, Wheat = 111, Bread = 112, Apple = 113, Porkchop = 114, CookedPorkchop = 115,
+    RottenFlesh = 116, Carrot = 117, Potato = 118, Arrow = 119, Bone = 130, Bow = 131,
+    Gunpowder = 132, String = 133, SpiderEye = 134, Leather = 135, Beef = 136, CookedBeef = 137,
+    Wool = 138, Mutton = 139, CookedMutton = 150, Feather = 151, Chicken = 152, CookedChicken = 153,
+    EnderPearl = 144, GlowstoneDust = 145, Redstone = 146,
 }
 
 impl BlockType {
@@ -118,6 +122,13 @@ BlockType::TNT => (50, 51, 50), BlockType::Pumpkin => (52, 53, 52), BlockType::M
             BlockType::Cloud => (228, 228, 228),
             BlockType::Wheat => (80, 80, 80), BlockType::Bread => (81, 81, 81), BlockType::Apple => (82, 82, 82),
             BlockType::Porkchop => (83, 83, 83), BlockType::CookedPorkchop => (84, 84, 84),
+            BlockType::RottenFlesh => (85, 85, 85), BlockType::Carrot => (86, 86, 86), BlockType::Potato => (87, 87, 87),
+            BlockType::Arrow => (88, 88, 88), BlockType::Bone => (89, 89, 89), BlockType::Bow => (90, 90, 90),
+            BlockType::Gunpowder => (91, 91, 91), BlockType::String => (92, 92, 92), BlockType::SpiderEye => (93, 93, 93),
+            BlockType::Leather => (94, 94, 94), BlockType::Beef => (95, 95, 95), BlockType::CookedBeef => (96, 96, 96),
+            BlockType::Wool => (97, 97, 97), BlockType::Mutton => (98, 98, 98), BlockType::CookedMutton => (99, 99, 99),
+            BlockType::Feather => (100, 100, 100), BlockType::Chicken => (101, 101, 101), BlockType::CookedChicken => (102, 102, 102),
+            BlockType::EnderPearl => (103, 103, 103), BlockType::GlowstoneDust => (104, 104, 104), BlockType::Redstone => (105, 105, 105),
             t if t.is_tool() => { let i = *t as u32; (i, i, i) }
             _ => (0, 0, 0),
         }
@@ -649,34 +660,13 @@ pub fn set_block_world(&mut self, pos: BlockPos, block: BlockType) {
     pub fn break_block(&mut self, pos: BlockPos) -> Vec<(i32, i32, i32)> {
         let block_type = self.get_block(pos);
         if block_type != BlockType::Air && block_type != BlockType::Bedrock && !block_type.is_water() {
-            let mut affected = self.get_chunk_neighbors(pos.x / 16, pos.y / 16, pos.z / 16);
-            affected.push((pos.x / 16, pos.y / 16, pos.z / 16));
-            
             // Set block to Air first
-            if let Some(chunk) = self.chunks.get_mut(&(pos.x / 16, pos.y / 16, pos.z / 16)) {
-                let lx = pos.x.rem_euclid(16) as usize;
-                let ly = pos.y.rem_euclid(16) as usize;
-                let lz = pos.z.rem_euclid(16) as usize;
-                chunk.set_block(lx, ly, lz, BlockType::Air);
-                let mut is_empty = true;
-                for x in 0..16 {
-                    for y in 0..16 {
-                        for z in 0..16 {
-                            if chunk.blocks[x][y][z] != BlockType::Air {
-                                is_empty = false;
-                                break;
-                            }
-                        }
-                        if !is_empty { break; }
-                    }
-                    if !is_empty { break; }
-                }
-                if is_empty {
-                    chunk.is_empty = true;
-                }
-            }
+            self.set_block_world(pos, BlockType::Air);
             
-            // Mark all affected chunks as dirty
+            // Get all affected chunks (3x3x3 area around the broken block)
+            let mut affected = self.get_affected_chunks(pos);
+            
+            // Mark all affected chunks as dirty IMMEDIATELY
             for &(cx, cy, cz) in &affected {
                 if let Some(chunk) = self.chunks.get_mut(&(cx, cy, cz)) {
                     chunk.mesh_dirty = true;
@@ -703,23 +693,17 @@ pub fn set_block_world(&mut self, pos: BlockPos, block: BlockType) {
                 rotation: 0.0, 
                 bob_offset: rng.next_f32() * 10.0 
             });
+            
+            // Trigger water updates if needed
+            let water_affected = self.trigger_water_update(pos);
+            affected.extend(water_affected);
+            
+            affected.sort_unstable();
+            affected.dedup();
+            affected
+        } else {
+            Vec::new()
         }
-        
-        self.set_block_world(pos, BlockType::Air);
-        
-        let mut affected = self.trigger_water_update(pos);
-        affected.extend(self.get_affected_chunks(pos));
-        affected.sort_unstable();
-        affected.dedup();
-        
-        for &(cx, cy, cz) in &affected {
-            if let Some(chunk) = self.chunks.get_mut(&(cx, cy, cz)) {
-                chunk.mesh_dirty = true;
-                self.dirty_chunks.insert((cx, cy, cz)); // PRIORITY UPDATE
-            }
-        }
-        self.mesh_dirty = true;
-        affected
     }
     pub fn place_block(&mut self, pos: BlockPos, block: BlockType) -> Vec<(i32, i32, i32)> { 
         self.set_block_world(pos, block); 

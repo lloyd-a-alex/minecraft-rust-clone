@@ -218,7 +218,7 @@ Player {
             is_noclip: false,
             admin_speed: 1.0,
             is_sprinting: false,
-            health: 20.0,
+            health: 10.0, // Always start with 10 hearts
             max_health: 20.0,
             air: 10.0,
             max_air: 10.0,
